@@ -1,0 +1,21 @@
+# Confirmed names for WARBREED.EXE (GOG). address<TAB>name<TAB>note. Applied by ExportCaches.java.
+0x46fa80	SetResolution	live resolution change (w|h<<16, h, 256, 1)
+0x46f400	FrameTick	compose tick: draws the scene stack
+0x47b770	SGame_Draw	mission scene draw
+0x47c000	SGame_DrawInterface	interface overlay
+0x47d500	SGame_LButtonDown	
+0x47e430	SGame_LButtonUp	
+0x47e1d0	SGame_ResolveClick	drag box or World::Click
+0x47e6f0	SGame_RButtonUp	deselect, or minimap move
+0x47f000	SGame_OnKeyDown	(vk, mods, ascii); mods bit0 Ctrl bit1 Alt bit2 Shift
+0x44a860	World_Click	select or order (rect*, x, y, zoom, pgdn, pgup, shift)
+0x44c6d0	World_OrderAt	move or target, as the cursor shows
+0x44c530	World_PickAt	object under a screen point
+0x44b5d0	World_Select	
+0x44b680	World_ClearSelection	
+0x44d8a0	World_AssignGroup	Ctrl+N
+0x44b6d0	World_RecallGroup	N
+0x4517e0	World_ValidatePlacement	0 valid, 1 blocked, 2 site requirement
+0x437b50	APlayer_CanBuild	device/pod type in the build list
+0x4419c0	AShaman_ClickDown	build/plant/repair/upgrade modes
+0x442b10	AShaman_CanPlantAt	pod soil, free, visible

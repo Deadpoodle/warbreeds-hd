@@ -18,3 +18,4 @@ docs/screenshots/raw/
 *.log
 *.mkv
 *.mp4
+!re/names.tsv
