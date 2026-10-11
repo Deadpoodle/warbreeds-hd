@@ -1,4 +1,4 @@
-WarBreeds HD 0.11.0
+WarBreeds HD 0.12.0
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -34,7 +34,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
    WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.11.0" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.12.0" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -70,6 +70,8 @@ Display
     windowed; Alt+Enter switches.
   - Smooth zoom with the mouse wheel, towards the cursor. The interface stays
     one size while you zoom.
+  - The interface is sized so every panel fits the window, even the tallest
+    (the Gene Lab+'s Select Components), and panels stay put at every zoom.
   - Widescreen menu screens. Menu Art = Original shows the original 4:3
     pictures with black bars instead (see the note on the artwork below).
   - F2 shows a frame-rate counter.
@@ -116,6 +118,11 @@ Fixes
     multi-core CPUs (the GOG release does the same).
   - The in-mission Game Options resolution slider is removed: resolution is
     set from the main menu now.
+  - The whole battlefield is redrawn every frame: fast flying units no longer
+    leave trails ([Render] FullRedraw=0 in WarBreedsHD.ini restores the
+    original behaviour).
+  - With the Orbitron font, text that would run wider than the original font
+    is narrowed to fit, so titles stay inside their bars.
 
 
 UNINSTALL
