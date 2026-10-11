@@ -28,6 +28,7 @@ void NewMap(const NewMapSpec& spec);
 // Every frame tick.
 void Tick();
 bool Active();  // a map is open in the editor
+bool PanelContains(int x, int y);  // a frame pixel on the tools panel (overlay scenes leave it to the editor)
 // Window messages while editing (keys, typed text). True = handled; the game
 // must not see it.
 bool OnMessage(UINT msg, WPARAM wp, LPARAM lp);

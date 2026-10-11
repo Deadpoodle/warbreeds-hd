@@ -55,6 +55,8 @@
 #include "terrain_paint.h"
 #include "validate.h"
 #include "world.h"
+#include "ai_settings.h"  // Stage 3
+#include "events.h"       // Stage 3
 
 namespace editor {
 namespace {
@@ -278,7 +280,7 @@ void SetStatus(const std::string& s, bool log = true) {
     g.status = s;
 }
 
-bool Dirty() { return g.dirtySinceSave || g.undo.size() != g.savedAt; }
+bool Dirty() { return g.dirtySinceSave || g.undo.size() != g.savedAt || events::Dirty() || ai::Dirty(); }
 
 // --- thing handles ---------------------------------------------------------------
 // A handle names one thing for the undo records, whatever id the engine gives it
@@ -1673,9 +1675,10 @@ void DoAction(int id, bool right) {
         g.showFindings = false;
         if (g.tab != arg) {
             g.tab = arg;
-            if (g_pages[arg]) g_pages[arg]->OnShow();
             if (kTabHints[arg][0]) SetStatus(kTabHints[arg], false);
         }
+        // A module's tab opens its editor on every click, so it reopens after Esc.
+        if (g_pages[arg]) g_pages[arg]->OnShow();
         break;
     case kActPal: g.type = g.page * kPalRows + arg; SetStatus("Terrain: " + g.painter->TypeName(g.type)); break;
     case kActPrev: --g.page; break;
@@ -2250,6 +2253,78 @@ void Install(const Hooks& h) {
     h.log("editor: %s, save hooks %s", ok ? "installed" : "FAILED", save ? "installed" : "FAILED (unexpected code)");
     if (!ReadArchive(h.dir + "DATA\\TERRAIN.MHK", g_terrainFile, &g_terrainError)) g_terrainFile.clear();
     layers::SetWorldOverlay(&DrawOverlay);
+    events::Install(h.log);
+    // Stage 3's editors on the panel's Events and AI tabs. Choosing a tab opens
+    // its editor (a scene over the map); the tab's page can close and reopen it.
+    struct EventsTab : TabPage {
+        const char* Label() const override { return "Events"; }
+        void OnShow() override {
+            if (!events::Active()) events::Open();
+        }
+        void Items(std::vector<PanelItem>& v) override {
+            bool on = events::Showing();
+            PanelItem open;
+            open.row = 0;
+            open.text = on ? "Close event editor" : "Open event editor";
+            open.id = 0;
+            open.lit = on;
+            v.push_back(open);
+            const char* help[] = {"The map's triggers: conditions", "and the actions they start.",
+                                  "Shift: event, Ctrl: condition,", "Ctrl+Shift: action; with Left /",
+                                  "Right, A add, R remove.", "* persistent, Esc closes."};
+            for (int i = 0; i < 6; ++i) {
+                PanelItem t;
+                t.row = 2 + i;
+                t.text = help[i];
+                v.push_back(t);
+            }
+        }
+        void OnClick(int id, bool) override {
+            if (id != 0) return;
+            if (events::Showing())
+                events::Close();
+            else if (events::Active())
+                events::OpenPanel(nullptr);
+            else
+                events::Open();
+        }
+    };
+    struct AiTab : TabPage {
+        const char* Label() const override { return "AI"; }
+        void OnShow() override {
+            if (!ai::Active()) ai::Open();
+        }
+        void Items(std::vector<PanelItem>& v) override {
+            bool on = ai::Active();
+            PanelItem open;
+            open.row = 0;
+            open.text = on ? "Close Global AI" : "Open Global AI";
+            open.id = 0;
+            open.lit = on;
+            v.push_back(open);
+            const char* help[] = {"Each computer player's squad,", "base, scouting and influence.",
+                                  "A skirmish resets these to the", "clan's defaults; they apply when",
+                                  "the map is played without the", "skirmish setup, or through an",
+                                  "AI AGGRESSION event."};
+            for (int i = 0; i < 7; ++i) {
+                PanelItem t;
+                t.row = 2 + i;
+                t.text = help[i];
+                v.push_back(t);
+            }
+        }
+        void OnClick(int id, bool) override {
+            if (id != 0) return;
+            if (ai::Active())
+                ai::Close();
+            else
+                ai::Open();
+        }
+    };
+    static EventsTab eventsTab;
+    static AiTab aiTab;
+    RegisterTab(kTabEvents, &eventsTab);
+    RegisterTab(kTabAi, &aiTab);
 }
 
 void OpenMap(const MapEntry& map) {
@@ -2301,12 +2376,16 @@ void Tick() {
     if (g.phase == kProcessing) StepProcessing();
     if (g.phase == kSaving && g.saveDone) FinishSave();
     if (g.active && !g_pool.empty()) UpdatePanel();
+    events::Tick();
+    ai::Tick();
 }
 
 bool Active() { return g.active; }
+bool PanelContains(int x, int y) { return g.active && OnPanel(x, y); }
 
 bool OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
     if (!Editing()) return false;
+    if (g.phase != kNaming && events::Active()) return events::OnMessage(msg, wp, lp);  // Stage 3
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) {
         if (wp == VK_CONTROL) g.ctrl = msg == WM_KEYDOWN;
         if (wp == VK_SHIFT) g.shift = msg == WM_KEYDOWN;
