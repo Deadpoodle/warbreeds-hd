@@ -208,6 +208,9 @@ void WriteDefaultIni() {
         "VSync=1\n"
         "; Show the frame rate in the top-left corner (F2 toggles it in game)\n"
         "ShowFPS=0\n"
+        "; Redraw the whole battlefield every frame. The game only redraws what it\n"
+        "; marked as changed, and fast flying units left trails. 0 = the original way.\n"
+        "FullRedraw=1\n"
         "\n"
         "[DDrawCompat]\n"
         "; Only used with Renderer=off.\n"
@@ -588,6 +591,12 @@ void __cdecl OnFrameTick() {
     controls::Tick(InMission() ? BaseScene() : nullptr);
     editor::Tick();
     UpdateMouseCapture();
+    // [Render] FullRedraw=1 (default): the whole battlefield is redrawn every frame
+    // (AGrid::MarkAllCellsDirty 0x42f210 on g_Map). The game only redraws the 64 px
+    // cells something marked, and fast flyers (the Tanu Jubjub) left trails of old
+    // copies where nothing did. A modern PC redraws the lot in well under a frame.
+    static int fullRedraw = IniInt("Render", "FullRedraw", 1);
+    if (fullRedraw && InMission()) ((void(__thiscall*)(uintptr_t, int, int))0x42f210)(0x55dd60, 1, 0);
     // [Debug] NoFog=1: switch the local player's fog of war off (screenshots only).
     static int noFog = IniInt("Debug", "NoFog", 0);
     if (noFog && InMission())

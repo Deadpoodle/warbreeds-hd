@@ -163,7 +163,7 @@ void Key(WPARAM vk) {
 // they stay on screen at every zoom.
 enum Act { SaveShot, ZoomOut, ZoomIn, Esc, Quit, CursorCentre, Glide, ClickHere, KeyTap, RightClickHere, ShiftDrag,
            RecordStart, RecordStop, HoldKey, ReleaseKey, SpawnBuilders, GlideToBuildSpot,
-           ClickPanelButton, GlideToOwnBuilding, SpawnThing, CursorClient, WheelNotches, ClickClient, SetCGK, PickSpecies, SpawnAllCreatures };
+           ClickPanelButton, GlideToOwnBuilding, SpawnThing, CursorClient, WheelNotches, ClickClient, SetCGK, PickSpecies, SpawnAllCreatures, SpawnFlyers };
 struct Step {
     DWORD at;
     Act act;
@@ -416,6 +416,54 @@ const Step kAllCreatures[] = {
     {12200, ZoomIn, nullptr, {}},
     {14500, SaveShot, "z2-back-in", {}},
     {15000, Quit, nullptr, {}},
+};
+
+// Mode 19, flying units in flight at every zoom: two of each air unit (Jubjub,
+// Aphid, Viper) for the local player beside the Shaman, armed; E selects them,
+// then they are ordered back and forth while the zoom steps out a notch at a
+// time from fully in, with shots during each flight.
+const Step kFlyers[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {2000, SpawnFlyers, nullptr, {}},
+    {2400, ZoomIn, nullptr, {}},
+    {2500, ZoomIn, nullptr, {}},
+    {4500, KeyTap, nullptr, {'E', 0}},
+    {5000, Glide, nullptr, {750, 600}},
+    {5900, ClickHere, nullptr, {}},
+    {6500, SaveShot, "f0-a", {}},
+    {7300, SaveShot, "f0-b", {}},
+    {7600, WheelNotches, nullptr, {-1, 0}},
+    {9200, Glide, nullptr, {250, 300}},
+    {10100, ClickHere, nullptr, {}},
+    {10700, SaveShot, "f1-a", {}},
+    {11500, SaveShot, "f1-b", {}},
+    {11800, WheelNotches, nullptr, {-1, 0}},
+    {13400, Glide, nullptr, {750, 600}},
+    {14300, ClickHere, nullptr, {}},
+    {14900, SaveShot, "f2-a", {}},
+    {15700, SaveShot, "f2-b", {}},
+    {16000, WheelNotches, nullptr, {-1, 0}},
+    {17600, Glide, nullptr, {250, 300}},
+    {18500, ClickHere, nullptr, {}},
+    {19100, SaveShot, "f3-a", {}},
+    {19900, SaveShot, "f3-b", {}},
+    {20200, WheelNotches, nullptr, {-1, 0}},
+    {21800, Glide, nullptr, {750, 600}},
+    {22700, ClickHere, nullptr, {}},
+    {23300, SaveShot, "f4-a", {}},
+    {24100, SaveShot, "f4-b", {}},
+    {24400, WheelNotches, nullptr, {-1, 0}},
+    {26000, Glide, nullptr, {250, 300}},
+    {26900, ClickHere, nullptr, {}},
+    {27500, SaveShot, "f5-a", {}},
+    {28300, SaveShot, "f5-b", {}},
+    {28600, WheelNotches, nullptr, {-1, 0}},
+    {30200, Glide, nullptr, {750, 600}},
+    {31100, ClickHere, nullptr, {}},
+    {31700, SaveShot, "f6-a", {}},
+    {32500, SaveShot, "f6-b", {}},
+    {32800, WheelNotches, nullptr, {-1, 0}},
+    {34400, Quit, nullptr, {}},
 };
 
 // --- mode 13: the map editor ---------------------------------------------------
@@ -1202,6 +1250,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                              : g_h.mode == 16 ? kTallPanel
                              : g_h.mode == 17 ? kCorpse
                              : g_h.mode == 18 ? kAllCreatures
+                             : g_h.mode == 19 ? kFlyers
                                               : kMission;
         int steps = g_h.mode == 8    ? (int)(sizeof kControls / sizeof kControls[0])
                     : g_h.mode == 9  ? (int)(sizeof kModern / sizeof kModern[0])
@@ -1210,6 +1259,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                     : g_h.mode == 16 ? (int)(sizeof kTallPanel / sizeof kTallPanel[0])
                     : g_h.mode == 17 ? (int)(sizeof kCorpse / sizeof kCorpse[0])
                     : g_h.mode == 18 ? (int)(sizeof kAllCreatures / sizeof kAllCreatures[0])
+                    : g_h.mode == 19 ? (int)(sizeof kFlyers / sizeof kFlyers[0])
                                      : (int)(sizeof kMission / sizeof kMission[0]);
         if (g_h.mode == 16) {  // test only: the Gene Lab stays powered (no power network was built)
             char* w = *(char**)0x579278;
@@ -1462,6 +1512,23 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 unsigned short id = ((Place_t)0x4472d0)(w, (int)st.to.x, ty, x, y, arm, head, arm, 100);
                 g_h.log("autopilot: creature type %#x (%s) for player %ld at %d,%d: id %#x", ty, "", st.to.x, x, y, id);
                 ++n;
+            }
+            break;
+        }
+        case SpawnFlyers: {  // two of each air unit for the local player, armed, beside its first thing
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** roster = *(char***)(w + 0x10);
+            char* first = nullptr;
+            for (int i = 0; i < *(int*)(w + 0x14) && !first; ++i)
+                if (roster[i] && *(char**)(roster[i] + 0x20) == me) first = roster[i];
+            if (!first) break;
+            typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
+            static const int kAir[] = {4, 0xd, 0x1f, 4, 0xd, 0x1f};
+            for (int n = 0; n < 6; ++n) {
+                unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), kAir[n], *(short*)(first + 0x14) + 120 + (n % 3) * 90,
+                                                        *(short*)(first + 0x16) + (n / 3) * 90, 1, 4, 1, 100);
+                g_h.log("autopilot: flyer type %#x: id %#x", kAir[n], id);
             }
             break;
         }
