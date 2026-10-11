@@ -1,0 +1,1045 @@
+# Struct layouts for WARBREED.EXE. Applied by tools/ghidra/ApplyNames.java (see re/ghidra.md).
+#
+# Struct <TAB> 0xOFFSET <TAB> ctype <TAB> field <TAB> note
+# Struct <TAB> size <TAB> 0xSIZE                      object size (e.g. from operator new before the ctor)
+# Struct <TAB> base <TAB> BaseStruct                  flatten BaseStruct's fields in first
+# Struct <TAB> desc <TAB> <TAB> <TAB> text            struct comment
+# Class_vftable <TAB> 0xSLOT <TAB> ctype <TAB> name   names a vtable slot (field of the generated vtable struct)
+#
+# - An RTTI class's struct is rebuilt on every apply: vftable pointer(s), then its primary base class's
+#   fields (so SGame shows Scene's), then the lines below. Offsets are from the object start; the
+#   vftable pointer at +0 is generated, so lines at +0 of a polymorphic class are ignored.
+# - ctype: char, short, int, long, unsigned ..., byte, word, dword, float, bool, void, a struct or
+#   class name, or a Windows SDK type (RECT, HWND...), with '*' and [N]: "Scene *[4]", "short[4]".
+# - Notes start with H/M/L (see names.tsv). "(also: ...)" records another source's reading.
+# - "World" in src/game.h = AThingRegistry ([0x579278]); 0x55dd60 = AGrid (map/terrain).
+
+AAction_CGK	0x10	unsigned char	player	H [save]
+AAction_CGK	0x14	int	clan	H [save]
+AAction_CGK	0x18	int	level	H [save]
+
+AAction_PlayerEnd	0x10	unsigned char	playerColour	H: key PL [ai]
+AAction_PlayerEnd	0x12	short	victory	H: key VI [ai]
+
+AAction_SetAggression	0x10	float	base	H: wire value via 0x412c50 [ai]
+AAction_SetAggression	0x14	float	squad	H [ai]
+AAction_SetAggression	0x18	float	explore	H [ai]
+AAction_SetAggression	0x1c	unsigned char	playerColour	H [ai]
+
+AAction_VeteranStatus	0x10	int	thingRef	M [save]
+AAction_VeteranStatus	0x18	int	level	H [save]
+
+ABattery	size	0x40		H [units]
+
+ACampaign	size	0x1c		H [save]
+ACampaign	0x0	void *	vtbl	H: 0x50328c, slot 0 = Serialize [save]
+ACampaign	0x4	short	currentChapter	H: "CRCH" [save]
+ACampaign	0x8	void *	chaptersVtbl	H: IList<AChapter*> vtbl 0x503294 [save]
+ACampaign	0xc	AChapter **	chapters	H [save]
+ACampaign	0x10	int	chapterCount	H [save]
+ACampaign	0x14	int	chapterCapacity	M [save]
+ACampaign	0x18	short	campaignId	H: 'CAMP' id 1000..1002, "CMID" [save]
+ACampaign	0x1a	short	loops	M: CAMP flag 0x100; when finished the campaign restarts instead of ending [save]
+
+AChapter	size	0x114		H [save]
+AChapter	0x0	short	currentSet	H: "CRMS" [save]
+AChapter	0x4	void *	setsVtbl	H: IList<AMissionSet*> vtbl 0x50329c [save]
+AChapter	0x8	AMissionSet **	sets	H [save]
+AChapter	0xc	int	setCount	H [save]
+AChapter	0x14	char[256]	movieName	M: 'CHMV' string, played after the chapter (SCut 0x17) [save]
+
+ACollector	size	0x44		H [units]
+
+ACondition_PlayerCGK	0xc	unsigned char	player	H [save]
+ACondition_PlayerCGK	0x10	int	level	H [save]
+ACondition_PlayerCGK	0x14	int	clan	H [save]
+
+ACondition_PlayerDeath	0xc	unsigned char	playerColour	H: key CP [ai]
+
+ACreature	size	0x154		H [units]
+ACreature	0x72	short	specialState	L: J (Leviathan) sets 1 or 2 [hotkeys.md]
+ACreature	0x79	unsigned char	flags79	L: bit 7 blocks Move while owner->vtbl+0x7c() != 1 [fogbuild.md]
+ACreature	0x8d	unsigned char	group	H: control group 0-9, 0xff none (initialised to 0xff in the ACreatureBody ctor 0x402200, saved) [hotkeys.md, controls.cpp]
+ACreature	0xa0	void *	regionVptr	M: AIRegionC (x +0xa4, y +0xa6), AI region map, not movement [path]
+ACreature	0xa8	short	unkA8	L [path]
+ACreature	0xac	void *	path_vptr	H: remaining path list (IList<IPixelC>), filled reversed by Move [fogbuild.md] (also: void * pathVptr [units]) (also: void * waypointsVptr [path])
+ACreature	0xb0	void *	path_data	H: Pt[]; data[0] = final goal while count > 0 [game.h, fogbuild.md] (also: void * pathData [units]) (also: IPixelC * waypoints [path])
+ACreature	0xb4	int	path_count	H: 0 on arrival [game.h, fogbuild.md] (also: int pathCount [units]) (also: unsigned int waypointCount [path])
+ACreature	0xb8	int	pathCapacity	H [units] (also: unsigned int waypointCapacity [path])
+ACreature	0xbc	unsigned char	detourTries	H: init 4 ([0x509300]); 3 after a jitter restart [path]
+ACreature	0xc0	int	activity	H: 0x28 idle, 0x29 move, 0x2a other order (L), 0x2d plant, 0x2e build, 0x2f Cmd+0x60 special, 0x35 hold/guard, 0x38 upgrade, 0x39 repair [game.h, fogbuild.md]
+ACreature	0xc4	short	moveFlag	H: formation/queue flag from Move [fogbuild.md] (also: unsigned int arrivalTolerance [path])
+ACreature	0xc8	void *	pathInOrder	H: path copied in order by Move [fogbuild.md] (also: void * listAVptr [units]) (also: void * orderCopyVptr [path])
+ACreature	0xcc	void *	listAData	M [units] (also: IPixelC * orderCopy [path])
+ACreature	0xd0	int	listACount	M [units] (also: unsigned int orderCopyCount [path])
+ACreature	0xd4	unsigned int	orderCopyCapacity	H [path]
+ACreature	0xd8	short	patrolIndex	M: -1 none; reloads waypoints from +0xc8 skipping this many [path]
+ACreature	0xdc	void *	listBVptr	M: IList<IPixelC> (patrol) [units] (also: void * list2Vptr [path])
+ACreature	0xe0	void *	listBData	M [units]
+ACreature	0xe4	int	listBCount	M [units]
+ACreature	0xec	short	targetId	H: 0xc01 none (IsBusy) [units] (also: short attackTargetId2 [path])
+ACreature	0x104	void *	homePoint	M: hold/guard home point (Ctrl+X) [hotkeys.md] (also: void * guardVptr [units]) (also: IPixelC makeWayPoint [path])
+ACreature	0x108	short	guardX	H: hold/guard point [units]
+ACreature	0x10a	short	guardY	H [units]
+ACreature	0x10c	short	jittering	M: 1 after RestartOrderJitter [path]
+ACreature	0x114	unsigned char	unk114	L: counter set to 0x78 by ResetOrder [path]
+ACreature	0x118	unsigned char[28]	guide	M: movement guide sub-object (0x4a3730) [units] (also: AILocalPathFinding localPath [path])
+ACreature	0x11c	unsigned int	stallLimit	H: = localPath.stallLimit; also "patience" (14/28/48 after failures, regrows) [path]
+ACreature	0x134	IPixelC	routeFirst	H: first point of active guide route (x +0x138, y +0x13a) [path]
+ACreature	0x13c	short	routeActive	H: guide-route waypoints are on the stack [path]
+ACreature	0x13e	short	hold	L: IsWalking returns 0 while 1 [path]
+ACreature	0x140	short	waitTicks	H: Think idles while non-zero [path]
+ACreature	0x142	short	bumpRetries	M: set to 100 by ArriveOrGiveUp [path]
+ACreature	0x144	short	unk144	L [units]
+ACreature	0x146	short	blockerCreatureId	H: creature that blocked IsBlockedAt [path]
+ACreature	0x148	short	enterBuildingId	H: EnterBuilding target [units]
+ACreature	0x14c	IPixelC	nudge	M: x +0x150, y +0x152 (jitter offset / nudge point) [path]
+
+ACreatureBody	0xa	short	left	M: top-left x (centre - footprint/2), written by Step [path]
+ACreatureBody	0xc	short	top	M: top-left y [path]
+ACreatureBody	0x10	IPixelC	pos	H: centre position (AThing field; x +0x14, y +0x16) [path]
+ACreatureBody	0x18	int	type	H: thing type; creatures 0..0x2b; flyers 4/0xd/0x1f (M) [path]
+ACreatureBody	0x1c	short	id	H: thing id (0xc01 = none elsewhere) [path]
+ACreatureBody	0x20	APlayer *	owner	H [path]
+ACreatureBody	0x28	AISquad *	squad	H: removed from it on SetOwner [units] (also: void * squad [path])
+ACreatureBody	0x2c	short	blocked	H: last TestMoveTo result [path]
+ACreatureBody	0x2e	short	targetIdA	M: 0xc01 none [units] (also: short blockerId [path])
+ACreatureBody	0x30	short	attackTarget	M: 0xc01 none [units] (also: short attackTargetId [path])
+ACreatureBody	0x32	short	targetIdC	M: 0xc01 none [units] (also: short targetId [path])
+ACreatureBody	0x34	void *	goalVptr	H: IPixelC [units] (also: IPixelC leashAnchor [path])
+ACreatureBody	0x38	short	goalX	M: move/attack point [units]
+ACreatureBody	0x3a	short	goalY	M [units]
+ACreatureBody	0x3c	unsigned int	leashRadiusSq	M: 0 = no leash; exceeded -> vtbl+0x9c [path]
+ACreatureBody	0x40	unsigned char	spawnTimer	L: 0x50 at spawn; IsActive = (==0) [units]
+ACreatureBody	0x44	int	stance	H: 0 autonomous, 1 aggressive, 2 normal, 3 timid, 4 immobile [units] (also: int behaviour [path])
+ACreatureBody	0x48	unsigned char	facing	M: direction 0..7 [units]
+ACreatureBody	0x4a	short	moveTargetId	M [units] (also: short followId [path])
+ACreatureBody	0x4c	short	followDist	H [path]
+ACreatureBody	0x4e	short	followReached	M [path]
+ACreatureBody	0x52	short	idleTimer	L: rand % g_IdleTime[type] [units]
+ACreatureBody	0x54	int[4]	gizmo	H: slots 0/2 arm weapons, 1 head, 3 extra; 100 = none [units]
+ACreatureBody	0x64	unsigned char[4]	gizmoAnimA	M [units]
+ACreatureBody	0x68	unsigned char[4]	gizmoAnimB	M: random phases [units]
+ACreatureBody	0x6c	short	armed	M: set by SetGizmo for weapon gizmos [units]
+ACreatureBody	0x6e	short	hasQuillGun	M [units]
+ACreatureBody	0x70	short	hasMissile	M [units]
+ACreatureBody	0x76	unsigned char	slowTicks	M: while non-zero, moves every other tick [path]
+ACreatureBody	0x79	unsigned char	alertState	L [units] (also: signed char busyTimer [path])
+ACreatureBody	0x7c	int	veteranLevel	H: MaxHP = base + base/2 * level [units]
+ACreatureBody	0x80	short	damageTaken	H: max HP - HP [units]
+ACreatureBody	0x84	void *	shadowEffect	H: AEffect* for flyers [units]
+ACreatureBody	0x88	int	animState	M: 0 idle, 1 walk, 2 attack, 3 other [path]
+ACreatureBody	0x8d	unsigned char	group	H: control group, 0xff none [units]
+ACreatureBody	0x8e	short	weaponTimer	L: init g_CreatureEnergy, raised by g_GizmoCooldown [units]
+ACreatureBody	0x90	void *	stepsVptr	H: IStack<tPathStep> [units]
+ACreatureBody	0x94	void *	stepsData	H [units] (also: ACreatureBody::tPathStep * steps [path])
+ACreatureBody	0x98	int	stepsCount	H [units] (also: unsigned int stepCount [path])
+ACreatureBody	0x9c	int	stepsCapacity	H [units] (also: unsigned int stepCapacity [path])
+
+ACreatureBody::tPathStep	size	0x10		H [path]
+ACreatureBody::tPathStep	0x0	void *	vptr	H: vtable 0x5031b4 [path]
+ACreatureBody::tPathStep	0x4	IPixelC	pos	H: x +0x8, y +0xa [path]
+ACreatureBody::tPathStep	0xc	unsigned char	dir	H: facing 0..7 [path]
+
+ACreature_vftable	0xb0	void *	Special	L: Leviathan special [hotkeys.md]
+ACreature_vftable	0xb4	void *	Move	H: (&path, flag) [fogbuild.md]
+ACreature_vftable	0xb8	void *	Stop	M [hotkeys.md]
+ACreature_vftable	0xbc	void *	Hold	M [hotkeys.md, fogbuild.md]
+ACreature_vftable	0xc8	void *	CancelWork	H [fogbuild.md]
+
+ADeath	size	0x2c		H [units]
+ADeath	0x28	int	unk28	L [units]
+
+ADevice	size	0x40		H: operator new(0x40) for plain devices [units]
+ADevice	0x28	short	unpowered	H: 1 = no power provider or not enough power [mouse.md, controls.cpp]
+ADevice	0x2a	short	switchedOn	H: 1 on, set on placement, toggled by a double click [mouse.md, controls.cpp] (also: short on [units])
+ADevice	0x2c	short	complete	H: 0 = under construction or upgrading [mouse.md]
+ADevice	0x2e	short	paused	L: if > 0 BuildStep does nothing [mouse.md] (also: short dyingFrame [units])
+ADevice	0x30	unsigned char	animFrame	M: 0..0x14 cycle when complete [units]
+ADevice	0x32	short	progress	H: construction progress in work ticks [mouse.md, controls.cpp] (also: short buildProgress [units])
+ADevice	0x34	short	powerProvider	H: power provider id [mouse.md, fogbuild.md]
+ADevice	0x36	short	lastPowerProvider	M [units]
+ADevice	0x38	unsigned char	timer	L: counts down each tick [units]
+ADevice	0x3a	short	upgrading	M: upgrade in progress [mouse.md]
+ADevice	0x3c	unsigned char	buildAnim	L: counts up to 0xff while unfinished [units]
+ADevice	0x3d	unsigned char	unk3d	L: init 0xff [units]
+PowerProvider	0x40	short	power40	M: provider capacity term: prov+0x42 - prov+0x44 + prov+0x40 >= need [fogbuild.md]
+PowerProvider	0x42	short	power42	M: provider capacity term [fogbuild.md]
+PowerProvider	0x44	short	power44	M: provider capacity term (subtracted) [fogbuild.md]
+PowerProvider	desc			L: a power-providing device (which RTTI classes is unconfirmed; the plain-device size is 0x40); fields read as prov+0x40/+0x42/+0x44 by the power check [fogbuild.md]
+PowerProvider	base	ADevice
+
+ADevice_vftable	0x88	void *	SetSwitchedOn	M [mouse.md]
+ADevice_vftable	0xa0	void *	OnComplete	M: called by BuildStep on completion [mouse.md]
+
+AEffect	0x28	short	placeCode	H: placement ghost: CanPlace result drawn as colour (0 valid, 1 blocked, 2 needs power/pod) [fogbuild.md]
+
+AElectricTower	size	0x44		H [units]
+
+AEvent	size	0x28		H: operator new(0x28) in 0x41d940 [map]
+AEvent	0x0	void *	conditionsVptr	H: IList<ACondition*> vptr 0x503e54 [map]
+AEvent	0x4	ACondition **	conditions	H [map]
+AEvent	0x8	unsigned int	conditionCount	H [map]
+AEvent	0x10	void *	actionsVptr	H: IList<AAction*> vptr 0x503e4c [map]
+AEvent	0x14	AAction **	actions	H [map]
+AEvent	0x18	unsigned int	actionCount	H [map]
+AEvent	0x20	short	aj	L: saved as AJ (flag, meaning unknown) [map]
+AEvent	0x22	short	field22	L [map]
+
+AEventRegistry	size	0x24		H: operator new(0x24) in 0x471c40; [0x579284] [map]
+AEventRegistry	0x0	void *	vptr	H: vtable 0x503e5c: [0] dtor 0x41d7d0 [1] Serialize 0x41d940 [map]
+AEventRegistry	0x4	void *	eventsVptr	H: IList<AEvent*> vptr 0x503e6c [map]
+AEventRegistry	0x8	AEvent **	events	H [map]
+AEventRegistry	0xc	unsigned int	eventCount	H [map]
+AEventRegistry	0x14	short[8]	triggers	H: trigger flags (SetTrigger 0x41d900) [map]
+
+AGameClock	size	0x10		H: operator new(0x10) in 0x42d950 [map]
+AGameClock	0x0	void *	vptr	H: AGameClock vtable 0x504374 [map]
+AGameClock	0x4	int	total	H [map]
+AGameClock	0x8	int	remaining	H: decremented per turn; saved as GGCC [map]
+AGameClock	0xc	short	firesTrigger	H: saved as GGCST [map]
+AGameClock	0xe	unsigned char	triggerId	H: AEventRegistry trigger to set at 0; saved as GGCTI [map]
+
+AGeneLab	size	0x228		H [units]
+AGeneLab	0x40	AGeneLabInterface	ui	H: embedded panel object (0x1a8 bytes) [units]
+AGeneLab	0x1e8	int	designType	H: creature type being bred [units]
+AGeneLab	0x1ec	int[4]	designGizmo	H: gizmo per slot, 100 = none [units]
+AGeneLab	0x1fc	short	spawning	M: set to 1 during SpawnCreature, 0 on failure [units]
+AGeneLab	0x1fe	short	progress	H: breeding progress, compared with GetBreedTime [units]
+AGeneLab	0x200	short	count	H: creatures to breed (-1 = endless, M) [units]
+AGeneLab	0x202	short	produced	H [units]
+AGeneLab	0x204	short	animPhase	M [units]
+AGeneLab	0x206	short	animFrame	M [units]
+AGeneLab	0x208	void *	rallyVptr	H: IList<IPixelC> vptr 0x5033d4 [units]
+AGeneLab	0x20c	void *	rallyData	H: IPixelC[] (8 bytes each, x at +4, y at +6) [units]
+AGeneLab	0x210	int	rallyCount	H [units]
+AGeneLab	0x214	int	rallyCapacity	H [units]
+AGeneLab	0x218	void *	loopVptr	H: IPixelC vptr [units]
+AGeneLab	0x21c	short	loopX	H: patrol loop point, 0xfd66 / <0 = none [units]
+AGeneLab	0x21e	short	loopY	H [units]
+AGeneLab	0x224	short	unk224	L [units]
+
+AGeneLabInterface	size	0x1a8		H: AGeneLab+0x40..+0x1e8 [units]
+AGeneLabInterface	0x0	void *	vptr	H: 0x5042fc [units]
+AGeneLabInterface	0x8	APlayer *	owner	H [units]
+AGeneLabInterface	0xc	void *	infoPanel	H: WInfoBox 0x5476e8 [units]
+AGeneLabInterface	0x10	short	labId	H [units]
+AGeneLabInterface	0x14	ACreature	preview	H: preview creature; its type is at +0x2c, its gizmos at +0x68..+0x74 [units]
+AGeneLabInterface	0x168	int	slotPage	M: 0 arm weapons, 1 head gizmo [units]
+AGeneLabInterface	0x16c	short[21]	gizmoAvailable	H: RefreshGizmoList [units]
+AGeneLabInterface	0x19a	unsigned char	countIndex	H: index into the count table 0x504220 [units]
+AGeneLabInterface	0x1a4	int	state	M [units]
+
+AGrid	size	0x93b8		M: static global g_Grid at 0x55dd60; last ctor-initialised field +0x93b4, next global at 0x567118 [map]
+AGrid	0x0	void *	vptr	H: AGrid vtable 0x504334 (ISurface base): [0] dtor 0x42d720 [1] MakeCurrent 0x46ae60 [2] Release 0x46ae70 [3] InvalidateRect 0x42f2b0 [4] InvalidateText 0x42f410 [5] 0x413180 [6] Serialize 0x42e080 [map]
+AGrid	0x4	AITerrainAnalysis *	terrainAnalysis	H: [0x55dd64]; recreated by LoadTerrainSet and Serialize(read) [map] (also: AITerrainAnalysis * analysis [path])
+AGrid	0x8	unsigned short[9216]	cells	H: tile id per 64 px cell, index cy*96+cx (0x55dd68); saved column-major [map] (also: unsigned short[] metatileIndex [path])
+AGrid	0x4808	TileAnimator	tileAnimator	H: 0x40 bytes, ctor 0x454d90 (0x562568) [map]
+AGrid	0x4848	unsigned char[18432]	dirty	H: two buffers u8[96*96] (0x5625a8 and 0x5649a8); a cell is drawn if either is set [map]
+AGrid	0x9048	unsigned char	dirtyBuffer	H: index of the current dirty buffer (0x566da8) [map]
+AGrid	0x904a	unsigned short	quakeForce	H: accumulated by AddQuakeForce; >2000 starts a quake; saved as GQF [map]
+AGrid	0x904c	void *	originVptr	H: IPixelC vptr 0x5031c4 (origin point) [map]
+AGrid	0x9050	short	originX	H: camera x used by InvalidateRect (ctor -666) [map]
+AGrid	0x9052	short	originY	H: camera y used by InvalidateRect (ctor -666) [map]
+AGrid	0x9054	unsigned char	tilesW	H: map width in 32 px tiles (= 0x566db4) [fogbuild.md]
+AGrid	0x9055	unsigned char	tilesH	H: map height in tiles (= 0x566db5) [fogbuild.md]
+AGrid	0x9056	unsigned char	gss	L: saved as GSS, no other reader found [map]
+AGrid	0x9058	unsigned int	stepCounter	H: incremented each AGrid::Tick; saved as GSC [map]
+AGrid	0x905c	unsigned short[418]	tileClass	H: terrain family class per tile id (TERRAIN.MHK TRID); class 5 = animated water [map]
+AGrid	0x93a0	void *	tileTypesVptr	H: IList<unsigned long> vptr 0x504354 [map]
+AGrid	0x93a4	unsigned int *	tileTypes	H: packed quadrant terrain types per tile id (terrain.hoo); byte0 TL, byte1 TR, byte2 BL, byte3 BR; 0 open, 1 blocked, 2 crop [map] (also: unsigned int * metatileMasks [path])
+AGrid	0x93a8	unsigned int	tileTypesCount	H: 418 in the shipped terrain.hoo [map] (also: unsigned int metatileMaskCount [path])
+AGrid	0x93ac	unsigned int	tileTypesCap	H: list capacity [map]
+AGrid	0x93b0	unsigned char	quakeShake	H: shake countdown 0x567110; non-zero forces full redraw; saved as GQS [map]
+AGrid	0x93b4	AGameClock *	gameClock	H: mission countdown (vtable 0x504374, 0x10 bytes) [map]
+
+AHowitzer	size	0x50		H [units]
+
+AIComputerPlayer	size	0x4e60		H: operator new in CreatePlayer [save]
+AIComputerPlayer	0x0	void *	vtbl	H: 0x509734 [ai]
+AIComputerPlayer	0x4a50	AIRetina	retina	H: embedded, ctor 0x4a9140(owner) [ai]
+AIComputerPlayer	0x4ae4	short	retinaRegionsPerRow	M: retina+0x94 [ai]
+AIComputerPlayer	0x4ae8	void *	retinaRegions	M: retina+0x98, 0x88-byte region records [ai]
+AIComputerPlayer	0x4cb0	unsigned int	cooldown	M: decremented each Think [ai]
+AIComputerPlayer	0x4cc8	short	squadChanging	H: SetSquadChanging; Think calls 0x4b8a00 when set [ai]
+AIComputerPlayer	0x4cca	short	retinaPhase	H: toggles between 0x4aa500 and 0x4aa8d0 [ai]
+AIComputerPlayer	0x4ccc	void *	baseManager	M: embedded non-RTTI object, ctor 0x4addf0, tick 0x4ae470 [ai]
+AIComputerPlayer	0x4d48	int	lastStrategyTime	H [ai]
+AIComputerPlayer	0x4d4c	int	lastSquadUpdateTime	H [ai]
+AIComputerPlayer	0x4d50	int	lastRetinaTime	H [ai]
+AIComputerPlayer	0x4d60	int	strategyInterval	H: 24 * f(AI count) [ai]
+AIComputerPlayer	0x4d64	int	retinaInterval	H: 12 * f(AI count) [ai]
+AIComputerPlayer	0x4d7c	int	creaturesProduced	H: ++ in OnCreatureBorn [ai]
+AIComputerPlayer	0x4d80	float	aggressionUnk	L: init 0.5 [ai]
+AIComputerPlayer	0x4d84	float	squadAggression	H: SetAggression arg 2 [ai]
+AIComputerPlayer	0x4d88	float	baseAggression	H: SetAggression arg 1 [ai]
+AIComputerPlayer	0x4d8c	float	exploreAggression	H: SetAggression arg 3 [ai]
+AIComputerPlayer	0x4d90	float	maxAggression	M: 0x4b9ff0 [ai]
+AIComputerPlayer	0x4d94	void *	squadsVtbl	H: IList<AISquad*> (vtable 0x5097bc) [ai]
+AIComputerPlayer	0x4d98	void **	squads	M: squad list cleared at the start of BRN read [save] (also: AISquad ** squads [ai])
+AIComputerPlayer	0x4d9c	int	squadCount	M [save] (also: unsigned int squadCount [ai])
+AIComputerPlayer	0x4e3c	void *	list1Vtbl	M: IList<short> [ai]
+AIComputerPlayer	0x4e4c	void *	list2Vtbl	M: IList<short> [ai]
+
+AILocalPathFinding	size	0x1c		H [path]
+AILocalPathFinding	0x0	void *	vptr	H: vtable 0x509404 [path]
+AILocalPathFinding	0x4	unsigned int	stallLimit	H: 0xac (types 0/9/0x12/0x1b), 0x90, 0x40 in a squad; scaled by Path_ScaleBudget [path]
+AILocalPathFinding	0x8	ACreature *	owner	H [path]
+AILocalPathFinding	0xc	IPixelC	goal	H: x +0x10, y +0x12 [path]
+AILocalPathFinding	0x14	IPixelC	goalCell	H: goal / stepSize (x +0x18, y +0x1a) [path]
+
+AIMovementGuide	size	0x30		H [path]
+AIMovementGuide	0x0	void *	vptr	H: vtable 0x50942c (slot 0 Serialize) [path]
+AIMovementGuide	0x4	short	display	H: debug "guide" display flag [path]
+AIMovementGuide	0x8	void *	tileMapVptr	H: IMap<tGuide, ILogicalC> vtable 0x509434 [path]
+AIMovementGuide	0xc	void *	defaultGuideVptr	H: default tGuide (index +0x10 = -1, owner +0x14) [path]
+AIMovementGuide	0x18	void *	dimsVptr	H: ILogicalC dims [path]
+AIMovementGuide	0x1c	short	tilesW	H [path]
+AIMovementGuide	0x1e	short	tilesH	H [path]
+AIMovementGuide	0x20	void *	tiles	H: tGuide[h][w], 0xc each: vptr, short guideIndex +4 (-1 none), owner +8 [path]
+AIMovementGuide	0x24	unsigned short	linkI	H: ProcessLinks cursor (done when >= guide count) [path]
+AIMovementGuide	0x26	unsigned short	linkJ	H [path]
+AIMovementGuide	0x28	AITerrainAnalysis *	owner	H [path]
+AIMovementGuide	0x2c	unsigned int	maxLinkDistSq	H: 810000 (900 px) [path]
+
+AISquad	size	0xb8		H: operator new(0xb8) at 0x4b8cb1 / 0x4b77e8 [ai]
+AISquad	0x0	void *	vtbl	H: 0x5097d4 (IList<ACreature*>) [ai]
+AISquad	0x4	void **	creatures	H: IList data [ai]
+AISquad	0x8	unsigned int	count	H [ai]
+AISquad	0xc	unsigned int	cap	H [ai]
+AISquad	0x10	int	index	H: position in owner squad list [ai]
+AISquad	0x18	short	goalRegionX	H: set by AssignSquadGoals [ai]
+AISquad	0x1a	short	goalRegionY	H [ai]
+AISquad	0x2c	int	state	M: 2 = moving to goal [ai]
+AISquad	0x30	double	goalScore	H [ai]
+AISquad	0x38	double	threat	M: init -1; idle squads need < threshold [ai]
+AISquad	0x40	short	busy	M [ai]
+AISquad	0x42	short	merged	M [ai]
+AISquad	0x4c	short	engaged	M [ai]
+AISquad	0x50	int	lastTargetCheck	M [ai]
+AISquad	0x54	int	lastActivityTime	H [ai]
+AISquad	0x64	unsigned int	hpThreshold	M [ai]
+AISquad	0x74	int	role	H: 0 attack, 1 base, 2 explore, 3 skipped, 7 default [ai]
+AISquad	0x78	short	targetId	H: 0xc01 = none [ai]
+AISquad	0x7c	int[4]	strength	M: summed by AssignSquadGoals [ai]
+AISquad	0x8c	void *	rallyPt	M: Pt (vtable 0x5031c4) [ai]
+AISquad	0xa0	AIComputerPlayer *	owner	H [ai]
+
+AITerrainAnalysis	size	0x58		H: operator new(0x58) in 0x42d790 and 0x42e080 [map]
+AITerrainAnalysis	0x0	void *	vptr	H: vtable 0x50435c, slot 0 Serialize 0x4a7da0 [map]
+AITerrainAnalysis	0x4	void *	obstacleMapVptr	H: tObstacleMap vtable 0x50949c [map] (also: AITerrainAnalysis::tObstacleMap obstacles [path])
+AITerrainAnalysis	0x8	short	obstacleDefault	H: default value 0 [map]
+AITerrainAnalysis	0xc	void *	obstacleSizeVptr	H: ILogicalC vptr 0x5030ec [map]
+AITerrainAnalysis	0x10	short	obstacleW	H: map tiles W [map]
+AITerrainAnalysis	0x12	short	obstacleH	H: map tiles H [map]
+AITerrainAnalysis	0x14	short *	obstacles	H: u16 per 32 px tile, 1 = obstacle (terrain 1/2 or rock/tree footprint) [map]
+AITerrainAnalysis	0x18	AITerrainAnalysis *	obstacleOwner	H [map]
+AITerrainAnalysis	0x1c	void *	guideVptr	H: AIMovementGuide (0x30 bytes) vtable 0x50942c [map] (also: AIMovementGuide guide [path])
+AITerrainAnalysis	0x24	void *	guideMapVptr	H: IMap<tGuide> vtable 0x509434 [map]
+AITerrainAnalysis	0x3c	void *	guideMap	H: 12 bytes per tile [map]
+AITerrainAnalysis	0x40	unsigned short	guideConnectI	H: ConnectStep progress; finished when >= [0x592350] [map]
+AITerrainAnalysis	0x42	unsigned short	guideConnectJ	H [map]
+AITerrainAnalysis	0x48	unsigned int	guideMaxDist2	H: 810000 (900 px) [map]
+AITerrainAnalysis	0x4c	AGrid *	grid	H: 0x55dd60 [map] (also: void * terrain [path])
+AITerrainAnalysis	0x50	AThingRegistry *	things	H: [0x579278] at creation time [map] (also: void * world [path])
+AITerrainAnalysis	0x54	short	showObstacles	H: console "ai terrain obstacles on/off" [map] (also: short displayObstacles [path])
+
+AITerrainAnalysis::tObstacleMap	size	0x18		H [path]
+AITerrainAnalysis::tObstacleMap	0x0	void *	vptr	H: vtable 0x50949c [path]
+AITerrainAnalysis::tObstacleMap	0x4	short	defaultValue	H [path]
+AITerrainAnalysis::tObstacleMap	0x8	void *	dimsVptr	H: ILogicalC [path]
+AITerrainAnalysis::tObstacleMap	0xc	short	tilesW	H [path]
+AITerrainAnalysis::tObstacleMap	0xe	short	tilesH	H [path]
+AITerrainAnalysis::tObstacleMap	0x10	short *	cells	H: 1 = blocked (32 px tiles) [path]
+AITerrainAnalysis::tObstacleMap	0x14	AITerrainAnalysis *	owner	H [path]
+
+AMine	size	0x40		H [units]
+
+AMission	size	0x51		H [save]
+AMission	0x0	char[81]	fileName	H: mission map file (CAMPAIGN\SP*.WBM) [save]
+
+AMissionSet	size	0x24		H [save]
+AMissionSet	0x0	short	currentMission	H [save]
+AMissionSet	0x4	void *	missionsVtbl	H: IList<AMission*> vtbl 0x504534 [save]
+AMissionSet	0x8	AMission **	missions	H [save]
+AMissionSet	0xc	int	missionCount	H [save]
+AMissionSet	0x14	void *	idsVtbl	M: list of mission ids (vtbl 0x5030dc) [save]
+AMissionSet	0x18	unsigned short *	ids	M [save]
+
+AMushroom	size	0x34		H [units]
+AMushroom	0x28	int	growthStage	H: 1..4 (tGrowthStage) [units]
+AMushroom	0x2c	unsigned char	stageTicks	H: up to g_PodStageTicks[type-0x3f] [units]
+AMushroom	0x2d	unsigned char	unk2d	L: init 0x60 [units]
+AMushroom	0x2e	short	harvesterId	M: refinery id, 0xc01 none [units]
+AMushroom	0x30	signed char	jitterX	M: random -5..4 [units]
+AMushroom	0x31	signed char	jitterY	M [units]
+AMushroom	0x32	unsigned char	variant	M: 0..2 [units]
+
+AObstacle	size	0x2c		H [units]
+AObstacle	0x28	unsigned char	unk28	L [units]
+AObstacle	0x2a	short	rotation	M: random 0..359 [units]
+
+APaintObject	size	0x18		M: ATerrainTile fields start at +0x18 [map]
+APaintObject	0x0	void *	vptr	H: vtable 0x5045bc [map]
+APaintObject	0x4	short[4]	rect	H: left, top, right, bottom (ctor -1); HitTest 0x435a40 [map]
+APaintObject	0xc	short	field0c	L: ctor 0 [map]
+APaintObject	0xe	short	id	M: resource id (ATerrainTile::Load stores it) [map]
+APaintObject	0x10	short	enabled	L: ctor 1 [map]
+APaintObject	0x12	short	visible	L: ctor 1 [map]
+APaintObject	0x14	short	showTypes	M: ATerrainTile: draw/edit quadrant types when 1 [map]
+
+APlayer	size	0x4a4c		H: operator new in CreatePlayer [save]
+APlayer	0x0	void *	vptr	H: vtbl_APlayer 0x504664 [rtti] (also: void * vtbl [ai])
+APlayer	0x4	short	index	H: player index (CanPlace(owner+4, ...), PlaceCreature) [fogbuild.md, autopilot.cpp, controls.cpp] (also: short id [ai])
+APlayer	0x8	void *	machinesVtbl	M: IList of controlling machine ids (vtable 0x504354) [ai]
+APlayer	0xc	int *	machines	M: IList data [ai]
+APlayer	0x10	unsigned int	machineCount	M: IList count [ai]
+APlayer	0x14	unsigned int	machineCap	M: IList capacity [ai]
+APlayer	0x18	unsigned char	allyMask	M: hostile = (player+0x18 & g_AllianceTable[owner->id]) == 0 [mouse.md] (also: unsigned char alliesMask [save]) (also: unsigned char allyMask [ai]) (also: int allianceMask)
+APlayer	0x19	unsigned char	allyMask2	L: "PMSB" (shared vision?) [save] (also: unsigned char chatMask [ai])
+APlayer	0x1a	unsigned char	fieldJ	L: "J" [save] (also: unsigned char seenEnemyMask [ai])
+APlayer	0x1c	short[4]	geneBlocked	M: per clan, nonzero = genes cannot be collected [units] (also: short[5] clanGenes [ai])
+APlayer	0x26	unsigned char[9216]	visCount	H: per 64 px cell, how many sight sources see it (96*96); SetSeen inc/dec [fogbuild.md] (also: unsigned char[] fogMapA [path])
+APlayer	0x2426	unsigned char[9216]	shroud	H: 1 = unexplored (memset to 1, cleared on first sight) (96*96) [fogbuild.md] (also: unsigned char[] fogMapB [path]) (also: unsigned char[9216] unexplored [ai])
+APlayer	0x47ce	short[63]	thingCountByType	M: owned count per thing type; devices 0x2c..0x3e at +0x4826..+0x484a [ai]
+APlayer	0x4844	int	genes	M: Get Genes button shown only if > 0 [hotkeys.md, mouse.md] (also: short canGetGenes [units])
+APlayer	0x484c	short	fogEnabled	H: fog of war enabled (ctor 1); 0 = everything visible [fogbuild.md, main.cpp]
+APlayer	0x484e	unsigned char	colour	H: player colour; missions address players by it [ai]
+APlayer	0x4850	int[4]	geneLevel	H: clan technology level [units] (also: int[4] cgk [save]) (also: int[5] cgkLevel [ai])
+APlayer	0x4864	short[4]	geneLevelUp	H: set on level-up [units] (also: short[4] cgkChanged [save])
+APlayer	0x486e	short[4]	genes	H: genes toward the next level [units] (also: short[4] cgkProgress [save])
+APlayer	0x4878	int	clan	M: native clan (read before "F") [save]
+APlayer	0x487c	unsigned short	popMax	H: population cap [units] (also: unsigned short supply [ai])
+APlayer	0x487e	unsigned short	popUsed	H [units] (also: unsigned short demand [ai])
+APlayer	0x4880	short	noSupplyTicks	M: counts up to 0x28 while supply == 0 [ai]
+APlayer	0x48e8	int[3]	categoryCounts	M: creatures, devices, pods [ai]
+APlayer	0x48f4	short	isNetPlayer	L: set 1 by MP setup 0x43ca20 [ai]
+APlayer	0x48f6	short	needsAIInit	M: tested after reading ER (0x43ba20) [save] (also: short alive [ai])
+APlayer	0x48f8	char[256]	controllerNames	H: char[8][32] [ai]
+APlayer	0x49f8	void *	tempSightVtbl	M: IList of lingering sight entries (vtable 0x5046fc), data +0x49fc count +0x4a00 [ai]
+APlayer	0x4a08	void *	messagesVtbl	H: IList<tPlayerGameMessage*> (vtable 0x5046f4), data +0x4a0c count +0x4a10 [ai]
+APlayer	0x4a18	void *	startPosVtbl	H: Pt (vtable 0x5031c4) [ai]
+APlayer	0x4a1c	short	viewX	M: start/view point, ":"; camera centred here after a load [save] (also: short startX [ai])
+APlayer	0x4a1e	short	viewY	M [save] (also: short startY [ai])
+APlayer	0x4a20	void *	machineStartsVtbl	M: IList<Pt> per-machine start points, data +0x4a24 count +0x4a28 [ai]
+APlayer	0x4a30	unsigned char	team	H: 0 none; MP slot +0x1e; ApplyTeams 0x43c8f0 [ai]
+APlayer	0x4a31	unsigned char	unk4a31	L: saved key dc [ai]
+APlayer	0x4a34	void *	devicesVtbl	M: IList of own devices (vtable 0x5046ec), data +0x4a38 count +0x4a3c [ai]
+APlayer	0x4a48	int	lastTickTime	M: time of last Tick / of deactivation [ai]
+
+APlayerRegistry	size	0x30		H: operator new(0x30) in 0x471c40; [0x57927c] [map]
+APlayerRegistry	0x0	void *	vptr	H: vtable 0x504754: [0] Serialize part 1 0x43ae20 [1] Serialize part 2 0x43b460 [map] (also: void * vtbl [ai])
+APlayerRegistry	0x4	APlayer *[8]	players	H [map]
+APlayerRegistry	0x24	unsigned char	aliveCount	H [ai]
+APlayerRegistry	0x26	short	gameOver	H: set by DeclareWinner [ai]
+APlayerRegistry	0x28	short	field28	L: ctor 9 [map] (also: short winnerId [ai])
+APlayerRegistry	0x2a	short	prho	M: "PRHO" [save] (also: short revealFlag [ai])
+APlayerRegistry	0x2c	short	prfo	M: "PRFO" [save] (also: short fogOn [ai])
+
+APlayer_vftable	0x54	void *	CanAfford	M: owner->vtbl+0x54(type) affordability at work time [fogbuild.md]
+APlayer_vftable	0x7c	void *	unknown7c	L: used in the energy check and the move lock [mouse.md, fogbuild.md]
+
+ARadar	size	0x44		H [units]
+ARadar	0x4	short	scale	M: minimap zoom scale (min 8, max 16) per hotkeys.md "radar+4" [hotkeys.md]
+
+ARefinery	size	0x98		H [units]
+
+ARelay	size	0x84		H [units]
+
+ARevitalizer	size	0x44		H [units]
+
+AShaman	size	0x1b8		H [units]
+AShaman	0x168	void *	walkVptr	H: IPixelC [units]
+AShaman	0x16c	short	walkX	H: Build's site x (retry target) [game.h]
+AShaman	0x16e	short	walkY	H: Build's site y [game.h]
+AShaman	0x170	unsigned char	failCount	H: failure/stall counter: raised per failed build (gives up after 4) and per unpowered tick (gives up after 16) [game.h, mouse.md]
+AShaman	0x17e	short	workDone	M [units]
+AShaman	0x180	short	workTimer	M: counts down from WorkDuration [units]
+AShaman	0x184	int	workType	H: type being built or planted (work order) [fogbuild.md]
+AShaman	0x188	int	uiType	H: type chosen in the UI (0x2c+i device, 0x3f+i pod) [hotkeys.md, fogbuild.md, controls.cpp] (also: int selectedType [units])
+AShaman	0x18c	int	listToggle	M: set by the build list toggles; cleared by ResetMode [hotkeys.md, fogbuild.md] (also: unsigned char buildToggle [units])
+AShaman	0x18e	short	workTarget	H: building being built/repaired (0xc01 none) [game.h, mouse.md, fogbuild.md]
+AShaman	0x190	void *	ghost	M: placement ghost effect (passed as &sh+0x190 to AddPlacementGhost) [fogbuild.md] (also: void * clickVptr [units])
+AShaman	0x194	short	ghostX	H: ghost / placement world x (also the click position on the build list) [hotkeys.md, fogbuild.md] (also: short clickX [units])
+AShaman	0x196	short	ghostY	H: ghost / placement world y [hotkeys.md, fogbuild.md] (also: short clickY [units])
+AShaman	0x19c	void *	plantPath	H: plant path copied by Plant [fogbuild.md] (also: void * pointsVptr [units])
+AShaman	0x1a0	void *	pointsData	H [units]
+AShaman	0x1a4	int	pointsCount	H [units]
+AShaman	0x1ac	int	mode	H: panel state: 0 none, 1 Get Genes, 2 build list, 3 placing, 4 pod list, 5 planting, 6 repair, 7 upgrade [game.h, hotkeys.md, mouse.md, controls.cpp]
+AShaman	0x1b0	int	ghostActive	M: cleared by RemoveGhost [fogbuild.md]
+AShaman	0x1b4	short	buildRetry	H: 1 after a failed creation: step aside and repeat the Build [game.h]
+
+AShaman_vftable	0x8c	void *	StepAsideRetry	M: 0x443f10 [game.h, rtti]
+
+AStarNode	size	0x20		H [path]
+AStarNode	0x0	tPointState	state	H: nAIAStar::tNode<tPointState> [path]
+AStarNode	0xc	int	closed	H [path]
+AStarNode	0x10	unsigned int	f	H [path]
+AStarNode	0x14	unsigned int	g	H [path]
+AStarNode	0x18	unsigned int	h	H: squared distance [path]
+AStarNode	0x1c	int	parent	H: node index, -1 = root [path]
+
+ATerrainTile	size	0x40		H: operator new(0x40) in 0x42db60 [map]
+ATerrainTile	0x0	void *	vptr	H: vtable 0x504cdc (APaintObject base) [map]
+ATerrainTile	0x18	unsigned short	variantCount	H: TRVA count [map]
+ATerrainTile	0x1a	short	chosenVariant	H: PickVariant 0x455a30 [map]
+ATerrainTile	0x1c	short	familyIndex	H: resId - 1000 [map]
+ATerrainTile	0x20	void *	tileIdsVptr	H: IList<unsigned short> [map]
+ATerrainTile	0x24	unsigned short *	tileIds	H: tile ids of the family [map]
+ATerrainTile	0x28	unsigned int	tileIdCount	H [map]
+ATerrainTile	0x30	void *	weightsVptr	H: IList<unsigned short> [map]
+ATerrainTile	0x34	unsigned short *	weights	H: random weights per variant [map]
+ATerrainTile	0x38	unsigned int	weightCount	H [map]
+
+AThing	size	0x28		H: base layout; AObstacle/ADeath (0x2c) add 4 bytes [units]
+AThing	0x0	void *	vptr	H: vtbl_AThing 0x504bb4 [rtti]
+AThing	0x4	unsigned char	revealTimer	M: set to 0x20 on an attacker by TakeDamage, decremented by Tick [units]
+AThing	0x6	short	selected	H: SetSelected [units]
+AThing	0x8	short	captured	H: mouse capture flag (Capture sets 1) [mouse.md, controls.cpp] (also: short hasCapture [units])
+AThing	0xa	short	left	H: top-left x, world px [units] (also: short x [save])
+AThing	0xc	short	top	H: top-left y, world px [units] (also: short y [save])
+AThing	0x10	void *	posVptr	H: IPixelC vptr 0x5031c4 [units] (also: int tloc [save])
+AThing	0x14	short	x	H: world position x (px) [hotkeys.md, fogbuild.md]
+AThing	0x16	short	y	H: world position y [hotkeys.md, fogbuild.md]
+AThing	0x18	int	type	H: 0..0x2b creatures (builders 0, 9, 0x12, 0x1b), 0x2c..0x3e devices, 0x3f..0x41 pods, > 0x41 other [hotkeys.md, mouse.md, controls.cpp]
+AThing	0x1c	short	id	H: object id (0xc01 none) [hotkeys.md, controls.cpp] (also: int id [save])
+AThing	0x20	APlayer *	owner	H: owner player [hotkeys.md, mouse.md] (also: int owner [save])
+AThing	0x24	short	hp	H: hit points; < 1 -> die and RemoveThing [hotkeys.md, mouse.md]
+
+AThingRegistry	size	0x2d140		H: operator new(0x2d140) before the ctor 0x446aa0 at 0x471c80 [asm]
+AThingRegistry	0x0	void *	vptr	H: vtable 0x504cb4 (1 slot: Serialize 0x450fa0) [map]
+AThingRegistry	0x8	short	displayMode8	L: O key toggles it (shroud/visibility view?) [hotkeys.md]
+AThingRegistry	0xc	void *	thingsVptr	H: IList<AThing*> vptr 0x503564 [map]
+AThingRegistry	0x10	AThing **	things	H: thing table indexed by id [hotkeys.md, mouse.md, controls.cpp] (also: void ** things [path])
+AThingRegistry	0x14	int	thingCount	H: table size; alive = id < count && things[id] != 0 [hotkeys.md, controls.cpp] (also: unsigned int thingCount [map]) (also: unsigned int thingCount [path])
+AThingRegistry	0x1c	void *	pendingDeleteVptr	M: IList<AThing*> of things deleted at Clear [map]
+AThingRegistry	0x2c	void *	prevSelection	H: IList<AThing*> previous selection (ClearSelection(1), restored by 0x44a060) [hotkeys.md] (also: void * savedSelectionVptr [map])
+AThingRegistry	0x3c	void *	freeIdsVptr	H: IList<unsigned short> vptr 0x5030dc [map]
+AThingRegistry	0x40	void *	freeIds	H: id free list (+0x40/+0x44) [fogbuild.md] (also: unsigned short * freeIds [map])
+AThingRegistry	0x44	int	freeIdsCount	M: second word of the free list [fogbuild.md] (also: unsigned int freeIdCount [map])
+AThingRegistry	0x6c	short	panelPage	H: 1 = info panel shows its second (stance) page; I key toggles [game.h, hotkeys.md]
+AThingRegistry	0x6e	short	tHeld	M: T held: pick flag / order only [hotkeys.md, mouse.md, controls.cpp] (also: short orderOnly [map])
+AThingRegistry	0x78	short	reuseIds	M: 1 = CreateAt takes ids from the free list [map]
+AThingRegistry	0x7c	void *	selection_vptr	H: IList<AThing*> selection (slot 0 = Append) [hotkeys.md] (also: void * selectionVptr [map])
+AThingRegistry	0x80	AThing **	selection_data	H: selected things [hotkeys.md, controls.cpp] (also: AThing ** selection [map])
+AThingRegistry	0x84	int	selection_count	H: selection count [game.h, hotkeys.md, controls.cpp] (also: unsigned int selectionCount [map])
+AThingRegistry	0x8c	unsigned char[16]	formations	H: formation slot n stored at +0x8c + n*16 (F1-F8) [hotkeys.md] (also: void *[32] groups [map])
+AThingRegistry	0x10c	void *	thingGrid	H: 2-layer thing grid, 32 px cells, 192 per row (layer 0 ground, 1 air) [hotkeys.md, fogbuild.md] (also: unsigned short[36864] groundGrid [map]) (also: unsigned short[73728] occupancy [path])
+AThingRegistry	0x1210c	unsigned short[36864]	airGrid	M: second grid used by types 4, 0xd, 0x1f (flyers) [map]
+AThingRegistry	0x2410c	unsigned char[36864]	counterGrid	M: per-tile counter for types 0x2d/0x35/0x39/0x3a/0x43 (0x448550) [map] (also: unsigned char[36864] largeThingFlag [path])
+AThingRegistry	0x2d13c	unsigned char	flag2d13c	L: set by 0x4492b0 [map]
+
+AThing_vftable	0x14	void *	DrawPanel	H: info-panel draw (x, y, camX, camY) [game.h]
+AThing_vftable	0x18	void *	ClickDown	H: (sx, sy, wx, wy, zoom); panel press / captured click [game.h, mouse.md]
+AThing_vftable	0x1c	void *	ClickUp	H: (sx, sy, wx, wy) [game.h, mouse.md]
+AThing_vftable	0x20	void *	MouseMove	H: captured mouse move [mouse.md]
+AThing_vftable	0x24	void *	CursorId	H: captured cursor id [mouse.md]
+AThing_vftable	0x34	void *	SetSelected	H: (on) [hotkeys.md, mouse.md]
+AThing_vftable	0x38	void *	Die	H [hotkeys.md]
+AThing_vftable	0x50	void *	GetMaxHp	H [mouse.md, controls.cpp]
+AThing_vftable	0x60	void *	IsMobile	H: ==1 for mobile objects (skipped by CanPlace with ignoreUnits) [fogbuild.md]
+AThing_vftable	0x68	void *	CanStepAside	M: own/allied units that can step aside [fogbuild.md]
+AThing_vftable	0x70	void *	GetBuildTime	H [mouse.md, controls.cpp]
+
+ATurret	size	0x48		H [units]
+
+AWarp	size	0x54		H [units]
+AWarp	0x40	short	chargeCount	L: compared with 0x458360() [units]
+AWarp	0x44	short	charging	L [units]
+AWarp	0x46	short	targetX	H: teleport destination (Cmd+0x54) [units]
+AWarp	0x48	short	targetY	H [units]
+AWarp	0x4c	void *	effectA	M: AEffect* released when the warp fires [units]
+AWarp	0x50	void *	effectB	M [units]
+
+BlitterCache	0x18	unsigned char *	pixels	H: cached pixel base (0x550820+0x18) [layers.cpp]
+
+CMultiPlayer	0x290	void *	netSession	H: Send target [ai]
+CMultiPlayer	0x2a4	int	localMachineId	H [ai]
+CMultiPlayer	0x2f8	short	ignoreIncoming	M: OnReceive skips when 1 [ai]
+CMultiPlayer	0x308	short	netWait	L: multiplayer net-wait state (Q key-up) [hotkeys.md]
+
+CommandList	size	0x1c		H: operator new(0x1c) in OnReceive [ai]
+CommandList	0x0	void *	vtbl	H: 0x504efc [ai]
+CommandList	0x4	int	time	H: -1 default [ai]
+CommandList	0x8	int	opcode	H: wire byte; Execute switches on opcode - 0x17 [ai]
+CommandList	0xc	void *	wordsVtbl	H: IList<short> (vtable 0x5033dc) [ai]
+CommandList	0x10	short *	words	H [ai]
+CommandList	0x14	unsigned int	wordCount	H [ai]
+
+CommandModel	0x0	CommandModel_vtbl *	vptr	H: g_Commands [0x579260]: CSinglePlayer executes at once, CMultiPlayer serialises for the lockstep turn [game.h, mouse.md] (also: void * vtbl [ai])
+CommandModel	0x4	tPlayerSlot[8]	slots	H: GameSettings embedded here (CommandModel::Settings returns this+4) [save] (also: tPlayerSlot[8] slots [ai]) (also: int settings)
+CommandModel	0x174	char[164]	mapName	H: GameSettings+0x170, skirmish/MP map file (length a guess) [save] (also: char[164] mapName [ai]) (also: char[160] mapPath)
+CommandModel	0x218	int	optFog	M: GameSettings+0x214 [save] (also: int fogOption [ai])
+CommandModel	0x21c	int	optRandomGizmos	M: GameSettings+0x218, 2 = scatter 18 gizmos [save] (also: int extrasOption [ai])
+CommandModel	0x220	int	placementOption	H: session+0x21c (0 random, 1 map default) [ai]
+CommandModel	0x224	int	optStartPositions	M: GameSettings+0x220 [save] (also: int aiPlayers [ai])
+CommandModel	0x228	int	optOther	M: GameSettings+0x224 [save] (also: int startWithOption [ai])
+CommandModel	0x22c	int	nativeCGK	H: session+0x228 [ai]
+CommandModel	0x230	int	foreignCGK	H: session+0x22c [ai]
+CommandModel	0x238	int	turn	H: game turn counter [path] (also: int gameClock [save])
+CommandModel	0x240	void *	deferredVptr	H: IList<DeferredMove*> [path]
+CommandModel	0x244	DeferredMove **	deferred	H [path]
+CommandModel	0x248	unsigned int	deferredCount	H [path]
+
+CommandModel_vftable	0x0	void *	Destroy	H [ai]
+CommandModel_vftable	0x4	void *	Init	M [ai]
+CommandModel_vftable	0x8	void *	Shutdown	M [ai]
+CommandModel_vftable	0xc	void *	ProcessPending	M: SP replay journal [ai]
+CommandModel_vftable	0x10	void *	ShouldSkipFrame	M: called by FrameTick [ai]
+CommandModel_vftable	0x14	void *	Unk14	L: returns 1 [ai]
+CommandModel_vftable	0x18	void *	GetMode	H: returns 0x32 single player, 0x33 multiplayer [hotkeys.md]
+CommandModel_vftable	0x1c	void *	GetLocalMachineId	H [ai]
+CommandModel_vftable	0x20	void *	IsLocalInGame	M [ai]
+CommandModel_vftable	0x24	void *	EndGame	M: (int result) [ai]
+CommandModel_vftable	0x28	void *	SimulationStep	M [ai]
+CommandModel_vftable	0x2c	void *	Stop	H: (short id) [game.h, hotkeys.md, mouse.md]
+CommandModel_vftable	0x30	void *	Scatter	M [hotkeys.md]
+CommandModel_vftable	0x34	void *	Move	H: (IdList*, PtList*, short flag) ret 0xc [game.h, fogbuild.md]
+CommandModel_vftable	0x38	void *	Patrol	M: 0x40 [ai]
+CommandModel_vftable	0x3c	void *	ClusterMove	L: C-click order [hotkeys.md, mouse.md]
+CommandModel_vftable	0x40	void *	FormationMove	M: Space-click move with a one-point path [hotkeys.md, mouse.md]
+CommandModel_vftable	0x44	void *	Attack	H: (IdList*, short target); 0x2a [ai]
+CommandModel_vftable	0x48	void *	Enter	H: (idList, buildingId) units enter/use building types 0x34/0x39 [mouse.md] (also: void * MoveToThing [ai])
+CommandModel_vftable	0x4c	void *	SetRally	H: rally point for building types 0x2d/0x35 [mouse.md] (also: void * SetRallyPoint [ai])
+CommandModel_vftable	0x50	void *	SetPower	H: (id, on) switch a building on/off [mouse.md] (also: void * SetPowered [ai])
+CommandModel_vftable	0x54	void *	WarpTo	M: (short id, short x, short y); 0x2c [ai]
+CommandModel_vftable	0x58	void *	Plant	H: (short shamanId, int podType, PtList*) ret 0xc [game.h, fogbuild.md]
+CommandModel_vftable	0x5c	void *	Build	H: (short shamanId, int type, short x, short y) centre, ret 0x10 [game.h, fogbuild.md]
+CommandModel_vftable	0x60	void *	GetGenes	L: (shaman, path) unidentified special (Get Genes mode; activity 0x2f) [mouse.md, fogbuild.md]
+CommandModel_vftable	0x64	void *	TurretTarget	M: (short id, short target); 0x37 [ai]
+CommandModel_vftable	0x68	void *	GeneLabBuild	M: (short lab, 6 args); 0x32 [ai]
+CommandModel_vftable	0x6c	void *	GeneLabCancel	M: (short lab); 0x33 [ai]
+CommandModel_vftable	0x70	void *	GeneLabSelect	L: (short lab, short v); 0x31 [ai]
+CommandModel_vftable	0x74	void *	Special	L: J (Leviathan) [hotkeys.md]
+CommandModel_vftable	0x78	void *	Hold	M: Ctrl+X [hotkeys.md]
+CommandModel_vftable	0x7c	void *	Kill	H: Ctrl+Alt+K [hotkeys.md]
+CommandModel_vftable	0x80	void *	Follow	M: G-click guard/follow [hotkeys.md, mouse.md]
+CommandModel_vftable	0x84	void *	Upgrade	H: (shaman, target) [mouse.md]
+CommandModel_vftable	0x88	void *	Repair	H: (short builderId, short targetId); also finishes construction [game.h, mouse.md]
+CommandModel_vftable	0x8c	void *	HowitzerFire	M: (short id, short x, short y); 0x3a [ai]
+CommandModel_vftable	0x90	void *	Pause	H [hotkeys.md]
+CommandModel_vftable	0x94	void *	SetAlly	H: (short player, short other, short on); 0x3b [ai]
+CommandModel_vftable	0x98	void *	SetMobile	M: (short id, short on); 0x44 [ai]
+CommandModel_vftable	0x9c	void *	Indicator	M: multiplayer map flare/indicator [hotkeys.md, mouse.md] (also: void * Flare [ai])
+CommandModel_vftable	0xa0	void *	SetStance	M: creature stance (info panel page 2) [hotkeys.md]
+CommandModel_vftable	0xa4	void *	NetOnly49	L: 6 args, SP no-op; 0x49 [ai]
+CommandModel_vftable	0xa8	void *	PlayerQuit	M: 0x25 [ai]
+CommandModel_vftable	0xac	void *	RemovePlayer	M: 0x4a [ai]
+CommandModel_vftable	0xb0	void *	Chat	M: (player, mask, text); 0x47 [ai]
+CommandModel_vftable	0xb4	void *	SystemMessage	M: SP only [ai]
+CommandModel_vftable	0xb8	void *	SetGameSpeed	M: 0x24 [ai]
+CommandModel_vftable	0xbc	void *	NewRandomSeed	M [ai]
+CommandModel_vftable	0xc0	void *	IsSlotUsed	H [ai]
+CommandModel_vftable	0xc4	void *	GetSlot	H [ai]
+CommandModel_vftable	0xc8	void *	CountUsedSlots	H [ai]
+CommandModel_vftable	0xcc	void *	GetLocalSlotInfo	H [ai]
+CommandModel_vftable	0xd0	void *	GetLocalSlotIndex	H [ai]
+CommandModel_vftable	0xd4	void *	ResetSession	M [ai]
+
+DeferredMove	size	0x1c		H [path]
+DeferredMove	0x0	short	id	H [path]
+DeferredMove	0x4	void *	pointsVptr	H: IList<IPixelC> (data +0x8, count +0xc, cap +0x10) [path]
+DeferredMove	0x14	short	tolerance	H [path]
+DeferredMove	0x18	int	dueTurn	H [path]
+
+IGlobalData	0x254	int[14]	statMin	H [units]
+IGlobalData	0x28c	int[14]	statAvg	H [units]
+IGlobalData	0x2c4	int[14]	statMax	H [units]
+
+ILineScanConversion	size	0x18		H [path]
+ILineScanConversion	0x0	void *	vptr	H: vtable 0x50321c [path]
+ILineScanConversion	0x4	char[4]	stepBytes	H: Bresenham x/y increments for the two cases [path]
+ILineScanConversion	0x8	short	error	H [path]
+ILineScanConversion	0xa	short	inc1	H [path]
+ILineScanConversion	0xc	short	inc2	H [path]
+ILineScanConversion	0xe	short	remaining	H: major-axis pixels left; 0 = at end [path]
+ILineScanConversion	0x10	IPixelC	current	H: current point (x +0x14, y +0x16) [path]
+
+IPixelC	size	0x8		H [path]
+IPixelC	0x0	void *	vptr	H: vtable 0x5031c4 (ICoordinates: slots MaxX, MaxY) [path]
+IPixelC	0x4	short	x	H: world pixels; -666 (0xfd66) = unset [path]
+IPixelC	0x6	short	y	H [path]
+
+IResourceStream	size	0x1a4		H: operator new before the ctor at 0x48072e [save]
+IResourceStream	0x8	int	direction	H: 1 = write, 0 = read (every Serialize tests it) [save]
+IResourceStream	0x14	short	isDebugFormat	M: ".dbg" output [save]
+IResourceStream	0x16	short	ownsFile	M [save]
+IResourceStream	0x18c	void *	file	M: tFile for .wbm/.wbs [save]
+
+IdList	size	0x10		H [fogbuild.md]
+IdList	0x0	void *	vptr	H: vtbl_IList_ushort 0x5030dc [fogbuild.md, controls.cpp]
+IdList	0x4	short *	data	H [fogbuild.md]
+IdList	0x8	int	count	H [fogbuild.md]
+IdList	0xc	int	cap	H [fogbuild.md]
+
+JournalEvent	0x0	int	type	H: 0 Ldown 1 Lup 2 Rdown 3 Rup 4 move 5 Ldbl 6 key [mouse.md]
+JournalEvent	0x4	int	stamp	H: [0x57929c] [mouse.md]
+JournalEvent	0x8	int	timer	H [mouse.md]
+JournalEvent	0x10	short	x	H [mouse.md]
+JournalEvent	0x12	short	y	H [mouse.md]
+
+KeyEvent	0x0	unsigned char	vk	H: Shift alone rewritten to 4 [hotkeys.md, mouse.md]
+KeyEvent	0x1	unsigned char	mods	H: bit0 Ctrl, bit1 Alt, bit2 Shift [hotkeys.md]
+KeyEvent	0x2	unsigned char	ascii	H: ToAscii result, 0 while Alt [hotkeys.md]
+KeyEvent	0x3	unsigned char	repeat	H [hotkeys.md]
+
+LocalPathNode	size	0x24		H: pool g_LocalPathNodes[600] [path]
+LocalPathNode	0x0	ACreatureBody::tPathStep	step	H: pos +0x8/+0xa, dir +0xc [path]
+LocalPathNode	0x10	int	closed	H [path]
+LocalPathNode	0x14	LocalPathNode *	parent	H [path]
+LocalPathNode	0x18	unsigned int	f	H: g + h [path]
+LocalPathNode	0x1c	unsigned int	g	H: pixels (step / diag / turn penalty) [path]
+LocalPathNode	0x20	unsigned int	h	H: min(dx^2+dy^2, 0xffff) [path]
+
+MapInfo	size	0x10		H: global g_MapInfo 0x567578 [map]
+MapInfo	0x0	unsigned short	version	H: must be 5 [map] (also: short version [save])
+MapInfo	0x2	unsigned short	supportedPlayers	H: console "supports N" [map] (also: short numPlayers [save])
+MapInfo	0x4	unsigned short	recommendedPlayers	H: console "recommended N"; minimap start markers [map] (also: short numPlayersRc [save])
+MapInfo	0x6	unsigned short	widthCells	H: tilesW/2 on save [map] (also: short widthHalf [save])
+MapInfo	0x8	unsigned short	heightCells	H: tilesH/2 on save [map] (also: short heightHalf [save])
+MapInfo	0xc	char *	name	H: heap string; set from the file name on save [map]
+
+Minimap	0x4	unsigned char	scale	M: 8..16 [map]
+Minimap	0x5	unsigned char	pixels	M: first byte of the pixel rows, stride 0xc4 [map]
+Minimap	0x9616	short[4]	rect	M: screen rect of the minimap [map]
+Minimap	0x9620	short	dirty	M: forces Update on the next Minimap::Tick [map]
+Minimap	0x9628	unsigned int	lastUpdate	M: tick of the last Update [map]
+
+MohawkTask	size	0x20		H [scene]
+MohawkTask	0x0	int	magic	H: 'ITSK' 0x4b535449 [scene]
+MohawkTask	0x4	MohawkTask *	prev	H [scene]
+MohawkTask	0x8	MohawkTask *	next	H [scene]
+MohawkTask	0xc	void *	fn	H: called as fn(task, arg) [scene]
+MohawkTask	0x10	int	arg	H [scene]
+MohawkTask	0x14	int	periodMs	H: 0 = one-shot [scene]
+MohawkTask	0x18	unsigned int	dueTime	H: timeGetTime [scene]
+MohawkTask	0x1c	short	running	H [scene]
+MohawkTask	0x1e	short	deletePending	H [scene]
+
+PixMap	0xc	unsigned char *	baseAddr	H: pixel base address [layers.cpp]
+
+Port	0x68	short	locked	H: SetPort refuses a port whose pixels are not locked [layers.cpp, WIKI_LOG]
+Port	0xd0	PixMap *	pixmap	H: port pixmap [layers.cpp]
+
+Pt	size	0x8		H [fogbuild.md]
+Pt	0x0	void *	vptr	H: vtbl_IPixelC 0x5031c4 (or ILogicalC 0x5030ec in tiles) [fogbuild.md, controls.cpp]
+Pt	0x4	short	x	H [fogbuild.md, controls.cpp, autopilot.cpp]
+Pt	0x6	short	y	H [fogbuild.md, controls.cpp, autopilot.cpp]
+
+PtList	size	0x10		H [fogbuild.md]
+PtList	0x0	void *	vptr	H: vtbl_IList_IPixelC 0x5033d4 [fogbuild.md, controls.cpp]
+PtList	0x4	Pt *	data	H [fogbuild.md]
+PtList	0x8	int	count	H [fogbuild.md]
+PtList	0xc	int	cap	H: cap >= count (0x42d1d0 copies cap, allocates cap*8) [fogbuild.md]
+
+ResolutionSlot	size	0x8		H [WIKI_LOG]
+ResolutionSlot	0x0	void *	vptr	H [WIKI_LOG]
+ResolutionSlot	0x4	short	w	H [WIKI_LOG]
+ResolutionSlot	0x6	short	h	H [WIKI_LOG]
+
+SAllies	0x38	void *[8]	allyBoxes	H: per player id [ai]
+SAllies	0x58	void *[8]	chatBoxes	H [ai]
+SAllies	0x78	void *[8]	nameLabels	H [ai]
+
+SCut	0x38	void *	movie	H: QuickTime movie object (0x1c bytes, 0x46a830) [scene]
+SCut	0x3c	short	movieOpen	M [scene]
+SCut	0x3e	short	stopped	M: set by StopMovie; KeyDown(Space) only acts when 0 [scene]
+SCut	0x40	short	playing	M [scene]
+
+SFileDialog	0x40	void *	listBox	M: embedded AListBox (vtable slot 0x24 = item text) [scene] (also: void * fileList [save])
+SFileDialog	0x82	short	doubleClicked	M [save]
+SFileDialog	0x84	char[256]	browseDir	M: directory listed; full path = browseDir + "\" + name [save]
+SFileDialog	0x184	int	savedCwd	M: tFileName holding the cwd to restore on exit [save]
+SFileDialog	0x18c	int *	entryTypes	L: per entry, 0 = file [scene]
+SFileDialog	0x190	unsigned int	entryCount	L [scene]
+SFileDialog	0x1ca	short	showSaves	H: list .wbs files [save]
+SFileDialog	0x1cc	short	showMaps	H: list .wbm files [save]
+
+SGame	size	0x10464		M: static object 0x567ef8; the key-macro table ends at 0x10464 (next scene static at 0x578460) [scene]
+SGame	0x28	short	frameWidth	H: Scene.width, kept equal to the current mode (edge-scroll speed scaling) [scene]
+SGame	0x2a	short	frameHeight	H [scene]
+SGame	0x38	short	cameraX	H: camera x, world pixels [game.h, WIKI_LOG, mouse.md]
+SGame	0x3a	short	cameraY	H: camera y, world pixels [game.h, WIKI_LOG]
+SGame	0x3c	unsigned char	edgeScrollDir	H: edge-scroll direction bits 1 left, 2 right, 4 up, 8 down (set by MouseMove); also the edge cursor id [mouse.md]
+SGame	0x3e	short	edgeScrollSpeed	H: edge-scroll speed, 0x28 (40 world px per tick) default, set in the ctor [mouse.md]
+SGame	0x40	short	keyScrollStep	H: arrow-key scroll step [hotkeys.md, mouse.md] (also: short arrowScrollStep [scene])
+SGame	0x42	unsigned char	edgeScrollRamp	H: edge-scroll ramp 1..6 [mouse.md]
+SGame	0x44	short	scrollMinX	H: scroll bounds; camera x in [MinX, MaxX - ViewW] [game.h, WIKI_LOG]
+SGame	0x46	short	scrollMinY	H [game.h]
+SGame	0x48	short	scrollMaxX	H [game.h]
+SGame	0x4a	short	scrollMaxY	H [game.h]
+SGame	0x4c	short	viewW	H: world pixels visible (frame size, x2 when zoomed out) [game.h, WIKI_LOG, tutorial-terrain.md]
+SGame	0x4e	short	viewH	H [game.h]
+SGame	0x50	short	hoverThingId	H: hovered object id, maintained only while A is held (0xc01 reset on key-up) [mouse.md, hotkeys.md]
+SGame	0x52	short	dragX0	H: drag box world x0 [mouse.md, controls.cpp] (also: short[4] dragBox [scene])
+SGame	0x54	short	dragY0	H: drag box world y0 [mouse.md, controls.cpp]
+SGame	0x56	short	dragX1	H: drag box world x1 (updated by MouseMove) [mouse.md, controls.cpp]
+SGame	0x58	short	dragY1	H: drag box world y1 [mouse.md, controls.cpp]
+SGame	0x5a	short	attackHeld	H: A held (attack mode) [hotkeys.md, mouse.md, controls.cpp]
+SGame	0x5c	short	inputOff	H: input disabled / paused / game over; only Pause gets through [hotkeys.md, mouse.md, controls.cpp] (also: short inputDisabled [scene])
+SGame	0x5e	short	zoomedOut	H: 1 = built-in 2x zoom-out active [game.h, WIKI_LOG]
+SGame	0x60	short	drawThings	H: console "things on/off"; 1 after LoadStage 2 [scene]
+SGame	0x62	short	spaceHeld	H: Space held (no drag box; Space-click order) [hotkeys.md, mouse.md]
+SGame	0x64	short	shiftHeld	H: Shift held (vk 4) [hotkeys.md, mouse.md]
+SGame	0x66	short	cameraLock	H: L toggle: follow selection, no edge scroll while something is selected [hotkeys.md, mouse.md]
+SGame	0x68	short	tabHeld	H: Tab held (waypoint mode) [hotkeys.md, mouse.md]
+SGame	0x6a	short	ctrlTabHeld	M: Ctrl+Tab held (looped/patrol waypoints) [hotkeys.md, mouse.md]
+SGame	0x6c	short	minimapDrag	H: dragging on the minimap (camera follows) [mouse.md, controls.cpp]
+SGame	0x6e	short	clickPending	H: left click pending (LDown on the battlefield, resolved at LUp) [mouse.md, controls.cpp]
+SGame	0x70	short	pgDnHeld	H: PageDown held: ground only [hotkeys.md, mouse.md]
+SGame	0x72	short	pgUpHeld	H: PageUp held: air only [hotkeys.md, mouse.md]
+SGame	0x74	short	f10Held	M: F10 held: HUD move mode [hotkeys.md, mouse.md]
+SGame	0x76	short	fHeld	M: F held (sprite blink) [hotkeys.md, mouse.md]
+SGame	0x78	short	gHeld	M: G held: G-click follow/guard [hotkeys.md, mouse.md]
+SGame	0x7a	short	unknown7a	L: changes the default cursor (set at 0x47ce1c) [mouse.md] (also: short cursorFlag7a [scene])
+SGame	0x7c	short	cHeld	L: C held: C-click order [hotkeys.md, mouse.md]
+SGame	0x7e	short	mHeld	M: M held (multiplayer): flare/indicator [hotkeys.md, mouse.md]
+SGame	0x80	short	keepCommandModel	L: Init clears, Tick sets after a restart [scene] (also: short keepCommandModel [save]) (also: short restarted)
+SGame	0x82	short	isSkirmish	L: LoadStage 8 takes the local player from the saved state when set [scene] (also: short isSkirmish [save]) (also: short isSkirmish [ai]) (also: short loadedGame)
+SGame	0x84	short	running	L: set by Init [scene]
+SGame	0x86	short	savePending	H: Tick calls SaveGame(+0x88) [scene] (also: short writePending [save])
+SGame	0x88	char[256]	savePath	H [scene] (also: char[] savePath [map])
+SGame	0x188	int	turnPeriodMs	H: game turn length, 25 single player / 40 multiplayer; console "update period" [scene]
+SGame	0x18c	int	lastTurnTime	H: timeGetTime of the last turn [scene]
+SGame	0x190	int	savedTurnPeriod	M [scene]
+SGame	0x194	unsigned char	frameCounter	H: ++ per Draw [scene]
+SGame	0x198	void *	waypoints_vptr	M: waypoint list (max 16) built in Tab mode; IList layout assumed (vtbl +0x198, data +0x19c, count +0x1a0) [mouse.md] (also: void * waypointsVptr [scene])
+SGame	0x19c	void *	waypoints_data	M: waypoint list data; tutorial-terrain.md's "+0x19c list" (cursor-near check 0x47ccb0) [mouse.md, tutorial-terrain.md] (also: void * waypoints [scene])
+SGame	0x1a0	int	waypoints_count	M [mouse.md] (also: unsigned int waypointCount [scene])
+SGame	0x1a4	unsigned int	waypointCapacity	H: 40 [scene]
+SGame	0x1a8	void *	routes_vptr	M: saved patrol routes / on-map markers list (Ctrl+Tab); IList: data +0x1ac, count +0x1b0 [hotkeys.md, mouse.md] (also: void * routesVptr [scene]) (also: void * waypointsListVtbl [save])
+SGame	0x1ac	void *	routes_data	M: on-map marker list data [mouse.md] (also: void ** routes [scene])
+SGame	0x1b0	int	routes_count	M [mouse.md] (also: unsigned int routeCount [scene])
+SGame	0x1b8	short	missionEnded	H: EndMission ran [scene]
+SGame	0x1bc	void *	widgets2Vptr	M: second IList<Widget*> (vtable 0x5075bc); purpose unknown [scene]
+SGame	0x1c0	Widget **	widgets2	L [scene]
+SGame	0x1c4	unsigned int	widgets2Count	L [scene]
+SGame	0x1cc	int	hudDrag	H: F10 HUD drag: 1 info panel, 2 minimap [mouse.md, controls.cpp]
+SGame	0x1d0	short[4]	edgeRectLeft	M: edge-scroll rects (four at +0x1d0, +0x1d8, +0x1e0, +0x1e8), computed in SetViewSize; order assumed [mouse.md] (also: short[4] edgeRectTop [scene])
+SGame	0x1d8	short[4]	edgeRect2	M [mouse.md] (also: short[4] edgeRectBottom [scene])
+SGame	0x1e0	short[4]	edgeRect3	M [mouse.md] (also: short[4] edgeRectRight [scene])
+SGame	0x1e8	short[4]	edgeRect4	M [mouse.md] (also: short[4] edgeRectLeft [scene])
+SGame	0x1f0	short	capturedThingId	H: mouse-captured object id (0xc01 none); a pending command mode lives here [mouse.md, controls.cpp] (also: short captureId [scene])
+SGame	0x1f2	short	unknown1f2	L: named with +0x1cc for the F10 window drag [hotkeys.md] (also: short hudDragX [scene])
+SGame	0x1f4	short	hudDragY	L [scene]
+SGame	0x1fc	short	loadPending	M: Tick restarts the single-player command model [scene] (also: short loadPending [save]) (also: short restartPending)
+SGame	0x1fe	char[256]	mapPath	H: SetMissionName; single-player LoadMissionStage descriptor [scene] (also: char[] mapPath [map]) (also: char[256] mapPath [save]) (also: char[256] missionName)
+SGame	0x2fe	short	saveRequested	M: Tick calls RequestSave(+0x300) [scene]
+SGame	0x300	char[256]	saveName	M: SetSaveName [scene]
+SGame	0x400	void *	chatEntry	M: message box / chat entry widget (bottom centre) [game.h, hotkeys.md] (also: Widget * chatEdit [scene])
+SGame	0x404	void *	messageBox2	M: second message box widget [game.h] (also: Widget * chatBackground [scene])
+SGame	0x408	short	cheatEnabled	H: set by typing SPAMSPAMSPAMHUMBUG; enables F9 [hotkeys.md] (also: short cheatsEnabled [scene])
+SGame	0x40a	unsigned char	cheatCodePos	M [scene]
+SGame	0x40c	void *	loadStream	L: 0 in the constructor [scene] (also: void * loadStream [map]) (also: void * loadStream [save]) (also: int field40c)
+SGame	0x410	int	fileSpec	L: 4-byte file-spec object (constructed by 0x4e5ba0, destroyed by 0x4d3460) [scene]
+SGame	0x414	short	flag414	L: set by Init [scene]
+SGame	0x416	short	savedSoundState	L: LoadMissionStage 2 stores 0x464560() [scene]
+SGame	0x418	short	slowTurn	H: last turn took more than 3 ms [scene]
+SGame	0x41c	void *	debugConsole	H: debug console (F9) [hotkeys.md] (also: Widget * console [scene])
+SGame	0x42e	short	redrawAll42e	H: 1 forces mark-all-cells in Draw [tutorial-terrain.md] (also: short showThingGrid [scene]) (also: short debugGridView [map])
+SGame	0x430	short	showSearchGrid	H [scene] (also: short debugThingView [map])
+SGame	0x432	short	debugView432	L: alternative map draw in Draw [scene] (also: short debugDirtyView [map])
+SGame	0x434	short	showBounds	H [scene] (also: short debugThingOverlay [map])
+SGame	0x436	short	redrawAll436	H: 1 forces mark-all-cells in Draw [tutorial-terrain.md] (also: short showMaskGrid [scene]) (also: short debugFogView [map])
+SGame	0x43a	short	showTerrainTypes	H [scene]
+SGame	0x43c	short	cheatPlace	H: cheat-console object placement active [mouse.md, controls.cpp] (also: short placeMode [scene])
+SGame	0x454	int	cheatPlaceType	H: type to place (0x4a = none) [mouse.md] (also: int placeType [scene])
+SGame	0x458	int	placeType2	L: 0x8a [scene]
+SGame	0x460	int	updateMode	H: 0 run, 1 paused, 2 single step [scene]
+SGame	0x464	char[256][256]	macros	H: console macro per character (bind), +0x464 + ch*256 [hotkeys.md] (also: char[65536] keyMacros [scene])
+
+SIntroCut	0x44	char[64]	movieName	M: set by SetParam(0x64, name); returned by GetMovieName (length unknown) [scene]
+
+SMultiSetup	0x292e	short	isMultiplayer	H: 0 = skirmish setup [ai]
+SMultiSetup	0x2968	short[8]	startPermutation	H: start slot order (random or identity) [ai]
+
+SOpenDialog	0x1d0	char[256]	dialogMhk	H: OPNDLG.MHK (in mission) / OPNDLG2.MHK (main menu) [save]
+SOpenDialog	0x2d0	short	setupArg	M [save]
+SOpenDialog	0x2d2	short	fromMainMenu	M: 1 = cancel just pops, 0 = cancel returns to SMenu [save]
+SOpenDialog	0x2d4	short	opt2	M: message code 2 (arg 0 -> 1) [save]
+SOpenDialog	0x2d6	short	opt3	M: message code 3 [save]
+SOpenDialog	0x2d8	int	targetSceneId	H: scene sent message 0 with the chosen path [save]
+
+SProgress	0x38	unsigned char	stage	H: current load stage 0..8 [save]
+SProgress	0x40	short	done	H [save]
+
+SSaveDialog	0x1d0	void *	nameField	M: edit widget, text at +0x2c [save]
+SSaveDialog	0x1d4	int	targetSceneId	H: scene sent message 1 with the name (2 = SGame) [save]
+SSaveDialog	0x1d8	void *	listWidget	M [save]
+SSaveDialog	0x1dc	void *	okButton	M [save]
+
+SStaticScene	0x38	short	timeUp	H: duration elapsed, click or key [scene]
+SStaticScene	0x3a	short	done	H: OnDone ran [scene]
+SStaticScene	0x3c	int	startTime	H: timeGetTime at OnStart [scene]
+
+SYesNoDialog	0x38	Widget *	message	H: WText with GetMessage() [scene]
+SYesNoDialog	0x3c	Widget *	yesButton	H: WTextButton id 1, hotkey from GetYesHotkey [scene]
+SYesNoDialog	0x40	Widget *	noButton	H: WTextButton id 3 [scene]
+
+Scene	size	0x38		H: base constructor 0x494f60 writes up to +0x36; subclasses start their fields at +0x38 [scene]
+Scene	0x0	void *	vptr	H: vtable (vtbl_Scene 0x508bec; SGame 0x507534) [rtti]
+Scene	0x4	void *	palette	H: IPalette (0x10 bytes, ctor 0x46a3a0); returned by vtbl+0x78, set by LoadResources [scene]
+Scene	0x8	void *	widgets_vptr	H: embedded IList<Widget*> of the scene's widgets: vtbl at +0x8 [diag.cpp] (also: void * widgetsVptr [scene])
+Scene	0xc	Widget **	widgets_data	H: widget list data (searched by FindWidgetByHotkey) [diag.cpp, hotkeys.md, menu.cpp] (also: Widget ** widgets [scene])
+Scene	0x10	int	widgets_count	H: widget count [diag.cpp, hotkeys.md, menu.cpp] (also: unsigned int widgetCount [scene])
+Scene	0x14	int	widgets_cap	H: widget list capacity [diag.cpp] (also: unsigned int widgetGrow [scene])
+Scene	0x18	void *	images	H: image sheet (0x30 bytes, 0x467070) for buttons and statics [scene]
+Scene	0x1c	int	resFile	H: Mohawk resource file of the scene's .MHK [scene]
+Scene	0x20	Widget *	activeWidget	H: pressed / keyboard-focused widget (the text edit while typing) [scene]
+Scene	0x24	Widget *	hoverWidget	H: WMouseOverButton under the cursor [scene]
+Scene	0x28	short	wantW	H: resolution the scene wants (ctor default 640); passed to SetResolution on activation; SGame's edge-scroll speed scales with it [WIKI_LOG, mouse.md] (also: short width [scene])
+Scene	0x2a	short	wantH	H: resolution height the scene wants (default 480) [WIKI_LOG] (also: short height [scene])
+Scene	0x2c	int	depth	H: 256 [scene]
+Scene	0x30	short	paletteMode	M: 4th SetResolution argument; 1 = palettized: sets system palette use, fades on root changes [scene]
+Scene	0x32	short	started	H: OnStart (vtbl+0x40) has run (base Tick) [scene]
+Scene	0x34	short	needsRedraw	H: set by Invalidate, cleared by Draw(1) [scene]
+Scene	0x36	short	active	H: 1 while it is the top scene (Activate/Deactivate) [scene]
+
+Scene_vftable	0x4	void *	Draw	H [WIKI_LOG, rtti]
+Scene_vftable	0x8	void *	UpdateCursor	H [game.h, WIKI_LOG]
+Scene_vftable	0xc	void *	DrawCursor	H [mouse.md, WIKI_LOG]
+Scene_vftable	0x10	void *	Tick	H [mouse.md, fogbuild.md]
+Scene_vftable	0x14	void *	Init	H: slot 5 [WIKI_LOG, menu.cpp]
+Scene_vftable	0x1c	void *	LButtonDown	H [mouse.md]
+Scene_vftable	0x20	void *	LButtonUp	H [mouse.md]
+Scene_vftable	0x24	void *	RButtonDown	H [mouse.md, rtti]
+Scene_vftable	0x28	void *	RButtonUp	H [mouse.md]
+Scene_vftable	0x2c	void *	MouseMove	H [mouse.md]
+Scene_vftable	0x30	void *	LButtonDblClk	H [mouse.md, rtti]
+Scene_vftable	0x34	void *	KeyDown	H: (vk, mods, ascii) [hotkeys.md, mouse.md]
+Scene_vftable	0x38	void *	KeyUp	H [hotkeys.md, mouse.md]
+Scene_vftable	0x3c	void *	AcceptsMouse	H: (x, y) [mouse.md]
+Scene_vftable	0x4c	void *	OnResize	H [game.h, WIKI_LOG]
+Scene_vftable	0x5c	void *	SetMouseCapture	H: SGame (objId) [mouse.md]
+Scene_vftable	0x6c	void *	OnCommand	H: slot 27 (button) [WIKI_LOG, menu.cpp]
+
+TileAnimator	size	0x40		H: embedded at AGrid+0x4808 [map]
+TileAnimator	0x0	void *	idleVptr	H: IList<TileAnimID> vptr 0x50436c (idle candidate cells) [map]
+TileAnimator	0x4	void *	idleData	H: TileAnimID[] (10 bytes: u16 baseTile, u16 cx, u16 cy, u16 frame, u16 variant) [map]
+TileAnimator	0x8	unsigned int	idleCount	H [map]
+TileAnimator	0x10	void *	activeVptr	H: IList<TileAnimID> (cells currently animating) [map]
+TileAnimator	0x14	void *	activeData	H [map]
+TileAnimator	0x18	unsigned int	activeCount	H [map]
+TileAnimator	0x20	void *	framesVptr	H: IList<short> frame offsets {1,2,1} [map]
+TileAnimator	0x24	short *	frames	H [map]
+TileAnimator	0x28	unsigned int	frameCount	H [map]
+TileAnimator	0x30	short	baseTile	H: 0x1a2 (first animation frame id) [map]
+TileAnimator	0x32	short	variantStride	H: 2 [map]
+TileAnimator	0x34	int	rate	M: 350 [map]
+TileAnimator	0x38	unsigned int	startTime	H: timeGetTime at ctor [map]
+TileAnimator	0x3c	short	enabled	H: Start 1 / Stop 0 [map]
+
+WButton	desc			M: the static panel button arrays (0x5401e0 + i*0x47c) have a 0x47c stride, so those are WButton plus extra state, or another class [hotkeys.md]
+WButton	0x2c	short	hasOverlay	H: draws a second frame [scene]
+WButton	0x2e	short	overlayFrame	H [scene]
+WButton	0x30	short	visible	H: Draw does nothing when 0 [scene]
+
+WCycle	size	0x40		H [scene]
+WCycle	0x34	unsigned int	itemCount	M [scene]
+WCycle	0x3c	short	index	H [scene]
+WCycle	0x3e	short	visible	M [scene]
+
+WCycleButton	size	0x40		H [scene]
+
+WDialogBox	size	0x30		H [scene]
+WDialogBox	0x2c	short	style	L [scene]
+
+WLogo	size	0x34		H [scene]
+
+WMouseOverButton	size	0x38		H [scene]
+WMouseOverButton	0x36	short	hover	H [scene]
+
+WNumberBar	size	0x30		H [scene]
+
+WOptionButton	size	0x8f8		H [scene]
+
+WRadioButton	size	0x38		H [scene]
+WRadioButton	0x34	char	group	M [scene]
+WRadioButton	0x35	char	state	M [scene]
+
+WScrollBar	size	0x60		H [scene]
+WScrollBar	0x4c	short	lineStep	M [scene]
+WScrollBar	0x5c	short	backPressed	L [scene]
+WScrollBar	0x5e	short	forwardPressed	L [scene]
+
+WSlider	size	0x34		H [scene]
+WSlider	0x2e	short	stepWidth	L: used by SetFromX [scene]
+WSlider	0x30	short	range	L [scene]
+
+WStatic	size	0x2c		H [scene]
+
+WText	size	0x43c		H [scene]
+WText	0x2c	char[1024]	text	H [scene]
+WText	0x42e	short	maxLength	L: vtbl+0x44 [scene]
+WText	0x430	short	align	M: SYesNoDialog sets 2 (centred) [scene]
+WText	0x434	int	style	H: font/colour style id [scene]
+WText	0x438	short	indent	L: vtbl+0x48 [scene]
+
+WTextButton	size	0x47c		H [scene]
+WTextButton	0x34	char[1084]	label	M: embedded WText [scene]
+WTextButton	0x472	short	flag472	L [scene]
+WTextButton	0x474	int	style	H [scene]
+WTextButton	0x478	int	hoverStyle	H [scene]
+
+WTextButton2	size	0x78		H: 0x78 bytes [menu.cpp]
+WTextButton2	0x20	short	command	H: command id passed to OnCommand (main menu 0x64-0x6b) [menu.cpp, WIKI_LOG] (also: short cmd [scene])
+WTextButton2	0x2c	char[60]	text	H: up to ~60 chars, set with SetText [menu.cpp, WIKI_LOG]
+WTextButton2	0x68	short	unknown68	L: hover test requires > 0 [menu.cpp]
+WTextButton2	0x6c	int	style	H: normal text style [menu.cpp]
+WTextButton2	0x70	int	hoverStyle	H: highlight style (yellow) [menu.cpp, WIKI_LOG]
+WTextButton2	0x74	short	visible	H: draw only; hit-testing and hotkeys ignore it [menu.cpp, WIKI_LOG]
+
+WTextEdit	size	0x454		H [scene]
+
+WTextPage	size	0x46c		H [scene]
+
+Widget	size	0x2c		M: WStatic adds no fields (0x2c bytes) [scene]
+Widget	0x0	void *	vptr	H [rtti]
+Widget	0x4	int	type	H: 0x64 Widget, 0x65 WStatic, 0x66 WText, 0x67 WTextEdit, 0x68 WNumberBar, 0x69 WSlider, 0x6a WTextButton, 0x6b WInfoBox, 0x6c WButton, 0x6e WCycle, 0x6f WFuzzyBar, 0x70 WCGK, 0x71 WMouseOverButton, 0x72 WRadioButton, 0x75 WScrollBar, 0x76 WTextButton2, 0x77 WLogo, 0x78 WDialogBox, 0x79 WCycleButton [scene]
+Widget	0x8	short	x	H: origin [scene]
+Widget	0xa	short	y	H [scene]
+Widget	0xc	short[4]	rect	H: left, top, right, bottom (right rewritten to the text width on draw) [menu.cpp, WIKI_LOG]
+Widget	0x14	char	hotkey	H: hotkey byte compared by MatchesHotkey, set only by SetHotkey [hotkeys.md, menu.cpp]
+Widget	0x16	short	pressed	H: pressed flag (WIKI_LOG/game.h correct hotkeys.md, which called it "visible") [WIKI_LOG, game.h, hotkeys.md] (also: short mouseDown [scene])
+Widget	0x18	short	unknown18	M: checked by WTextButton2::Draw with +0x16 for the highlight [WIKI_LOG] (also: short keyDown [scene])
+Widget	0x1a	short	needsRedraw	H [menu.cpp, WIKI_LOG] (also: short dirty [scene])
+Widget	0x1c	void *	images	H: image sheet (SetImage) [scene]
+Widget	0x20	short	id	H: image frame / command id (-1 after construction); OnCommand handlers test it [scene]
+Widget	0x22	short	pressable	H: reacts to button down (WidgetAt forPress) [scene]
+Widget	0x24	short	clickable	H: fires OnCommand on release [scene]
+Widget	0x28	Widget *	linked	H: partner widget notified on press/hover [scene]
+
+Widget_vftable	0x4	void *	Draw	H [widgets.h]
+Widget_vftable	0x8	void *	MatchesHotkey	H [hotkeys.md]
+Widget_vftable	0xc	void *	HandleClick	M [mouse.md, rtti]
+Widget_vftable	0x14	void *	Offset	H: slot 5 (dx, dy) [WIKI_LOG, menu.cpp]
+Widget_vftable	0x20	void *	Release	H [game.h, rtti]
+Widget_vftable	0x24	void *	LoadImages	M [hotkeys.md, rtti]
+
+tGuidePoint	size	0x28		H [path]
+tGuidePoint	0x0	void *	vptr	H: vtable 0x50941c [path]
+tGuidePoint	0x4	short	index	H [path]
+tGuidePoint	0x8	IPixelC	pos	H: corner pixel (x +0xc, y +0xe) [path]
+tGuidePoint	0x10	IPixelC	dir	H: outward corner direction (dx +0x14, dy +0x16), each +-1 [path]
+tGuidePoint	0x18	void *	neighborsVptr	H: IList<tNeighbor> vtable 0x5030b4 [path]
+tGuidePoint	0x1c	tGuidePoint::tNeighbor *	neighbors	H [path]
+tGuidePoint	0x20	unsigned int	neighborCount	H: read as a byte by the A* loop [path]
+tGuidePoint	0x24	unsigned int	neighborCapacity	H [path]
+
+tGuidePoint::tNeighbor	size	0x8		H [path]
+tGuidePoint::tNeighbor	0x0	void *	vptr	H: vtable 0x509414 [path]
+tGuidePoint::tNeighbor	0x4	short	index	H: -1 = free slot [path]
+tGuidePoint::tNeighbor	0x6	unsigned short	cost	H: round(euclidean px) [path]
+
+tPlayerSlot	size	0x28		H: CommandModel slots [ai]
+tPlayerSlot	0x0	unsigned char	used	H: 1 = used [ai]
+tPlayerSlot	0x1	char[23]	name	M [ai]
+tPlayerSlot	0x18	int	machineId	M: MP machine id; SP slot ordinal [ai]
+tPlayerSlot	0x1c	unsigned char	clan	H [ai]
+tPlayerSlot	0x1d	unsigned char	colour	H: same colour in MP = co-op on one APlayer [ai]
+tPlayerSlot	0x1e	unsigned char	team	H: copied to APlayer+0x4a30 in MP only [ai]
+tPlayerSlot	0x24	short	isHuman	H [ai]
+
+tPointState	size	0xc		H [path]
+tPointState	0x0	IPixelC	goal	H [path]
+tPointState	0x8	unsigned short	guideIndex	H [path]

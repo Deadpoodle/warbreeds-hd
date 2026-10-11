@@ -115,7 +115,7 @@ constexpr uintptr_t DrawInfoPanelCall = 0x47c1a9;  // in SGame_DrawInterface 0x4
 constexpr uintptr_t WorldPanelClickDown = 0x44f620;
 constexpr uintptr_t PanelClickDownCalls[] = {
     0x47dad6,  // SGame::LButtonDown 0x47d500
-    0x47eec9,  // SGame vtable slot 0x24 0x47eea0 (the second click of a double click)
+    0x47eec9,  // SGame vtable slot 0x30 0x47eea0, the double-click handler (slot 0x24 is RButtonDown 0x47e6a0)
     0x47d97b,  // SGame::LButtonDown with F10 held (debug panel drag)
 };
 // void __thiscall SGame::UpdateCursor 0x47c3d0 (no args): picks the mission

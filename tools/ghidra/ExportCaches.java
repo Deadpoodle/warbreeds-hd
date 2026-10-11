@@ -67,7 +67,7 @@ public class ExportCaches extends GhidraScript {
                 if (monitor.isCancelled()) break;
                 w.printf("%s\t%s\t%d\t%d\t%d\t%s%n", f.getEntryPoint(), qname(f), f.getBody().getNumAddresses(),
                         f.getCallingFunctions(monitor).size(), f.getCalledFunctions(monitor).size(),
-                        f.getPrototypeString(false, false));
+                        f.getPrototypeString(false, true));
                 count++;
             }
         }
