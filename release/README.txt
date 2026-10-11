@@ -91,7 +91,8 @@ Map editor
     next to Tar, for example). A refused stroke says what is in the way.
   - Save As (up to 8 letters) processes the map for pathfinding and saves it
     in DATA\MAPS, where the skirmish setup finds it. The game's own maps are
-    never overwritten. Test Map saves and starts a skirmish on the map.
+    never overwritten. Test Map saves and starts a skirmish on the map; it
+    asks first, so click it twice.
 
 Controls (full list in Controls.html)
   - Mouse wheel and numpad +/- zoom. Arrow keys scroll smoothly.

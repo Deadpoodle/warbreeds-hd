@@ -38,6 +38,7 @@ bool Idle();                     // editing, nothing in progress (no name entry,
 int SaveCount();                 // completed saves since the editor opened
 bool CellCentre(int cx, int cy, POINT& frame);  // frame pixel of a cell's centre, if on screen
 int TestStage();                 // Test Map: 0 none, 1.. in progress
+int LateMoves();                 // panel items moved at draw time (zoom resized the frame)
 int TypeTile(const char* name);  // the tile a palette entry stamps, -1 if none
 std::string TypeTiles(const char* name);  // every tile it may paint, "1,2,3" (tests)
 // Would a stroke paint there without a refusal? (tests choose legal terrains; the map is untouched)

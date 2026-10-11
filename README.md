@@ -62,7 +62,7 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 - The map opens in the normal game view with everything frozen and no fog, so the camera, zoom and minimap work as in a mission.
 - Pick a terrain, a brush size (1, 2, 3 or 5), then drag to paint; Shift+drag fills a rectangle; right-click picks the terrain under the cursor. Undo and redo with Ctrl+Z and Ctrl+Y.
 - Smart painting, as in the original editor: terrain blends into its neighbours with the game's own transition tiles, and only goes next to terrain it has transitions for (Lava next to Tar, for example). A refused stroke says what is in the way.
-- Save As writes the map to `DATA\MAPS` after the game's own map processing (pathfinding), so it appears in the skirmish map list. Built-in maps are never overwritten. Test Map saves and starts a skirmish on it.
+- Save As writes the map to `DATA\MAPS` after the game's own map processing (pathfinding), so it appears in the skirmish map list. Built-in maps are never overwritten. Test Map (click twice: it asks first) saves and starts a skirmish on it.
 
 **Controls** (the full list is in [docs/controls.html](docs/controls.html))
 - Arrow keys scroll smoothly. Optional WASD.

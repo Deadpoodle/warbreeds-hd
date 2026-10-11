@@ -181,7 +181,7 @@ struct State {
     int baseType = -1;  // New Map's base terrain (tests)
     Phase phase = kIdle;
     std::string name;      // Save As name being typed
-    bool testAfter = false, replaceArmed = false, exitArmed = false;
+    bool testAfter = false, testArmed = false, replaceArmed = false, exitArmed = false;
     std::string savePath, lastSaved;
     int saves = 0;
     bool saveDone = false, inSave = false;
@@ -201,7 +201,7 @@ struct State {
     DWORD openAt = 0;
 } g;
 
-// Test Map, after the editor has gone.
+// The test skirmish (autopilot), after the editor has gone.
 struct TestRun {
     int stage = 0;
     std::string file;
@@ -235,6 +235,7 @@ uintptr_t g_vtbl[40];  // our copy of the WTextButton2 vtable
 constexpr int kPanelX = 10, kPanelW = 250, kRowH = 16, kRows = 19, kPalRows = 12, kBottomMargin = 10;
 constexpr int kStatusChars = 32;  // per status row (the panel is about 35 of the game's capitals wide)
 constexpr int kStyle = 25, kStyleLit = 0x1b;  // WBMd14 white / yellow
+int g_lateMoves = 0;  // items the draw had to move (the frame size changed since the tick)
 int g_dark = -1;    // darkest palette index (the panel's background)
 int g_yellow = -1;  // the mission palette's nearest to the menus' highlight yellow
 // Text colours: 32 colour objects at 0x550910, +4 = 0x80000000 | palette index. Style
@@ -290,10 +291,26 @@ void Background() {
     }
 }
 
+// An item's place in the bottom-left corner of the current frame. Smooth zoom
+// changes the frame size between the frame-start tick and the draw, so this
+// runs again as each item draws, from the same frame size as Background().
+bool Place(const Item& it) {
+    short* r = Rect(it.b);
+    short want[2] = {(short)(kPanelX + it.x), (short)(PanelTop() + it.row * kRowH)};
+    if (r[0] == want[0] && r[1] == want[1]) return false;
+    int w = r[2] - r[0];
+    r[0] = want[0];
+    r[1] = want[1];
+    r[2] = (short)(want[0] + std::max(w, 8));
+    r[3] = (short)(want[1] + kRowH - 2);
+    return true;
+}
+
 void __thiscall ItemDraw(void* b) {
     const Item* me = nullptr;
     for (const Item& it : g_items)
         if (it.b == b) me = &it;
+    if (me && Place(*me)) ++g_lateMoves;
     if (me && me->kind == kTitle) Background();
     bool hover = me && me->clickable && InItem(*me, game::at<short>(game::CursorX), game::at<short>(game::CursorY));
     int* normal = (int*)((char*)b + 0x6c);
@@ -342,7 +359,7 @@ void BuildPanel() {
     AddItem(kUndo, 0, kTools + 1, 0, "Undo", true);
     AddItem(kRedo, 0, kTools + 1, 70, "Redo", true);
     AddItem(kSaveAs, 0, kTools + 2, 0, "Save As", true);
-    AddItem(kTest, 0, kTools + 2, 85, "Test Map", true);
+    AddItem(kTest, 0, kTools + 2, 85, "Test Map", true);  // "Cancel" while naming
     AddItem(kExit, 0, kTools + 2, 180, "Exit", true);
     AddItem(kStatus, 0, kTools + 3, 0, "", false);
     AddItem(kStatus, 1, kTools + 4, 0, "", false);
@@ -361,19 +378,10 @@ std::string StatusRow(int i) {
 // Every frame: positions (the frame size changes with the zoom; the panel
 // keeps to the bottom-left corner) and texts.
 void UpdatePanel() {
-    int top = PanelTop();
     int pages = std::max(1, (g.painter->TypeCount() + kPalRows - 1) / kPalRows);
     g.page = std::clamp(g.page, 0, pages - 1);
     for (Item& it : g_items) {
-        short* r = Rect(it.b);
-        short want[2] = {(short)(kPanelX + it.x), (short)(top + it.row * kRowH)};
-        if (r[0] != want[0] || r[1] != want[1]) {
-            int w = r[2] - r[0];
-            r[0] = want[0];
-            r[1] = want[1];
-            r[2] = (short)(want[0] + std::max(w, 8));
-            r[3] = (short)(want[1] + kRowH - 2);
-        }
+        Place(it);
         switch (it.kind) {
         case kTitle: SetText(it.b, "Map Editor: " + g.title + (Dirty() ? " *" : "")); break;
         case kLabel: SetText(it.b, pages > 1 ? "Terrain " + std::to_string(g.page + 1) + "/" + std::to_string(pages) : "Terrain"); break;
@@ -391,7 +399,10 @@ void UpdatePanel() {
         case kUndo: SetLit(it.b, false); SetText(it.b, g.undo.empty() ? "" : "Undo"); it.clickable = !g.undo.empty(); break;
         case kRedo: SetText(it.b, g.redo.empty() ? "" : "Redo"); it.clickable = !g.redo.empty(); break;
         case kSaveAs: SetText(it.b, g.phase == kNaming ? "Save" : "Save As"); SetLit(it.b, g.phase == kNaming); break;
-        case kTest: SetText(it.b, g.phase == kNaming ? "Cancel" : "Test Map"); break;
+        case kTest:
+            SetText(it.b, g.phase == kNaming ? "Cancel" : g.testArmed ? "Test Map?" : "Test Map");
+            SetLit(it.b, g.phase != kNaming && g.testArmed);
+            break;
         case kExit: SetText(it.b, g.exitArmed ? "Exit?" : "Exit"); SetLit(it.b, g.exitArmed); break;
         case kStatus: SetText(it.b, StatusRow(it.arg)); break;
         default: break;
@@ -446,7 +457,7 @@ void EndStroke(const char* what) {
     }
     g.redo.clear();
     SetStatus(std::string(what) + ": " + std::to_string(net.size()) + " cells");
-    g.exitArmed = false;
+    g.exitArmed = g.testArmed = false;
 }
 
 void Apply(const Changes& c, bool forward) {
@@ -490,7 +501,9 @@ std::string SuggestName() {
     return stem;
 }
 
-void ShowNaming() { SetStatus("Name: " + g.name + "_   Enter saves"); }
+void ShowNaming() {
+    SetStatus("Name: " + g.name + "_   Enter saves" + (g.testAfter ? ", then starts a test skirmish" : ""));
+}
 
 void StartNaming(bool test) {
     g.phase = kNaming;
@@ -620,7 +633,7 @@ void StartTest(const std::string& path) {
     g_test.stage = 1;
     g_test.file = path.substr(path.find_last_of("\\/") + 1);
     g_test.at = GetTickCount();
-    g_h.log("editor: Test Map %s: to the skirmish setup", g_test.file.c_str());
+    g_h.log("editor: test skirmish %s: to the skirmish setup", g_test.file.c_str());
     Leave(false);
 }
 
@@ -779,6 +792,8 @@ void Click(const Item& it) {
     ((void(__cdecl*)())kClickSound)();
     if (g.phase == kProcessing || g.phase == kSaving) return;
     if (it.kind != kExit) g.exitArmed = false;
+    if (it.kind != kTest) g.testArmed = false;
+    g_h.log("editor: clicked %s", (char*)it.b + 0x2c);
     if (g.phase == kNaming && it.kind != kSaveAs && it.kind != kTest) return;
     switch (it.kind) {
     case kPal: g.type = g.page * kPalRows + it.arg; SetStatus("Terrain: " + g.painter->TypeName(g.type)); break;
@@ -794,13 +809,20 @@ void Click(const Item& it) {
             StartNaming(false);
         break;
     case kTest:
+        // Leaves the editor for a skirmish, so it asks first, as Exit does.
         if (g.phase == kNaming) {  // "Cancel"
             g.phase = kIdle;
+            g.testAfter = false;
             SetStatus("Not saved");
-        } else if (!g.lastSaved.empty() && !Dirty()) {
-            StartTest(g.lastSaved);
+        } else if (!g.testArmed) {
+            g.testArmed = true;
+            SetStatus("Test Map saves and starts a skirmish on this map: click again");
         } else {
-            StartNaming(true);
+            g.testArmed = false;
+            if (!g.lastSaved.empty() && !Dirty())
+                StartTest(g.lastSaved);
+            else
+                StartNaming(true);
         }
         break;
     case kExit:
@@ -831,7 +853,7 @@ short __thiscall HookLDown(void* sg, int x, int y) {
     if (g.phase != kIdle) return 1;
     int cx, cy;
     if (!CellAt(x, y, cx, cy)) return 1;
-    g.exitArmed = false;
+    g.exitArmed = g.testArmed = false;
     BeginStroke();
     if (g.shift || GetKeyState(VK_SHIFT) < 0) {  // Shift: drag a rectangle to fill
         g.fill = true;
@@ -944,7 +966,7 @@ bool PatchCall(uintptr_t site, uintptr_t expect, void* hook) {
     return true;
 }
 
-// --- Test Map: from the hub to a started skirmish ----------------------------------
+// --- Test skirmish (autopilot only): from the hub to a started skirmish ----------------------------------
 
 uintptr_t TopScene() {
     short top = game::at<short>(game::SceneTop);
@@ -962,19 +984,19 @@ void TickTest() {
         ((void(__cdecl*)(int, int, int))kQueueScene)(0x21, 5, 5);
         g_test.stage = 2;
         g_test.at = now;
-        g_h.log("editor: Test Map: opening the skirmish setup");
+        g_h.log("editor: test skirmish: opening the skirmish setup");
     } else if (g_test.stage == 2 && vt == kVtblMultiSetup && idle && now - g_test.at > 1500) {
         ((void(__cdecl*)(int, int, int))kSceneSend)(5, 0, (int)(uintptr_t)g_test.file.c_str());  // the map
         g_test.stage = 3;
         g_test.at = now;
-        g_h.log("editor: Test Map: map %s chosen", g_test.file.c_str());
+        g_h.log("editor: test skirmish: map %s chosen", g_test.file.c_str());
     } else if (g_test.stage == 3 && vt == kVtblMultiSetup && idle && now - g_test.at > 1500) {
         void* start = *(void**)(top + kMultiSetupStartButton);
-        g_h.log("editor: Test Map: Start");
+        g_h.log("editor: test skirmish: Start");
         g_test.stage = 0;
         if (start) ((void(__thiscall*)(uintptr_t, void*))kMultiSetupStart)(top, start);
     } else if (g_test.stage && now - g_test.at > 30000) {
-        g_h.log("editor: Test Map: gave up (stage %d)", g_test.stage);
+        g_h.log("editor: test skirmish: gave up (stage %d)", g_test.stage);
         g_test.stage = 0;
     }
 }
@@ -1059,7 +1081,7 @@ bool OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
         bool ctrl = g.ctrl || GetKeyState(VK_CONTROL) < 0;
         if (g.phase == kNaming) {
             if (wp == VK_RETURN) ConfirmName();
-            else if (wp == VK_ESCAPE) { g.phase = kIdle; SetStatus("Not saved"); }
+            else if (wp == VK_ESCAPE) { g.phase = kIdle; g.testAfter = false; SetStatus("Not saved"); }
             else if (wp == VK_BACK && !g.name.empty()) { g.name.pop_back(); g.replaceArmed = false; ShowNaming(); }
         } else if (ctrl && wp == 'Z') {
             Undo();
@@ -1092,6 +1114,7 @@ std::string Status() { return g.status; }
 bool Idle() { return Editing() && g.phase == kIdle && !g.stroking; }
 int SaveCount() { return g.saves; }
 int TestStage() { return g_test.stage; }
+int LateMoves() { return g_lateMoves; }
 
 int TypeTile(const char* name) {
     if (!g.painter) return -1;

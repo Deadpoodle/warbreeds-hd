@@ -191,6 +191,17 @@ def main(argv):
         check(all(s["computer"] for s in slots[1:]) and not slots[0]["computer"], "slot 0 human, the rest computer")
         ai = [a for a in m["ai"]]
         check(all(a["marker"] == 0x0D for a in ai), "every computer player has AI state (%d)" % len(ai))
+    log_path = os.path.join(game, "WarBreedsHD.log")
+    if os.path.exists(log_path):
+        log = open(log_path, encoding="latin-1").read().splitlines()
+        asks = [l for l in log if "autopilot: after Test Map:" in l]
+        if asks:
+            check("click again" in asks[-1] and asks[-1].rstrip().endswith("(test stage 0)"),
+                  "Test Map asks before leaving the editor")
+        late = [l for l in log if "panel items re-placed at draw time" in l]
+        if late:
+            print("  " + late[-1].split("autopilot: ")[-1])
+        check(any("Test Map skirmish running" in l for l in log), "Test Map started a skirmish on the saved map")
     print("ALL PASS" if ok else "SOME CHECKS FAILED")
     return 0 if ok else 1
 

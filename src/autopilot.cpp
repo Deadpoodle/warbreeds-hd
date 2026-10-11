@@ -343,7 +343,8 @@ const Step kGroup[] = {
 //
 // AutopilotTarget 0: main menu -> Map Editor -> "4 Corners" (MPMAP1); paint
 // three strokes (Lava brush 1, Sand brush 3, Crystal brush 1), undo the last
-// (Ctrl+Z), right-click pick, Save As HDTEST, Test Map (a skirmish on it).
+// (Ctrl+Z), right-click pick, Save As HDTEST, a wheel zoom-out, Test Map (asks
+// once, then a skirmish on it).
 // AutopilotTarget 1: Map Editor -> New Map, 48 x 48, Create; one Lava stroke,
 // Save As HDNEW, Test Map.
 // AutopilotTarget 2: Map Editor -> "East vs. West" (MPMAP7), one stroke, Exit
@@ -682,14 +683,39 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
             g_h.log("autopilot: saved: %s", editor::Status().c_str());
             Expect("saved %s", name);
             if (g_expect) fclose(g_expect), g_expect = nullptr;
-            for (int i = 0; i < 4; ++i) g_h.zoomStep(+1);  // zoom out: the panel keeps its size
-            next(110);
+            next(110);  // zoom out with the wheel: the panel keeps its size and place
         } else if (dt > 60000) {
             g_h.log("autopilot: no save after 60 s (%s)", editor::Status().c_str());
             next(99);
         }
         break;
     case 110:
+        // Mid-animation: the frame grows every frame, and the panel (box and
+        // texts) must stay together in the bottom-left corner.
+        {
+            static bool notch[6], shot[3];
+            static int lateBefore;
+            if (dt == 0) {
+                for (bool& b : notch) b = false;
+                for (bool& b : shot) b = false;
+                lateBefore = editor::LateMoves();
+            }
+            for (int i = 0; i < 6; ++i)
+                if (!notch[i] && dt > 60u + 90u * i) {  // a notch every few frames, as a player wheels
+                    notch[i] = true;
+                    Post(WM_MOUSEWHEEL, MAKEWPARAM(0, -WHEEL_DELTA), {frameW / 2, frameH / 2});
+                }
+            for (int i = 0; i < 3; ++i)
+                if (!shot[i] && dt > 150u + 180u * i) {
+                    shot[i] = true;
+                    char tag[32];
+                    snprintf(tag, sizeof tag, "%s-zooming%d", fresh ? "n4a" : "e8a", i);
+                    Save(tag);
+                }
+            if (dt > 2000)
+                g_h.log("autopilot: wheel zoom: panel items re-placed at draw time %d times",
+                        editor::LateMoves() - lateBefore);
+        }
         if (dt > 2000) {
             Save(fresh ? "n4b-zoomed-out" : "e8b-zoomed-out");
             LogView();
@@ -697,9 +723,17 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
             next(111);
         }
         break;
-    case 111:
+    case 111:  // Test Map asks first
         if (dt > 2000) {
             ClickWidget("Test Map", false);
+            next(112);
+        }
+        break;
+    case 112:
+        if (dt > 800) {
+            Save(fresh ? "n4c-test-asks" : "e8c-test-asks");
+            g_h.log("autopilot: after Test Map: %s (test stage %d)", editor::Status().c_str(), editor::TestStage());
+            ClickWidget("Test Map", false);  // "Test Map?"
             next(12);
         }
         break;
