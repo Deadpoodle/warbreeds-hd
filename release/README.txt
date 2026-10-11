@@ -1,10 +1,11 @@
-WarBreeds HD 0.13.1
+WarBreeds HD 0.13.2
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
 run well on modern Windows: native widescreen resolutions, smooth zoom, sharp
 scaling, windowed mode, working cutscenes, a Settings page on the main menu,
-modern controls and a map editor. You need your own copy of the game (tested
+modern controls, a map editor, and the game's own multiplayer working
+again. You need your own copy of the game (tested
 with the GOG.com release).
 
 Nothing in the game's own files is changed. The patch is a set of extra files
@@ -34,7 +35,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
    WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.13.1" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.13.2" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -145,6 +146,31 @@ Fixes
     original behaviour).
   - With the Orbitron font, text that would run wider than the original font
     is narrowed to fit, so titles stay inside their bars.
+
+
+MULTIPLAYER
+-----------
+
+The main menu's Multiplayer works again: the game's own LAN and Internet
+play over TCP/IP, for up to four players. (On the GOG release it only showed
+an error, and earlier versions of this patch broke it too; both are fixed.)
+
+  - Every player needs WarBreeds HD, all on the same version.
+  - Windows needs DirectPlay. If the game says it can't open multiplayer
+    communications, turn it on: Control Panel > Programs > Turn Windows
+    features on or off > Legacy Components > DirectPlay.
+  - To host: Multiplayer, enter your name, Internet TCP/IP, Create.
+    To join: the same, but Join, then type the host's IP address
+    (on a home network it looks like 192.168.x.x; "ipconfig" shows it).
+  - The host may need to allow WARBREED.EXE through Windows Firewall.
+    Over the Internet, the host's router must forward DirectPlay's ports
+    (TCP and UDP 47624, and 2300-2400).
+  - IPX, the game's other 1998 option, doesn't exist on modern Windows.
+  - After Start, the game takes about half a minute to begin while it
+    measures each player's connection.
+  - Two copies on one PC work too; each copy takes its own CPU core.
+
+Tested with two copies on one PC; games between PCs are not tested yet.
 
 
 UNINSTALL

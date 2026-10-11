@@ -34,6 +34,68 @@
 
 namespace {
 
+// Multiplayer start-up (UComms 0x4c7a30): CoInitialize, then DirectPlay
+// through the game's one CoCreateInstance call (0x4c7a77). GOG's WARBREED.DLL
+// patches that call to its own loader, which takes DllGetClassObject from
+// LoadLibraryW("dplayx"); that name resolves to GOG's DirectPlay stub in the
+// game folder, which has no DllGetClassObject, so it always failed with
+// REGDB_E_CLASSNOTREG ("An error occurred while attempting to open multiplayer
+// communications"). The call goes back to the game's import (COM, which loads
+// the system's DirectPlay when the Windows feature is on), with GOG's loader
+// kept as the fallback.
+decltype(&CoInitialize) o_CoInitialize;
+decltype(&CoCreateInstance) o_CoCreateInstance;
+decltype(&CoCreateInstance) g_gogCreate;  // GOG's loader, if it had patched the call
+void Log(const char* fmt, ...);
+constexpr uintptr_t kCommsCoInitReturn = 0x4c7a43, kCommsCreateOperand = 0x4c7a79, kCreateSlot = 0x595b30;
+const GUID kClsidDirectPlay = {0xd1eb6d20, 0x8923, 0x11d0, {0x9d, 0x97, 0x00, 0xa0, 0xc9, 0x0a, 0x43, 0xcb}};
+
+HRESULT WINAPI h_CoInitialize(LPVOID reserved) {
+    HRESULT hr = o_CoInitialize(reserved);
+    if (__builtin_return_address(0) == (void*)kCommsCoInitReturn) {
+        uintptr_t& operand = *(uintptr_t*)kCommsCreateOperand;
+        if (operand != kCreateSlot) {
+            g_gogCreate = *(decltype(&CoCreateInstance)*)operand;
+            DWORD old;
+            if (VirtualProtect(&operand, 4, PAGE_EXECUTE_READWRITE, &old)) {
+                operand = kCreateSlot;
+                VirtualProtect(&operand, 4, old, &old);
+                FlushInstructionCache(GetCurrentProcess(), &operand, 4);
+            }
+        }
+        Log("multiplayer: CoInitialize -> %#lx%s", (unsigned long)hr,
+            hr == S_OK ? "" : " (the game expects S_OK: something left COM initialised on this thread)");
+    }
+    return hr;
+}
+
+// [Debug] CommsLog=1: the multiplayer engine's own debug text (0x4c60f0,
+// printf-style, most of it filtered out before OutputDebugString) to our log.
+void __cdecl h_CommsDebug(const char* fmt, ...) {
+    if (!fmt) return;
+    char text[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+    size_t n = strlen(text);
+    while (n && (text[n - 1] == 10 || text[n - 1] == 13)) text[--n] = 0;
+    Log("comms: %s", text);
+}
+
+HRESULT WINAPI h_CoCreateInstance(REFCLSID clsid, LPUNKNOWN outer, DWORD ctx, REFIID iid, LPVOID* out) {
+    HRESULT hr = o_CoCreateInstance(clsid, outer, ctx, iid, out);
+    if (IsEqualGUID(clsid, kClsidDirectPlay)) {
+        Log("multiplayer: DirectPlay through COM -> %#lx", (unsigned long)hr);
+        if (FAILED(hr) && g_gogCreate) {
+            hr = g_gogCreate(clsid, outer, ctx, iid, out);
+            Log("multiplayer: DirectPlay through GOG's loader -> %#lx", (unsigned long)hr);
+        }
+    }
+    return hr;
+}
+
+
 std::string g_dir;  // game folder, with trailing backslash
 FILE* g_log;
 
@@ -198,6 +260,9 @@ void WriteDefaultIni() {
         "; Run the game on a single CPU core. Its 1998 thread code can deadlock on\n"
         "; multi-core CPUs (GOG's DDrawCompat does the same). Leave on.\n"
         "SingleCPU=1\n"
+        "; Which core: -1 = the first one no other running copy of the game uses\n"
+        "; (two copies on one PC, e.g. to try multiplayer); 0, 1, 2... = that core.\n"
+        "CPU=-1\n"
         "\n"
         "[Render]\n"
         "; d3d11 - WarBreeds HD draws the game itself (recommended; no flicker on zoom)\n"
@@ -857,11 +922,23 @@ void Init(HMODULE self) {
         DWORD_PTR proc, sys;
         if (GetProcessAffinityMask(GetCurrentProcess(), &proc, &sys) && proc) {
             DWORD_PTR one = proc & (~proc + 1);  // lowest allowed CPU
-            // [Compat] CPU=n picks the n-th allowed CPU instead (e.g. to keep a
-            // second copy, like the automated test one, off the first's core).
-            int n = IniInt("Compat", "CPU", 0);
-            for (DWORD_PTR m = proc, i = 0; m; m &= m - 1, ++i)
-                if ((int)i == n) one = m & (~m + 1);
+            // [Compat] CPU=n picks the n-th allowed CPU. By default each copy of
+            // the game claims the first core no other copy holds: two copies on
+            // one core starve each other's network threads, and a multiplayer
+            // host then drops the other copy as too slow (ping over 1.2 s).
+            int n = IniInt("Compat", "CPU", -1);
+            for (DWORD_PTR m = proc, i = 0; m; m &= m - 1, ++i) {
+                DWORD_PTR bit = m & (~m + 1);
+                if (n < 0) {
+                    char name[64];
+                    snprintf(name, sizeof name, "Local\\WarBreedsHD-CPU-%u", (unsigned)i);
+                    HANDLE claim = CreateMutexA(nullptr, FALSE, name);  // held until exit
+                    if (claim && GetLastError() != ERROR_ALREADY_EXISTS) { one = bit; break; }
+                    if (claim) CloseHandle(claim);
+                } else if ((int)i == n) {
+                    one = bit;
+                }
+            }
             SetProcessAffinityMask(GetCurrentProcess(), one);
             Log("pinned to one CPU (mask %#lx)", (unsigned long)one);
         }
@@ -976,6 +1053,21 @@ void Init(HMODULE self) {
     // After the renderer: its SelectObject/DeleteObject hooks are chained.
     fonts::Install(g_dir.c_str(), Log);
     ApplyFontOption();
+    // Multiplayer start-up: DirectPlay through COM again (see h_CoInitialize).
+    render::HookImport(0x595b34, &h_CoInitialize, &o_CoInitialize);
+    render::HookImport(0x595b30, &h_CoCreateInstance, &o_CoCreateInstance);
+    if (IniInt("Debug", "CommsLog", 0)) {
+        uint8_t* p = (uint8_t*)0x4c60f0;
+        const uint8_t expect[] = {0x8b, 0x4c, 0x24, 0x04, 0x81, 0xec};
+        DWORD old;
+        if (memcmp(p, expect, sizeof expect) == 0 && VirtualProtect(p, 5, PAGE_EXECUTE_READWRITE, &old)) {
+            p[0] = 0xe9;  // jmp h_CommsDebug (same cdecl arguments)
+            *(int32_t*)(p + 1) = (int32_t)((uintptr_t)&h_CommsDebug - (uintptr_t)(p + 5));
+            VirtualProtect(p, 5, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), p, 5);
+            Log("comms log: on");
+        }
+    }
 }
 
 }  // namespace

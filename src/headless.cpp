@@ -38,6 +38,14 @@ UINT WINAPI h_WaveOutOpen(void*, UINT, const void*, DWORD_PTR, DWORD_PTR, DWORD)
 UINT WINAPI h_MidiOutOpen(void*, UINT, DWORD_PTR, DWORD_PTR, DWORD) { return 6; }
 DWORD WINAPI h_MciSendCommandA(UINT, UINT, DWORD_PTR, DWORD_PTR) { return 256 + 6; }  // MCIERR_HARDWARE
 
+// A test run must never show a window on the player's screen: the game's
+// message boxes (e.g. the comms start-up's) are logged and answered OK.
+void (*g_log)(const char*, ...);
+int WINAPI h_MessageBoxA(HWND, LPCSTR text, LPCSTR caption, UINT) {
+    g_log("headless: MessageBox \"%s\": %s", caption ? caption : "", text ? text : "");
+    return IDOK;
+}
+
 template <typename T>
 void Slot(uintptr_t slot, T fn) {
     T unused;
@@ -57,6 +65,8 @@ void Install(void (*log)(const char*, ...)) {
     Slot(0x595a84, &h_WaveOutOpen);
     Slot(0x595a78, &h_MidiOutOpen);
     Slot(0x595ab0, &h_MciSendCommandA);
+    g_log = log;
+    Slot(0x5959f4, &h_MessageBoxA);
     log("headless: window hidden off-screen, no activation, audio disabled");
 }
 

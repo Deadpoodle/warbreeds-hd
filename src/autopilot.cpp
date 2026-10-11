@@ -2313,6 +2313,118 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
         return;
     }
+    if (g_h.mode == 20) {
+        // Multiplayer. Target 0: open the connection screen. Target 1 hosts a
+        // TCP/IP game as "HOST"; target 2 joins it at 127.0.0.1 as "JOIN"
+        // (run both at once, in two test copies). Each new screen is logged
+        // with its widgets and photographed; message boxes are logged by the
+        // headless hooks.
+        static int shots, acted;
+        static DWORD at, lastStart;
+        static std::string last;
+        bool host = g_h.target == 1, join = g_h.target == 2;
+        std::string top = g_h.topScene ? g_h.topScene() : "";
+        std::string key = scene + " / " + top;
+        auto typeText = [&](const char* text) {
+            for (int i = 0; i < 16; ++i) {
+                PostKey(WM_KEYDOWN, VK_BACK);
+                PostKey(WM_KEYUP, VK_BACK);
+            }
+            // These screens read key presses (virtual keys), not WM_CHAR.
+            for (const char* q = text; *q; ++q) {
+                WPARAM vk = *q == '.' ? VK_OEM_PERIOD : (WPARAM)toupper((unsigned char)*q);
+                PostKey(WM_KEYDOWN, vk);
+                PostMessageA(render::GameWindow(), WM_CHAR, (WPARAM)*q, 1);
+                PostKey(WM_KEYUP, vk);
+            }
+            g_h.log("autopilot: multiplayer: typed %s", text);
+        };
+        auto click = [&](const char* text) {
+            bool ok = ClickWidget(text, true);
+            g_h.log("autopilot: multiplayer: click \"%s\": %s", text, ok ? "done" : "not found");
+            return ok;
+        };
+        if (key != last) {
+            last = key;
+            at = now;
+            acted = 0;
+            g_h.log("autopilot: multiplayer: now %s; widgets: %s", key.c_str(), menu::WidgetTexts().c_str());
+        }
+        DWORD in = now - at;
+        if (in > 1200 && acted == 0) {
+            Save(("mp" + std::to_string(g_h.target) + "-" + std::to_string(++shots)).c_str());
+            acted = 1;
+        }
+        if (scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos && t > 2500 && acted == 1) {
+            click("Multiplayer");
+            acted = 2;
+        } else if (top.find("SMultiDialog") != std::string::npos && in > 1600 && acted == 1) {
+            if (!host && !join) {
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+            } else {
+                click("Enter a Name");
+                typeText(host ? "HOST" : "JOIN");
+            }
+            acted = 2;
+        } else if (top.find("SMultiDialog") != std::string::npos && in > 2600 && acted == 2) {
+            g_h.log("autopilot: multiplayer: widgets now: %s", menu::WidgetTexts().c_str());
+            if (!click("Internet TCP/IP")) {
+                Click({310, 221});  // the first connection button (TCP/IP) on the 640x480 screen
+                g_h.log("autopilot: multiplayer: clicked the first connection button at 310,221");
+            }
+            acted = 3;
+        } else if (top.find("SIPJoin") != std::string::npos && in > 1600 && acted == 1) {
+            Click(host ? POINT{320, 252} : POINT{320, 292});  // Create / Join (painted labels)
+            g_h.log("autopilot: multiplayer: clicked %s", host ? "Create" : "Join");
+            acted = 2;
+        } else if (top.find("STCPIP") != std::string::npos && in > 1600 && acted == 1) {
+            typeText("127.0.0.1");
+            acted = 2;
+        } else if (top.find("STCPIP") != std::string::npos && in > 2600 && acted == 2) {
+            g_h.log("autopilot: multiplayer: widgets now: %s", menu::WidgetTexts().c_str());
+            Click({252, 345});  // OK (painted label)
+            g_h.log("autopilot: multiplayer: clicked OK");
+            acted = 3;
+        } else if (top.find("SJoinCreate") != std::string::npos && join && in > 3000 && acted == 1) {
+            g_h.log("autopilot: multiplayer: games: %s", menu::WidgetTexts().c_str());
+            if (click("host")) acted = 2;  // the game stores names in lower case
+            else at = now - 1200;  // look again shortly
+        } else if (top.find("SJoinCreate") != std::string::npos && join && in > 4000 && acted == 2) {
+            Click({320, 410});  // Join (painted label; Create 220, Cancel 420)
+            g_h.log("autopilot: multiplayer: clicked Join");
+            acted = 3;
+        } else if (top.find("SMultiSetup") != std::string::npos && in > 4000 && acted == 1) {
+            // Each player ticks its own Ready? box (row 1 the host, row 2 the joiner).
+            Click(host ? POINT{37, 92} : POINT{37, 132});
+            g_h.log("autopilot: multiplayer: clicked Ready");
+            acted = 2;
+        } else if (top.find("SMultiSetup") != std::string::npos && acted == 2 && now - lastStart > 5000) {
+            lastStart = now;
+            Save(("mp" + std::to_string(g_h.target) + "-lobby-" + std::to_string(++shots)).c_str());
+            if (host && in > 9000) {
+                Click({435, 456});  // Start (host only; painted label)
+                g_h.log("autopilot: multiplayer: clicked Start");
+            }
+        } else if (scene == ".?AVSMultiSetup@@" && top.find("SDialog") != std::string::npos && in > 1500 && acted == 1) {
+            // "Not all players are ready" (the joiner is still on its way): OK, try Start again.
+            Click({320, 340});
+            g_h.log("autopilot: multiplayer: dismissed: %s", menu::WidgetTexts().c_str());
+            acted = 2;
+        } else if (scene == ".?AVSGame@@" && acted >= 1 && acted <= 3 && in > (DWORD)(acted == 1 ? 6000 : acted == 2 ? 20000 : 40000)) {
+            // The game is running when the turn count (GetGameTurn 0x4708b0) moves.
+            char* me = *(char**)0x579288;
+            int turn = ((int (*)())0x4708b0)();
+            Save(("mp" + std::to_string(g_h.target) + "-in-game-" + std::to_string(acted)).c_str());
+            g_h.log("autopilot: multiplayer: in a game as player %d, turn %d", me ? *(short*)(me + 4) : -1, turn);
+            ++acted;
+        } else if (scene == ".?AVSGame@@" && in > 42000 && acted == 4) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            acted = 5;
+        }
+        return;
+    }
     if (scene == ".?AVSHeadquarters@@" && g_h.mode == 3) {
         // Bare main-menu background (no text, cursor parked off-frame).
         // AutopilotTarget=1: with the mouse over the top-right picture hotspot (lit).

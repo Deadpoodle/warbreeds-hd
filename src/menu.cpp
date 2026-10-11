@@ -817,6 +817,25 @@ bool FindWidget(const char* text, long& x, long& y) {
     return false;
 }
 
+std::string WidgetTexts() {
+    std::string out;
+    void* scene = TopScene();
+    if (!scene || IsBadReadPtr(scene, 0x14)) return out;
+    void** list = *(void***)((char*)scene + 0xc);
+    int count = *(int*)((char*)scene + 0x10);
+    if (!list || count < 0 || count > 256) return out;
+    for (int i = 0; i < count; ++i) {
+        char* w = (char*)list[i];
+        if (!w || IsBadReadPtr(w, 0x2c + 64)) continue;
+        std::string t(w + 0x2c, strnlen(w + 0x2c, 60));
+        short* r = (short*)(w + 0xc);
+        char buf[96];
+        snprintf(buf, sizeof buf, "%s@%d,%d; ", t.c_str(), (r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+        out += buf;
+    }
+    return out;
+}
+
 void HideAllWidgets() {
     void* scene = TopScene();
     if (!scene || IsBadReadPtr(scene, 0x14)) return;

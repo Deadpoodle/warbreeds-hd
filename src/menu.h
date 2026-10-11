@@ -26,6 +26,8 @@ void HideAllText();
 // Debug (autopilot): centre of the top scene's widget whose text starts with
 // `text` (any widget class with the common text field), in game pixels.
 bool FindWidget(const char* text, long& x, long& y);
+// The top scene's widget texts with their centres, "text@x,y; ..." (tests).
+std::string WidgetTexts();
 // Debug (autopilot): move every widget of the top scene off-screen (bare background).
 void HideAllWidgets();
 

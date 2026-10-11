@@ -5,6 +5,7 @@
 #        13 = map editor (TARGET=0 edit, 1 New Map, 2 Exit; then python tools/editor_check.py testrun)
 #        14 = event editor + Global AI (TARGET=0 edit and Test Map, 1 a map's own events;
 #             then python tools/events_check.py testrun)
+#        20 = multiplayer: use tools/mptest.sh (two copies, host and join)
 #        PROFILE=1 autotest.sh ...      also profile
 #        TESTDIR=testrun-x autotest.sh  another hidden test copy (relative to the repo, or absolute as C:/...),
 #                                       so two runs can go side by side

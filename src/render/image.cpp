@@ -8,7 +8,10 @@ namespace render {
 
 bool LoadImageBGRA(const std::string& path, int& w, int& h, std::vector<uint32_t>& pixels) {
     if (GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // fine if already initialised
+    // COM only for this load, undone below: left initialised on the game's thread,
+    // it made the game's own CoInitialize (multiplayer start-up, 0x4c7a30) return
+    // S_FALSE, which the game treats as an error ("Hey!!", then no multiplayer).
+    HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     IWICImagingFactory* factory = nullptr;
     IWICBitmapDecoder* decoder = nullptr;
     IWICBitmapFrameDecode* frame = nullptr;
@@ -33,6 +36,7 @@ bool LoadImageBGRA(const std::string& path, int& w, int& h, std::vector<uint32_t
     if (frame) frame->Release();
     if (decoder) decoder->Release();
     if (factory) factory->Release();
+    if (SUCCEEDED(com)) CoUninitialize();  // S_OK and S_FALSE both count
     return ok;
 }
 

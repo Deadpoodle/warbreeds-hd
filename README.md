@@ -8,7 +8,8 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - working cutscenes;
 - a Settings page;
 - modern controls;
-- the official map editor, built into the game.
+- the official map editor, built into the game;
+- the game's own multiplayer, working again.
 
 It needs your own copy of the game, and has been tested with the GOG.com release.
 
@@ -105,6 +106,12 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points, map settings, events (triggers) and Global AI, undo for all of it, and a map check.
 - Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
 
+**Multiplayer**
+- The main menu's Multiplayer works again: the game's own LAN and Internet play over TCP/IP, for up to four players. On the GOG release it only showed an error. GOG's DirectPlay workaround couldn't load DirectPlay, and earlier versions of WarBreeds HD also left Windows COM set up in a way the game's network start-up rejected. Both are fixed.
+- Every player needs WarBreeds HD (all on the same version) and Windows' DirectPlay feature.
+- One player picks Internet TCP/IP, then Create. The others pick Join and type the host's IP address. The host may need to allow WARBREED.EXE through Windows Firewall. IPX, the other 1998 option, doesn't exist on modern Windows.
+- Tested with two copies on one PC. Reports from games between PCs are welcome.
+
 **Controls** (the full list is in [docs/controls.html](docs/controls.html))
 - Arrow keys scroll smoothly. Optional WASD.
 - Unit groups: double-tap a number to centre on the group; Shift+number adds the group to the selection.
@@ -117,7 +124,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - Alt+F4 quits.
 
 **Fixes**
-- Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same.
+- Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same. Each running copy takes a core of its own, so two copies on one PC don't slow each other down.
 - Removes the in-mission resolution slider, which fought the new resolution handling.
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
 
