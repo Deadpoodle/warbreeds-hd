@@ -42,6 +42,8 @@
 #include "../render/render.h"
 #include "raw_paint.h"
 #include "terrain_paint.h"
+#include "ai_settings.h"  // Stage 3
+#include "events.h"       // Stage 3
 
 namespace editor {
 namespace {
@@ -217,11 +219,12 @@ void SetStatus(const std::string& s, bool log = true) {
     g.status = s;
 }
 
-bool Dirty() { return g.dirtySinceSave || g.undo.size() != g.savedAt; }
+bool Dirty() { return g.dirtySinceSave || g.undo.size() != g.savedAt || events::Dirty() || ai::Dirty(); }
 
 // --- panel ---------------------------------------------------------------------
 
-enum Kind { kTitle, kLabel, kPal, kPrev, kNext, kBrushLabel, kBrush, kUndo, kRedo, kSaveAs, kTest, kExit, kStatus };
+enum Kind { kTitle, kLabel, kPal, kPrev, kNext, kBrushLabel, kBrush, kUndo, kRedo, kSaveAs, kTest, kExit, kStatus,
+            kEvents, kAI };  // TEMPORARY Stage 3 entry points, to move into the panel's tabs
 struct Item {
     void* b;
     Kind kind;
@@ -358,6 +361,8 @@ void BuildPanel() {
     for (int i = 0; i < 4; ++i) AddItem(kBrush, kSizes[i], kTools, 70 + i * 30, std::to_string(kSizes[i]).c_str(), true);
     AddItem(kUndo, 0, kTools + 1, 0, "Undo", true);
     AddItem(kRedo, 0, kTools + 1, 70, "Redo", true);
+    AddItem(kEvents, 0, kTools + 1, 140, "Events", true);  // TEMPORARY (Stage 3)
+    AddItem(kAI, 0, kTools + 1, 215, "AI", true);          // TEMPORARY (Stage 3)
     AddItem(kSaveAs, 0, kTools + 2, 0, "Save As", true);
     AddItem(kTest, 0, kTools + 2, 85, "Test Map", true);  // "Cancel" while naming
     AddItem(kExit, 0, kTools + 2, 180, "Exit", true);
@@ -398,6 +403,8 @@ void UpdatePanel() {
         case kBrush: SetLit(it.b, g.brush == it.arg); break;
         case kUndo: SetLit(it.b, false); SetText(it.b, g.undo.empty() ? "" : "Undo"); it.clickable = !g.undo.empty(); break;
         case kRedo: SetText(it.b, g.redo.empty() ? "" : "Redo"); it.clickable = !g.redo.empty(); break;
+        case kEvents: SetLit(it.b, events::Showing()); break;  // TEMPORARY (Stage 3)
+        case kAI: SetLit(it.b, ai::Active()); break;           // TEMPORARY (Stage 3)
         case kSaveAs: SetText(it.b, g.phase == kNaming ? "Save" : "Save As"); SetLit(it.b, g.phase == kNaming); break;
         case kTest:
             SetText(it.b, g.phase == kNaming ? "Cancel" : g.testArmed ? "Test Map?" : "Test Map");
@@ -802,6 +809,16 @@ void Click(const Item& it) {
     case kBrush: g.brush = it.arg; SetStatus("Brush " + std::to_string(it.arg)); break;
     case kUndo: Undo(); break;
     case kRedo: Redo(); break;
+    // TEMPORARY Stage 3 entry points: open or close the event editor / Global AI panel.
+    case kEvents:
+        if (events::Showing()) events::Close();
+        else if (events::Active()) events::OpenPanel(nullptr);
+        else events::Open();
+        break;
+    case kAI:
+        if (ai::Active()) ai::Close();
+        else ai::Open();
+        break;
     case kSaveAs:
         if (g.phase == kNaming)
             ConfirmName();
@@ -1014,6 +1031,7 @@ void Install(const Hooks& h) {
                 PatchCall(kStoreCameraCall, kStoreCamera, (void*)&HookStoreCamera);
     h.log("editor: %s, save hooks %s", ok ? "installed" : "FAILED", save ? "installed" : "FAILED (unexpected code)");
     if (!ReadArchive(h.dir + "DATA\\TERRAIN.MHK", g_terrainFile, &g_terrainError)) g_terrainFile.clear();
+    events::Install(h.log);
 }
 
 void OpenMap(const MapEntry& map) {
@@ -1065,13 +1083,17 @@ void Tick() {
     if (g.phase == kProcessing) StepProcessing();
     if (g.phase == kSaving && g.saveDone) FinishSave();
     if (g.active && !g_items.empty()) UpdatePanel();
+    events::Tick();
+    ai::Tick();
 }
 
 bool Active() { return g.active; }
+bool PanelContains(int x, int y) { return g.active && OnPanel(x, y); }
 
 bool OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
     (void)lp;
     if (!Editing()) return false;
+    if (g.phase != kNaming && events::Active()) return events::OnMessage(msg, wp, lp);  // Stage 3
     if (msg == WM_KEYDOWN || msg == WM_KEYUP) {
         if (wp == VK_CONTROL) g.ctrl = msg == WM_KEYDOWN;
         if (wp == VK_SHIFT) g.shift = msg == WM_KEYDOWN;

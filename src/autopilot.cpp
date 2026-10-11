@@ -22,6 +22,8 @@
 #include "render/render.h"
 #include "camera.h"
 #include "editor/editor.h"
+#include "editor/ai_settings.h"
+#include "editor/events.h"
 
 namespace autopilot {
 namespace {
@@ -769,6 +771,432 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     }
 }
 
+// --- mode 14: the event editor and the Global AI settings (Stage 3) ----------------
+//
+// Map Editor -> "4 Corners" (MPMAP1, no events) -> Events: the game's own event
+// editor scene. Everything through the toolbar and the panel's boxes, menus and
+// typed keys, as a player would (kEventScript):
+//   event 1: TIMED 60 -> OK DIALOG (string ids 72, 73, 74);
+//   event 2: TIMED 150 -> CHAT from colour 231 "hd event fired",
+//            PLAYER END colour 231 victory after a delay of 40;
+// then the rest of the toolbar (add / remove a condition, an action and an
+// event, persistent on and off, previous / next), which leaves them so. AI
+// (the editor panel's AI button): the first computer player's squad aggression
+// to 5 and scouting to 1, the second's base to 1. Save As HDEVENT; the expected
+// content goes to WarBreedsHD-events-expect.txt for tools/events_check.py.
+// Then Test Map: in the skirmish the log and screenshots show event 1's dialog
+// (closed with its OK), event 2's chat line and the victory screen. Colour 231
+// is the human's colour in this test copy's skirmish setup (logged); events
+// address players by colour, so another setup would need another colour.
+void ClickFrame(POINT f, const char* what) {
+    POINT c = render::InterfacePointToClient(f);
+    HWND hw = render::GameWindow();
+    render::SetFakeCursorClient(c);
+    PostMessageA(hw, WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
+    g_h.log("autopilot: click %s at frame %ld,%ld (client %ld,%ld)", what, f.x, f.y, c.x, c.y);
+}
+
+// A widget of the base scene by its exact text (the editor's tools panel while an
+// overlay scene is on top, where ClickWidget looks).
+bool ClickBaseWidget(const char* text) {
+    uintptr_t scene = ((uintptr_t*)game::Scenes)[0];
+    void** list = scene ? *(void***)(scene + 0xc) : nullptr;
+    int count = scene ? *(int*)(scene + 0x10) : 0;
+    for (int i = 0; list && i < count && i < 256; ++i) {
+        char* w = (char*)list[i];
+        if (!w || strcmp(w + 0x2c, text) != 0) continue;
+        short* r = (short*)(w + 0xc);
+        ClickFrame({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2}, text);
+        return true;
+    }
+    g_h.log("autopilot: base widget \"%s\" not found", text);
+    return false;
+}
+
+void TypeKeys(const char* text, int backspaces) {
+    for (int i = 0; i < backspaces; ++i) {
+        PostKey(WM_KEYDOWN, VK_BACK);
+        PostKey(WM_KEYUP, VK_BACK);
+    }
+    for (const char* p = text; *p; ++p) {
+        WPARAM vk = *p == ' ' ? VK_SPACE : (WPARAM)toupper((unsigned char)*p);
+        PostKey(WM_KEYDOWN, vk);
+        PostKey(WM_KEYUP, vk);
+    }
+    g_h.log("autopilot: typed %d x Backspace, \"%s\"", backspaces, text);
+}
+
+namespace ev = editor::events;
+enum OpKind { kCmd, kBox, kMenu, kColour, kType, kShot, kLog };
+struct Op {
+    OpKind kind;
+    int a, b;
+    const char* text;
+};
+const Op kEventScript[] = {
+    {kShot, 0, 0, "v1-no-events"}, {kLog, 0, 0, "at open"}, {kCmd, ev::kAddEvent, 0, "Add event"},
+    {kShot, 0, 0, "v2-event-added"}, {kLog, 0, 0, "after Add event"},
+    // Event 1: TIMED 60 -> OK DIALOG 72, 73, 74.
+    {kBox, 1, 1, nullptr}, {kType, 3, 0, "60"}, {kBox, 2, 0, nullptr}, {kShot, 0, 0, "v3-action-menu"},
+    {kMenu, 2, 21, nullptr}, {kBox, 2, 2, nullptr}, {kType, 0, 0, "72"}, {kBox, 2, 3, nullptr}, {kType, 0, 0, "73"},
+    {kBox, 2, 4, nullptr}, {kType, 0, 0, "74"}, {kShot, 0, 0, "v4-ok-dialog"}, {kLog, 0, 0, "event 1 done"},
+    // Event 2: TIMED 150 -> CHAT from 231, PLAYER END 231 victory, delay 40.
+    {kCmd, ev::kAddEvent, 0, "Add event"}, {kBox, 1, 1, nullptr}, {kType, 3, 0, "150"}, {kBox, 2, 0, nullptr},
+    {kMenu, 2, 12, nullptr}, {kBox, 2, 2, nullptr}, {kShot, 0, 0, "v5-colour-menu"}, {kColour, 231, 0, nullptr},
+    {kBox, 2, 3, nullptr}, {kType, 0, 0, "hd event fired"}, {kCmd, ev::kAddAction, 0, "Add action"},
+    {kBox, 2, 0, nullptr}, {kMenu, 2, 11, nullptr}, {kBox, 2, 1, nullptr}, {kType, 1, 0, "40"},
+    {kBox, 2, 2, nullptr}, {kColour, 231, 0, nullptr}, {kBox, 2, 3, nullptr}, {kShot, 0, 0, "v6-player-end"},
+    {kLog, 0, 0, "event 2 done"},
+    // The rest of the toolbar.
+    {kCmd, ev::kAddCondition, 0, "Add condition"}, {kLog, 0, 0, "after Add condition"},
+    {kCmd, ev::kRemoveCondition, 0, "Remove condition"}, {kCmd, ev::kAddAction, 0, "Add action"},
+    {kShot, 0, 0, "v7-action-added"}, {kLog, 0, 0, "after Add action"}, {kCmd, ev::kPrevAction, 0, "Previous action"},
+    {kCmd, ev::kNextAction, 0, "Next action"}, {kCmd, ev::kRemoveAction, 0, "Remove action"},
+    {kCmd, ev::kPersistent, 0, "Persistent"}, {kShot, 0, 0, "v8-persistent"}, {kLog, 0, 0, "after Persistent"},
+    {kCmd, ev::kPersistent, 0, "Persistent"}, {kCmd, ev::kAddEvent, 0, "Add event"}, {kLog, 0, 0, "after a third event"},
+    {kCmd, ev::kRemoveEvent, 0, "Remove event"}, {kCmd, ev::kPrevEvent, 0, "Previous event"},
+    {kShot, 0, 0, "v9-event-1-again"}, {kCmd, ev::kNextEvent, 0, "Next event"}, {kLog, 0, 0, "final"},
+};
+
+void RunOp(const Op& op) {
+    POINT f;
+    char what[48];
+    switch (op.kind) {
+    case kCmd:
+        if (ev::CommandCentre((ev::Command)op.a, f)) ClickFrame(f, op.text);
+        break;
+    case kBox:
+        snprintf(what, sizeof what, "%s box %d", op.a == 1 ? "condition" : "action", op.b);
+        if (ev::BoxCentre(op.a, op.b, f)) ClickFrame(f, what);
+        break;
+    case kMenu:
+        snprintf(what, sizeof what, "%s type %d", op.a == 1 ? "condition" : "action", op.b);
+        if (ev::MenuEntryCentre(op.a, op.b, f)) ClickFrame(f, what);
+        break;
+    case kColour:
+        snprintf(what, sizeof what, "colour %d", op.a);
+        if (ev::ColourEntryCentre(op.a, f)) ClickFrame(f, what);
+        break;
+    case kType: TypeKeys(op.text, op.a); break;
+    case kShot: Save(op.text); break;
+    case kLog:
+        g_h.log("autopilot: events %s: %d events, shown %d, hint \"%s\"\n%s", op.text, ev::EventCount(),
+                ev::SelectedEvent() + 1, ev::Hint().c_str(), ev::Describe().c_str());
+        break;
+    }
+}
+
+void EventsTest(const std::string& scene, int frameW, int frameH, DWORD now) {
+    namespace ai = editor::ai;
+    static int stage, op;
+    static DWORD at;
+    static int firstAI = -1, secondAI = -1, lastCount = -1;
+    static bool dialogSeen, chatShot;
+    auto next = [&](int s) {
+        stage = s;
+        at = now;
+    };
+    DWORD dt = now - at;
+    const DWORD kGap = 700;
+    const char* top = g_h.topScene ? g_h.topScene() : "";
+    switch (stage) {
+    case 0:
+        if (scene == ".?AVSHeadquarters@@" && strstr(top, "SMissionMenu") && now - g_sceneStart > 2500) {
+            DeleteFileA((g_h.dir + "DATA\\MAPS\\HDEVENT.WBM").c_str());  // left from an earlier run
+            DeleteFileA((g_h.dir + (g_h.target == 1 ? "WarBreedsHD-events-view.txt" : "WarBreedsHD-events-expect.txt")).c_str());
+            ClickWidget("Map Editor", true);
+            next(1);
+        }
+        break;
+    case 1:
+        if (dt > 1500) {
+            ClickWidget(g_h.target == 1 ? "Switchbacks" : "4 Corners", true);
+            next(g_h.target == 1 ? 50 : 2);
+        }
+        break;
+    // TARGET 1: a map with events of its own ("Switchbacks", MPMAP8: a TIMED and a
+    // STEP IN RECT condition, two SET MOBILITY actions with map points). Shown as
+    // loaded, looked through, closed with Esc, reopened (unchanged, not "dirty"),
+    // closed with the toolbar's Close; then Exit leaves without asking.
+    case 50:
+        if (editor::Active() && scene == ".?AVSGame@@" && dt > 4000) {
+            render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+            g_h.log("autopilot: Switchbacks events as loaded: %d\n%s", ev::EventCount(), ev::Describe().c_str());
+            FILE* f = fopen((g_h.dir + "WarBreedsHD-events-view.txt").c_str(), "w");
+            if (f) {
+                fprintf(f, "file MPMAP8.WBM\n");
+                fputs(ev::Describe().c_str(), f);
+                fclose(f);
+            }
+            ClickWidget("Events", false);
+            next(51);
+        }
+        break;
+    case 51:
+        if (ev::Showing() && dt > 1200) {
+            Save("w1-switchbacks-event-1");
+            RunOp({kBox, 2, 2, nullptr});  // SET MOBILITY's first point: its marker on the map
+            next(52);
+        } else if (dt > 10000) {
+            g_h.log("autopilot: the event editor did not open");
+            next(99);
+        }
+        break;
+    case 52:
+        if (dt > kGap) {
+            Save("w2-point-box");
+            RunOp({kCmd, ev::kNextEvent, 0, "Next event"});
+            next(53);
+        }
+        break;
+    case 53:
+        if (dt > kGap) {
+            Save("w3-switchbacks-event-2");
+            RunOp({kBox, 1, 0, nullptr});  // the condition's type: the condition menu
+            next(54);
+        }
+        break;
+    case 54:
+        if (dt > kGap) {
+            Save("w4-condition-menu");
+            Key(VK_ESCAPE);  // the stock key: SEvent pops itself
+            next(55);
+        }
+        break;
+    case 55:
+        if (dt > 1500) {
+            g_h.log("autopilot: after Esc: event editor %s, events dirty %d", ev::Active() ? "OPEN" : "closed",
+                    ev::Dirty());
+            ClickWidget("Events", false);
+            next(56);
+        }
+        break;
+    case 56:
+        if (ev::Showing() && dt > 1200) {
+            Save("w5-reopened");
+            g_h.log("autopilot: reopened: %d events, dirty %d\n%s", ev::EventCount(), ev::Dirty(),
+                    ev::Describe().c_str());
+            RunOp({kCmd, ev::kClose, 0, "Close"});
+            next(57);
+        } else if (dt > 10000) {
+            g_h.log("autopilot: the event editor did not reopen");
+            next(99);
+        }
+        break;
+    case 57:
+        if (!ev::Active() && dt > 1200) {
+            ClickWidget("Exit", false);  // nothing changed: leaves at once
+            next(58);
+        }
+        break;
+    case 58:
+        if (scene == ".?AVSHeadquarters@@" && !editor::Active() && dt > 2500) {
+            g_h.log("autopilot: Exit left the editor at once (no unsaved changes)");
+            Save("w6-map-list");
+            next(99);
+        } else if (dt > 15000) {
+            g_h.log("autopilot: Exit did not leave the editor: %s", editor::Status().c_str());
+            next(99);
+        }
+        break;
+    case 2:  // the editor is open: Events
+        if (editor::Active() && scene == ".?AVSGame@@" && dt > 4000) {
+            render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+            Save("v0-editor");
+            g_h.log("autopilot: AI before:\n%s", ai::Describe().c_str());
+            ClickWidget("Events", false);
+            next(3);
+        }
+        break;
+    case 3:
+        if (ev::Showing() && dt > 1200) {
+            op = 0;
+            next(4);
+        } else if (dt > 10000) {
+            g_h.log("autopilot: the event editor did not open");
+            next(99);
+        }
+        break;
+    case 4:  // the event script, one step per gap
+        if (dt > kGap) {
+            if (op < (int)(sizeof kEventScript / sizeof kEventScript[0])) {
+                RunOp(kEventScript[op++]);
+                at = now;
+            } else {
+                ClickBaseWidget("AI");  // the editor panel's AI button: the AI panel replaces the events
+                next(27);
+            }
+        }
+        break;
+    case 27:  // AI: first computer player, squad 5 and scouting 1
+        if (ai::Active() && dt > 1000) {
+            firstAI = ai::PlayerSlot(0);
+            secondAI = ai::PlayerSlot(1);
+            Save("v10-ai");
+            g_h.log("autopilot: AI panel shows slot %d; computers %d (%d, %d)", ai::ShownSlot(), ai::ComputerCount(),
+                    firstAI, secondAI);
+            POINT f;
+            if (ai::StepCentre(ai::kSquad, 4, f)) ClickFrame(f, "squad 5");
+            next(28);
+        } else if (dt > 10000) {
+            g_h.log("autopilot: the AI panel did not open");
+            next(99);
+        }
+        break;
+    case 28:
+        if (dt > kGap) {
+            POINT f;
+            if (ai::StepCentre(ai::kScouting, 0, f)) ClickFrame(f, "scouting 1");
+            next(29);
+        }
+        break;
+    case 29:
+        if (dt > kGap) {
+            Save("v11-ai-first");
+            POINT f;
+            if (ai::PlayerButtonCentre(1, f)) ClickFrame(f, "next player");
+            next(30);
+        }
+        break;
+    case 30:
+        if (dt > kGap) {
+            g_h.log("autopilot: AI panel shows slot %d", ai::ShownSlot());
+            POINT f;
+            if (ai::StepCentre(ai::kBase, 0, f)) ClickFrame(f, "base 1");
+            next(31);
+        }
+        break;
+    case 31:
+        if (dt > kGap) {
+            Save("v12-ai-second");
+            g_h.log("autopilot: AI after:\n%s", ai::Describe().c_str());
+            POINT f;
+            if (ai::CloseCentre(f)) ClickFrame(f, "AI Close");
+            next(32);
+        }
+        break;
+    case 32:
+        if (!ev::Active() && dt > 1000) {
+            Save("v13-closed");
+            g_h.log("autopilot: panels closed; status %s", editor::Status().c_str());
+            ClickWidget("Save As", false);
+            next(33);
+        }
+        break;
+    case 33:
+        if (dt > 600) {
+            TypeName("HDEVENT");
+            next(34);
+        }
+        break;
+    case 34:
+        if (editor::SaveCount() > 0 && editor::Idle() && dt > 500) {
+            Save("v14-saved");
+            FILE* f = fopen((g_h.dir + "WarBreedsHD-events-expect.txt").c_str(), "w");
+            if (f) {
+                fprintf(f, "file HDEVENT.WBM\nbase MPMAP1.WBM\nfirst %d\nsecond %d\n", firstAI, secondAI);
+                fputs(ev::Describe().c_str(), f);
+                std::string a = ai::Describe();
+                for (size_t p = 0, q; (q = a.find('\n', p)) != std::string::npos; p = q + 1)
+                    fprintf(f, "ai %s\n", a.substr(p, q - p).c_str());
+                fclose(f);
+            }
+            g_h.log("autopilot: saved: %s", editor::Status().c_str());
+            next(35);
+        } else if (dt > 60000) {
+            g_h.log("autopilot: no save after 60 s (%s)", editor::Status().c_str());
+            next(99);
+        }
+        break;
+    case 35:
+        if (dt > 1000) {
+            ClickWidget("Test Map", false);
+            next(36);
+        }
+        break;
+    case 36:
+        if (dt > 800) {
+            ClickWidget("Test Map", false);  // "Test Map?"
+            next(37);
+        }
+        break;
+    case 37:  // the skirmish on the saved map
+        if (scene == ".?AVSGame@@" && !editor::Active() && ((short (*)())0x46f960)() == 1 && now - g_sceneStart > 1000) {
+            render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+            Save("v15-skirmish");
+            uintptr_t reg = *(uintptr_t*)0x57927c;
+            for (int i = 0; reg && i < 8; ++i) {
+                char* p = *(char**)(reg + 4 + i * 4);
+                if (p)
+                    g_h.log("autopilot: skirmish player slot %d colour %u%s%s", i, *(uint8_t*)(p + 0x484e),
+                            p == *(char**)0x579288 ? " (local)" : "", *(uintptr_t*)p == 0x509734 ? " (computer)" : "");
+            }
+            g_h.log("autopilot: skirmish AI (clan defaults):\n%s", ai::Describe().c_str());
+            g_h.log("autopilot: skirmish events: %d\n%s", ev::EventCount(), ev::Describe().c_str());
+            lastCount = ev::EventCount();
+            next(38);
+        } else if (dt > 60000) {
+            g_h.log("autopilot: the Test Map skirmish did not start");
+            next(99);
+        }
+        break;
+    case 38: {  // watch the events fire
+        int n = ev::EventCount();
+        int turn = ((int (*)())0x4708b0)();  // GetGameTurn
+        if (n != lastCount) {
+            g_h.log("autopilot: skirmish: event fired at turn %d (%d -> %d events)\n%s", turn, lastCount, n,
+                    ev::Describe().c_str());
+            lastCount = n;
+        }
+        if (!dialogSeen && strstr(top, "SDialog")) {
+            dialogSeen = true;
+            g_h.log("autopilot: skirmish: OK DIALOG shown at turn %d", turn);
+            Save("v16-dialog");
+            uintptr_t d = ((uintptr_t*)game::Scenes)[game::at<short>(game::SceneTop)];
+            void** list = *(void***)(d + 0xc);
+            for (int i = 0; list && i < *(int*)(d + 0x10) && i < 64; ++i) {
+                char* w = (char*)list[i];
+                short* r = (short*)(w + 0xc);
+                g_h.log("autopilot:   dialog widget %d vtbl %#x rect %d,%d-%d,%d text '%.20s'", i, *(unsigned*)w, r[0], r[1],
+                        r[2], r[3], w + 0x2c);
+            }
+            if (!ClickWidget("OK", false)) Key(VK_RETURN);
+            at = now;
+        }
+        if (!chatShot && lastCount == 1 && turn >= 165) {  // event 2's CHAT line (its PLAYER END waits 40)
+            chatShot = true;
+            Save("v17-chat");
+        }
+        if (scene != ".?AVSGame@@") {
+            g_h.log("autopilot: skirmish: the game ended at turn %d: base %s, top %s", turn, scene.c_str(), top);
+            Save("v18-end");
+            next(39);
+        } else if (dt > 90000) {
+            g_h.log("autopilot: skirmish: no end after 90 s (turn %d, %d events, top %s)", turn, n, top);
+            Save("v18-no-end");
+            next(99);
+        }
+        break;
+    }
+    case 39:
+        if (dt > 3000) {
+            Save("v19-after-end");
+            g_h.log("autopilot: after the end: base %s, top %s", scene.c_str(), top);
+            next(99);
+        }
+        break;
+    case 99:
+        if (dt > 500) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            next(100);
+        }
+        break;
+    }
+}
+
 }  // namespace
 
 void Init(const Hooks& h) {
@@ -989,6 +1417,10 @@ void Tick(const std::string& scene, int frameW, int frameH) {
     }
     if (g_h.mode == 13) {
         EditorTest(scene, frameW, frameH, now);
+        return;
+    }
+    if (g_h.mode == 14) {
+        EventsTest(scene, frameW, frameH, now);
         return;
     }
     if (g_h.mode == 5) {  // cutscene test: done once the main menu is up

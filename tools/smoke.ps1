@@ -2,7 +2,7 @@
 # Usage: smoke.ps1 [-Seconds 5] [-Keep] [-Dir testrun]
 # Automated tests use testrun (hidden via its ini); testgame is the player's copy.
 param([int]$Seconds = 5, [switch]$Keep, [string]$Dir = "testrun")
-$t = Join-Path $PSScriptRoot "..\$Dir" | Resolve-Path
+$t = if ([System.IO.Path]::IsPathRooted($Dir)) { Resolve-Path $Dir } else { Join-Path $PSScriptRoot "..\$Dir" | Resolve-Path }
 $exe = "$t\WARBREED.EXE"
 $mine = Get-CimInstance Win32_Process -Filter "Name='WARBREED.EXE'" | Where-Object { $_.ExecutablePath -eq $exe }
 if ($mine) { "refusing: $Dir is already running (PID $($mine.ProcessId))"; exit 1 }

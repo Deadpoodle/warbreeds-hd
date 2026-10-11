@@ -110,6 +110,9 @@ class IO:
     def u32(self, o, k):
         return self._v("<I", 4, o, k)
 
+    def f32(self, o, k):
+        return self._v("<f", 4, o, k)
+
     def raw(self, o, k, n):
         if self.reading:
             if self.p + n > len(self.d):
@@ -600,6 +603,12 @@ def ser_squad(io, s):               # 0x4ba950
     io.fields(s, SQUAD_SPEC)
 
 
+# AIComputerPlayer +0x4d80 (always 0.5 in the maps), then the 1998 editor's Global AI
+# settings (dialog 132, five steps of 0.25): squad aggression +0x4d84, base defence
+# +0x4d88, scouting +0x4d8c, AI influence +0x4d90. See re/editor-events.md.
+AI_FLOATS = ("f4d80", "squad", "base", "scouting", "influence")
+
+
 def ser_ai(io, a, w_tiles, h_tiles):
     if io.u16(a, "marker") != 0x0D:
         return
@@ -620,7 +629,8 @@ def ser_ai(io, a, w_tiles, h_tiles):
     io.u32_array(a, "u32a", 4)
     io.u16_array(a, "u16a", 2)
     io.u32_array(a, "u32b", 13)
-    io.raw(a, "floats", 20)         # five float32
+    for k in AI_FLOATS:             # five float32, +0x4d80..+0x4d90
+        io.f32(a, k)
     io.u16_array(a, "u16x74", 74)
     io.u16(a, "f4e38")
     n = io.count(a, "targets", "<H")        # 0x4b5170 list of 9-byte entries
@@ -810,7 +820,10 @@ def cmd_dump(path):
         print("    %2d: if %s -> %s" % (i, cs or "-", "; ".join(acts)))
     for a in m["ai"]:
         print("  AI state for player %d: %s, %d squads" % (a["slot"], "present" if a["marker"] == 0x0D else "none",
-                                                          len(a.get("squads", []))))
+                                                          len(a.get("squads", []))), end="")
+        if a["marker"] == 0x0D:
+            print("; squad %.2f, base %.2f, scouting %.2f, influence %.2f" % tuple(a[k] for k in AI_FLOATS[1:]), end="")
+        print()
     tl = m["tail"]
     print("  scroll bounds px (%d,%d)-(%d,%d), clock %d, routes %d" % (tl["x1"], tl["y1"], tl["x2"], tl["y2"],
                                                                      tl["clock"], len(tl["routes"])))

@@ -4,11 +4,13 @@
 # Usage: autotest.sh [mode] [seconds]   mode 1 = mission test (default), 2 = main-menu Settings test,
 #        13 = map editor (TARGET=0 edit, 1 New Map, 2 Exit; then python tools/editor_check.py testrun)
 #        PROFILE=1 autotest.sh ...      also profile
+#        TESTDIR=testrun-x autotest.sh  another hidden test copy (relative to the repo, or absolute as C:/...),
+#                                       so two runs can go side by side
 set -e
 cd "$(dirname "$0")/.."
 MODE=${1:-1}
 SECS=${2:-40}
-T=testrun
+T=${TESTDIR:-testrun}
 PATH=/c/msys64/mingw32/bin:$PATH sh build.sh 2>&1 | grep -E "error|warning" || true
 cp build/wsock32.dll $T/
 rm -f $T/auto-*.bmp $T/WarBreedsHD-samples*.txt
