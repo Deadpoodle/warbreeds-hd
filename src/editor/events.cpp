@@ -276,12 +276,88 @@ void DrawBar() {
         Text(lines[i].c_str(), kBarX + 6, kBarY + (5 + (int)i) * kRowH + 2, kStyleHint);
 }
 
+// The 1998 screen is light grey and dark blue text on tan, hard to read; the
+// lists and pictures right of it sit straight on the battlefield. After it
+// draws, it is recoloured like the editor's own panel: a black background,
+// white text (headings pale blue), and black boxes and lines dark grey, so the
+// chosen step stays boxed. Colours are chosen from the palette by their look;
+// the coloured pictures (creatures, gizmos, player colours) keep theirs.
+uint8_t g_lut[256], g_lutRight[256];
+uint32_t g_lutSerial = 0xffffffff;
+
+int Nearest(int r, int g, int b) {
+    const render::Frame& f = render::CurrentFrame();
+    int best = 0, bestD = 1 << 30;
+    for (int i = 1; i < 256; ++i) {
+        const RGBQUAD& c = f.palette[i];
+        int d = (c.rgbRed - r) * (c.rgbRed - r) + (c.rgbGreen - g) * (c.rgbGreen - g) + (c.rgbBlue - b) * (c.rgbBlue - b);
+        if (d < bestD) bestD = d, best = i;
+    }
+    return best;
+}
+
+void BuildRecolour() {
+    const render::Frame& f = render::CurrentFrame();
+    if (f.serial == g_lutSerial || g_tan < 0) return;
+    g_lutSerial = f.serial;
+    int black = Nearest(0, 0, 0), white = Nearest(255, 255, 255), grey = Nearest(72, 72, 72), pale = Nearest(200, 215, 235);
+    for (int i = 0; i < 256; ++i) {
+        const RGBQUAD& c = f.palette[i];
+        int r = c.rgbRed, g = c.rgbGreen, b = c.rgbBlue, lum = (r * 3 + g * 6 + b) / 10;
+        bool neutral = abs(r - g) < 16 && abs(g - b) < 16;
+        int to = i;
+        if (i == g_tan) to = black;
+        else if (neutral && lum >= 140) to = white;                 // the light grey text and outlines
+        else if (neutral && lum < 24) to = grey;                    // black boxes and lines
+        else if (b > r + 30 && b > g + 30 && lum < 110) to = pale;  // the dark blue headings
+        g_lut[i] = (uint8_t)to;
+        g_lutRight[i] = (uint8_t)(neutral && lum >= 140 ? white : i);  // lists: only the text
+    }
+    g_lut[0] = 0;
+    g_lutRight[0] = (uint8_t)black;  // the lists get a background
+}
+
+void Recolour(int x0, int y0, int x1, int y1, const uint8_t* lut) {
+    for (int y = y0; y < y1; ++y) {
+        uintptr_t a = layers::InterfacePixelAddress(x0, y), b = layers::InterfacePixelAddress(x1 - 1, y);
+        if (!a || !b || b < a) continue;
+        for (uint8_t* q = (uint8_t*)a; q <= (uint8_t*)b; ++q) *q = lut[*q];
+    }
+}
+
+// The panel picture (0x150 at 100,100 covers 0..245 x 0..413), our toolbar,
+// and whatever the screen drew right of them (type lists, the creature and
+// gizmo pictures): their bounding box gets the black background.
+void RecolourScreen() {
+    if (!layers::Active()) return;
+    if (g_tan < 0) FindColours();
+    BuildRecolour();
+    if (g_tan < 0) return;
+    Recolour(0, 0, 246, 414, g_lut);
+    Recolour(kBarX, 0, kBarX + kBarW, kBarY + kBarRows * kRowH + 4, g_lut);
+    int x0 = kBarX + kBarW + 1, x1 = 760, top = -1, bottom = -1, left = x1, right = -1;
+    for (int y = 0; y < 560; ++y) {
+        uintptr_t a = layers::InterfacePixelAddress(x0, y), b = layers::InterfacePixelAddress(x1 - 1, y);
+        if (!a || !b || b < a) continue;
+        for (uint8_t* q = (uint8_t*)a; q <= (uint8_t*)b; ++q)
+            if (*q) {
+                int x = x0 + (int)(q - (uint8_t*)a);
+                if (top < 0) top = y;
+                bottom = y;
+                left = std::min(left, x);
+                right = std::max(right, x);
+            }
+    }
+    if (top >= 0) Recolour(std::max(x0, left - 4), std::max(0, top - 4), right + 5, bottom + 5, g_lutRight);
+}
+
 // --- SEvent hooks -------------------------------------------------------------
 
 void __thiscall HookDraw(void* s, int full) {
     if (g_panel) {
         DrawPanelBackground();
         g_panel->Draw();
+        RecolourScreen();
         return;
     }
     if (Clamp()) {
@@ -292,6 +368,7 @@ void __thiscall HookDraw(void* s, int full) {
         Text("Remove it (Shift+R) or add one.", 20, 56, kStyle);
     }
     DrawBar();
+    RecolourScreen();
 }
 
 short __thiscall HookLDown(void* s, int x, int y) {
