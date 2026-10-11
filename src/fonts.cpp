@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <string.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 
@@ -42,11 +43,22 @@ const Spec kSpecs[] = {
 HFONT g_standIn[sizeof kSpecs / sizeof kSpecs[0]];
 std::map<HFONT, int> g_specOf;        // game font -> kSpecs index
 std::map<HFONT, HFONT> g_originalOf;  // stand-in -> a game font of that face
+// Orbitron is wider than the game's faces, and the game lays text out in boxes
+// sized for them ("Select Components" ran out of its title bar). A string that
+// would come out wider than the original face draws it is measured and drawn
+// with a horizontally narrowed stand-in instead, so it takes the original's room.
+HFONT g_original[sizeof kSpecs / sizeof kSpecs[0]];  // our own copy of each original face
+std::map<std::pair<int, int>, HFONT> g_narrow;       // (spec, average char width) -> font
+std::map<std::string, HFONT> g_fitOf;                // spec + text -> font to use (stand-in if it fits)
+HDC g_scratch;
 
 decltype(&CreateFontIndirectA) o_CreateFontIndirectA;
 decltype(&SelectObject) o_SelectObject;
 decltype(&DeleteObject) o_DeleteObject;
 decltype(&GetCharABCWidthsA) o_GetCharABCWidthsA;
+decltype(&GetTextExtentPointA) o_GetTextExtentPointA;
+decltype(&TextOutA) o_TextOutA;
+decltype(&DrawTextA) o_DrawTextA;
 
 int SpecFor(const char* face) {
     for (int i = 0; i < (int)(sizeof kSpecs / sizeof kSpecs[0]); ++i)
@@ -74,6 +86,7 @@ HFONT WINAPI h_CreateFontIndirectA(const LOGFONTA* lf) {
     if (!f || !lf || !g_loaded) return f;
     int i = SpecFor(lf->lfFaceName);
     if (i >= 0) {
+        if (!g_original[i]) g_original[i] = o_CreateFontIndirectA(lf);
         if (StandIn(i)) {
             g_specOf[f] = i;
             g_originalOf[g_standIn[i]] = f;
@@ -101,6 +114,88 @@ HGDIOBJ WINAPI h_SelectObject(HDC dc, HGDIOBJ obj) {
     return po != g_originalOf.end() ? po->second : prev;
 }
 
+int SpecOfStandIn(HFONT f) {
+    for (int i = 0; i < (int)(sizeof kSpecs / sizeof kSpecs[0]); ++i)
+        if (g_standIn[i] && g_standIn[i] == f) return i;
+    return -1;
+}
+
+int Width(HFONT f, int extra, const char* text, int n) {
+    if (!g_scratch) g_scratch = CreateCompatibleDC(nullptr);
+    HGDIOBJ old = o_SelectObject(g_scratch, f);
+    SetTextCharacterExtra(g_scratch, extra);
+    SIZE sz{};
+    o_GetTextExtentPointA(g_scratch, text, n, &sz);
+    o_SelectObject(g_scratch, old);
+    return sz.cx;
+}
+
+// The font to measure and draw this string with in a DC holding a stand-in:
+// the stand-in itself, or a narrowed one if the stand-in runs wider than the
+// original face. nullptr: not a stand-in, nothing to do.
+HFONT FitFont(HDC dc, const char* text, int n) {
+    if (!g_modern || !text) return nullptr;
+    int i = SpecOfStandIn((HFONT)GetCurrentObject(dc, OBJ_FONT));
+    if (i < 0 || !g_original[i]) return nullptr;
+    if (n < 0) n = (int)strlen(text);
+    std::string key = std::string(1, (char)('A' + i)) + std::string(text, n);
+    auto hit = g_fitOf.find(key);
+    if (hit != g_fitOf.end()) return hit->second;
+    if (g_fitOf.size() > 4000) g_fitOf.clear();  // the game's strings are few; just a safety cap
+    int extra = kSpecs[i].extra;
+    int want = Width(g_original[i], 0, text, n), have = Width(g_standIn[i], extra, text, n);
+    HFONT use = g_standIn[i];
+    if (have > want && want > 0) {
+        TEXTMETRICA tm{};
+        HGDIOBJ old = o_SelectObject(g_scratch, g_standIn[i]);
+        GetTextMetricsA(g_scratch, &tm);
+        o_SelectObject(g_scratch, old);
+        for (int ave = std::max(1, (int)(tm.tmAveCharWidth * (double)want / have)); ave >= 1; --ave) {
+            HFONT& f = g_narrow[{i, ave}];
+            if (!f) {
+                LOGFONTA m{};
+                m.lfHeight = kSpecs[i].height;
+                m.lfWidth = ave;
+                m.lfWeight = kSpecs[i].weight;
+                m.lfCharSet = DEFAULT_CHARSET;
+                m.lfQuality = NONANTIALIASED_QUALITY;
+                strncpy(m.lfFaceName, kSpecs[i].sub, LF_FACESIZE - 1);
+                f = o_CreateFontIndirectA(&m);
+            }
+            if (!f) break;
+            use = f;
+            if (Width(f, extra, text, n) <= want) break;
+        }
+        g_log("fonts: \"%.*s\" (%s) narrowed to fit %d px (Orbitron %d px)", n, text, kSpecs[i].face, want, have);
+    }
+    g_fitOf[key] = use;
+    return use;
+}
+
+// Measure or draw with the fitted font selected, then put the stand-in back.
+template <class F>
+auto WithFit(HDC dc, const char* text, int n, F call) {
+    HFONT fit = FitFont(dc, text, n);
+    HGDIOBJ cur = GetCurrentObject(dc, OBJ_FONT);
+    if (!fit || fit == (HFONT)cur) return call();
+    o_SelectObject(dc, fit);
+    auto r = call();
+    o_SelectObject(dc, cur);
+    return r;
+}
+
+BOOL WINAPI h_GetTextExtentPointA(HDC dc, LPCSTR text, int n, LPSIZE size) {
+    return WithFit(dc, text, n, [&] { return o_GetTextExtentPointA(dc, text, n, size); });
+}
+
+BOOL WINAPI h_TextOutA(HDC dc, int x, int y, LPCSTR text, int n) {
+    return WithFit(dc, text, n, [&] { return o_TextOutA(dc, x, y, text, n); });
+}
+
+int WINAPI h_DrawTextA(HDC dc, LPCSTR text, int n, LPRECT r, UINT format) {
+    return WithFit(dc, text, n, [&] { return o_DrawTextA(dc, text, n, r, format); });
+}
+
 BOOL WINAPI h_DeleteObject(HGDIOBJ obj) {
     g_specOf.erase((HFONT)obj);
     return o_DeleteObject(obj);
@@ -125,7 +220,10 @@ void Install(const char* dir, void (*log)(const char*, ...)) {
     bool ok = render::HookImport(0x5956ec, &h_CreateFontIndirectA, &o_CreateFontIndirectA) &&
               render::HookImport(0x5956f8, &h_SelectObject, &o_SelectObject) &&
               render::HookImport(0x59562c, &h_DeleteObject, &o_DeleteObject) &&
-              render::HookImport(0x59572c, &h_GetCharABCWidthsA, &o_GetCharABCWidthsA);
+              render::HookImport(0x59572c, &h_GetCharABCWidthsA, &o_GetCharABCWidthsA) &&
+              render::HookImport(0x5956ac, &h_GetTextExtentPointA, &o_GetTextExtentPointA) &&
+              render::HookImport(0x595670, &h_TextOutA, &o_TextOutA) &&
+              render::HookImport(0x5959b8, &h_DrawTextA, &o_DrawTextA);
     if (!ok) log("fonts: hooks FAILED");
 }
 
