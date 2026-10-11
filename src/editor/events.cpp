@@ -210,7 +210,7 @@ constexpr int kBarRows = 9;
 
 RECT ButtonRect(const Button& b) {
     int x = kBarX + b.x, y = kBarY + b.row * kRowH;
-    return {x - 3, y - 1, x + (int)strlen(b.label) * kCharW + 3, y + kRowH - 1};
+    return {x - 3, y - 11, x + (int)strlen(b.label) * kCharW + 3, y + 3};  // text at y is its baseline
 }
 
 bool In(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
@@ -267,7 +267,7 @@ void DrawBar() {
         RECT r = ButtonRect(b);
         bool on = b.cmd == kPersistent && persistent;
         if (on) FillRect(r.left, r.top, r.left + 15 * kCharW + 6, r.bottom, g_dark);
-        Text(b.cmd == kPersistent ? (persistent ? "Persistent: on" : "Persistent: off") : b.label, r.left + 3, r.top + 1,
+        Text(b.cmd == kPersistent ? (persistent ? "Persistent: on" : "Persistent: off") : b.label, r.left + 3, r.bottom - 3,
              on ? kStyleHint : In(r, cx, cy) ? kStyleHover : kStyle);
     }
     g_hint = MakeHint();

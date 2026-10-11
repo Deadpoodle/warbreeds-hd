@@ -78,13 +78,13 @@ constexpr int kLeftX = 20, kStepX = 92, kStepW = 16, kRightX = 176, kTop = 100, 
 
 RECT StepRect(Setting s, int level) {
     int x = kStepX + level * kStepW, y = kTop + kRowGap * s + 16;
-    return {x - 4, y - 2, x + 10, y + 13};
+    return {x - 4, y - 11, x + 10, y + 3};  // text at y is its baseline
 }
 RECT PlayerRect(int next) {
     int x = next ? 200 : kLeftX;
-    return {x - 4, 62, x + 14, 77};
+    return {x - 4, 52, x + 14, 66};
 }
-RECT CloseRect() { return {kLeftX - 4, 288, kLeftX + 34, 303}; }
+RECT CloseRect() { return {kLeftX - 4, 290, kLeftX + 34, 304}; }
 
 bool In(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
 
@@ -117,8 +117,8 @@ public:
         events::DrawText("GLOBAL AI", 60, 40, kStyle);
         RECT prev = PlayerRect(0), next = PlayerRect(1);
         if (p) {
-            events::DrawText("<", prev.left + 4, prev.top + 1, Hover(prev) ? kStyleLit : kStyle);
-            events::DrawText(">", next.left + 4, next.top + 1, Hover(next) ? kStyleLit : kStyle);
+            events::DrawText("<", prev.left + 4, prev.bottom - 3, Hover(prev) ? kStyleLit : kStyle);
+            events::DrawText(">", next.left + 4, next.bottom - 3, Hover(next) ? kStyleLit : kStyle);
         }
         events::DrawText(PlayerName(p ? g_slot : -1).c_str(), kLeftX + 18, 63, kStyle);
         for (int s = 0; p && s < kSettingCount; ++s) {
@@ -131,11 +131,11 @@ public:
                 RECT r = StepRect((Setting)s, l);
                 char digit[2] = {(char)('1' + l), 0};
                 if (l == level) events::Highlight(r.left, r.top, r.right, r.bottom);
-                events::DrawText(digit, r.left + 4, r.top + 2, l == level ? kStyleSmall : Hover(r) ? kStyleLit : kStyle);
+                events::DrawText(digit, r.left + 4, r.bottom - 3, l == level ? kStyleSmall : Hover(r) ? kStyleLit : kStyle);
             }
         }
         RECT c = CloseRect();
-        events::DrawText("Close", c.left + 4, c.top + 1, Hover(c) ? kStyleLit : kStyle);
+        events::DrawText("Close", c.left + 4, c.bottom - 3, Hover(c) ? kStyleLit : kStyle);
         static const char* const kHint[] = {"Saved with the map. A skirmish", "resets them to the clan defaults;",
                                             "an AI AGGRESSION event changes", "them during play.", ""};
         for (int i = 0; i < 5; ++i) events::DrawText(kHint[i], kLeftX, 318 + 14 * i, kStyleSmall);

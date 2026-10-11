@@ -63,6 +63,23 @@ def main(argv):
         print(("PASS " if cond else "FAIL ") + what)
         ok = ok and bool(cond)
 
+    view = os.path.join(game, "WarBreedsHD-events-view.txt")
+    if os.path.exists(view):  # TARGET 1: a map's own events as the editor loaded them
+        lines = open(view).read().splitlines()
+        name = lines[0].split()[1]
+        m = wbm.load(os.path.join(game, "DATA", "MAPS", name))
+        print("%s, as the event editor showed it:" % name)
+        for l in lines[1:]:
+            print("  " + l)
+        check(describe(m["events"]) == lines[1:], "the event editor holds the file's %d events" % len(lines[1:]))
+        log_path = os.path.join(game, "WarBreedsHD.log")
+        log = open(log_path, encoding="latin-1").read() if os.path.exists(log_path) else ""
+        check("after Esc: event editor closed, events dirty 0" in log, "Esc closed it; looking changed nothing")
+        check("reopened: 2 events, dirty 0" in log, "it reopened with the same events")
+        check("Exit left the editor at once" in log, "Exit did not ask (no unsaved changes)")
+        print("ALL PASS" if ok else "SOME CHECKS FAILED")
+        return 0 if ok else 1
+
     lines = open(os.path.join(game, "WarBreedsHD-events-expect.txt")).read().splitlines()
     head = dict(l.split(" ", 1) for l in lines if l.split(" ", 1)[0] in ("file", "base", "first", "second"))
     held = [l for l in lines if l.startswith("E")]

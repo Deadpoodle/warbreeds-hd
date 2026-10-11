@@ -788,6 +788,7 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
 // (closed with its OK), event 2's chat line and the victory screen. Colour 231
 // is the human's colour in this test copy's skirmish setup (logged); events
 // address players by colour, so another setup would need another colour.
+// TARGET 1: a map's own events (see case 50). Both: tools/events_check.py.
 void ClickFrame(POINT f, const char* what) {
     POINT c = render::InterfacePointToClient(f);
     HWND hw = render::GameWindow();
@@ -905,7 +906,8 @@ void EventsTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     case 0:
         if (scene == ".?AVSHeadquarters@@" && strstr(top, "SMissionMenu") && now - g_sceneStart > 2500) {
             DeleteFileA((g_h.dir + "DATA\\MAPS\\HDEVENT.WBM").c_str());  // left from an earlier run
-            DeleteFileA((g_h.dir + (g_h.target == 1 ? "WarBreedsHD-events-view.txt" : "WarBreedsHD-events-expect.txt")).c_str());
+            DeleteFileA((g_h.dir + "WarBreedsHD-events-view.txt").c_str());
+            DeleteFileA((g_h.dir + "WarBreedsHD-events-expect.txt").c_str());
             ClickWidget("Map Editor", true);
             next(1);
         }

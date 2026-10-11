@@ -8,7 +8,9 @@ struct Hooks {
     void (*log)(const char*, ...);
     void (*zoomStep)(int step);         // +1 = zoom out, -1 = zoom in
     int mode = 1;  // 1 mission test, 2 Settings test, 3 bare main menu, 4 capture a menu screen,
-                   // ... 13 map editor (target 0 edit, 1 New Map, 2 Exit; tools/editor_check.py)
+                   // ... 13 map editor (target 0 edit, 1 New Map, 2 Exit; tools/editor_check.py),
+                   // 14 event editor and Global AI (target 0 edit + Test Map, 1 a map's own events;
+                   // tools/events_check.py)
     int target = 0;                     // mode 4: main-menu item to open (0 = Load Game ... 6 = Credits)
     const char* (*topScene)() = nullptr;  // RTTI name of the top scene
     bool bare = false;                  // mode 4: hide the screen's widgets before capturing
