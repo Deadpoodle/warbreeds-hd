@@ -180,6 +180,15 @@ RECT RowRect(int row) {
     return {kLeft, t, kRight, (short)(t + kRowH)};
 }
 
+// Rows below the settings list (Reset, Back), set off from it by half a row.
+constexpr short kActionGap = kRowStep / 2;
+RECT ActionRect(int row) {
+    RECT r = RowRect(row);
+    r.top += kActionGap;
+    r.bottom += kActionGap;
+    return r;
+}
+
 // --- button access --------------------------------------------------------
 
 short& Cmd(void* b) { return *(short*)((char*)b + 0x20); }
@@ -435,8 +444,9 @@ short __thiscall HookInit(void* scene) {
     // Scroll indicators, right of the first and last setting rows (placed by Layout).
     if (void* b = AddButton(scene, "More above", kCmdMoreAbove, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
     if (void* b = AddButton(scene, "More below", kCmdMoreBelow, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
-    if (void* reset = AddButton(scene, kResetText, kCmdReset, 'R', RowRect(13))) Show(reset, false);
-    if (void* back = AddButton(scene, "Back", kCmdBack, 'B', RowRect(14))) Show(back, false);
+    // Reset and Back sit half a row below the settings, so the (scrolling) list reads as separate.
+    if (void* reset = AddButton(scene, kResetText, kCmdReset, 'R', ActionRect(13))) Show(reset, false);
+    if (void* back = AddButton(scene, "Back", kCmdBack, 'B', ActionRect(14))) Show(back, false);
     if (void* hint = AddButton(scene, "Click: next    Right-click: previous    Saved automatically",
                                kCmdHint, 0, {kLeft, 452, 450, 468}, kStyleSmall, kStyleSmall))
         Show(hint, false);
