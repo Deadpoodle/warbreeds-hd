@@ -8,7 +8,7 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - working cutscenes;
 - a Settings page;
 - modern controls;
-- a map editor.
+- the official map editor, built into the game.
 
 It needs your own copy of the game, and has been tested with the GOG.com release.
 
@@ -22,8 +22,8 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 
 | Original (GOG release) | WarBreeds HD |
 |---|---|
-| ![Original main menu](docs/screenshots/menu-before.jpg) | ![Widescreen main menu with Settings](docs/screenshots/menu-after.jpg) |
-| The 640×480 menu with black bars | Widescreen art, a Settings item, the version label |
+| ![Original main menu](docs/screenshots/menu-before.jpg) | ![Widescreen main menu with Settings and Map Editor](docs/screenshots/menu-after.jpg) |
+| The 640×480 menu with black bars | Widescreen art, Settings and Map Editor items, the version label |
 | ![Original 640x480 mission](docs/screenshots/game-before.jpg) | ![The same mission at 2560x1440](docs/screenshots/game-after.jpg) |
 | Missions at 640×480 | Missions at your desktop resolution |
 
@@ -37,7 +37,36 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 
 ![The opening cutscene, playing again](docs/screenshots/movie.jpg)
 
-*The GIF and the zoomed shots are from a real skirmish (recorded in a 1920×1080 window). The before/after gameplay pair comes from the automated test harness at 2560×1440, with fog of war switched off (a debug option) so the terrain shows.*
+*The GIF and the zoomed shots are from a real skirmish (recorded in a 1920×1080 window). The before/after gameplay pair and the map editor shots come from the automated test harness at 2560×1440; the gameplay pair has fog of war switched off (a debug option) so the terrain shows.*
+
+## The map editor, inside the game
+
+In 1998 Red Orb released the **WarBreeds Map Editor**, the tool its designers used to build every mission and skirmish map. It came as a separate, unsupported download (beta 1.0, March 1998): its own program, run outside the game, for an 800×600, 256-colour Windows 95 desktop.
+
+Taking it apart showed that the editor is mostly the game itself. About 85% of its code is the WarBreeds engine, wrapped in a Windows editing shell, and that engine is already inside `WARBREED.EXE`. WarBreeds HD uses that to bring the editor into the game: **Map Editor** sits on the main menu next to Settings, and maps are made in the same engine, view and resolution that plays them.
+
+| Pick a map, or start a new one | New Map: size, base terrain, players |
+|---|---|
+| ![The Map Editor's map list](docs/screenshots/editor-maps.jpg) | ![The New Map page](docs/screenshots/editor-new-map.jpg) |
+
+![Editing 4 Corners: the tools panel at the bottom left](docs/screenshots/editor.jpg)
+
+**Smart painting, as the designers had it.** The original editor's Smart Palette picks the right border tile for every cell from the terrain at its four corners, so a stroke of Sand on Crystal comes out with the same ragged, hand-drawn edges as the shipped maps. WarBreeds HD rebuilds that painter from the original editor, using the transition tables in your own game's data:
+- checked against all 54 shipped maps, 99.99% of their tiles are exactly what the painter picks for their corners, and test painting on them leaves no seams;
+- the original's rules are kept: a terrain only goes next to terrain it has border art for (Lava with Tar, Cropland with Crushed Crystal, Hardened Tar or Roots). Where the old editor only said "You cannot paint that there", a refused stroke now says what is in the way.
+
+| Before | After three strokes: Crushed Crystal, Crystal, Sand |
+|---|---|
+| ![4 Corners before painting](docs/screenshots/editor-paint-before.jpg) | ![The same area after smart painting](docs/screenshots/editor-paint-after.jpg) |
+
+**Working on a map**
+- Any map opens in the normal game view, frozen and without fog. The camera, smooth zoom and minimap work as in a mission, and the tools panel keeps its size at any zoom.
+- Brushes of 1, 2, 3 or 5 cells; Shift+drag fills a rectangle; right-click picks up the terrain under the cursor; Ctrl+Z and Ctrl+Y undo and redo whole strokes.
+- **New Map**: 32 to 96 cells per side, a base terrain, 2 to 8 players, each starting with a Shaman.
+- **Save As** runs the game's own map processing (the pathfinding guide graph the original editor built on save), then writes the map to `DATA\MAPS`, where the skirmish setup lists it. The built-in maps are never overwritten: edit one and it's saved under a new name.
+- **Test Map** saves and starts a skirmish on the map. It asks first, so click it twice.
+
+**Still to come** from the original editor: start points, placing creatures and devices, crops, obstacles, and the event (trigger) editor. The trigger editor's screen is in fact already compiled into the retail game, with no way to open it, which gives the later stages a head start.
 
 ## What it does
 
@@ -57,12 +86,9 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 - A native Settings item on the main menu, with Video, Controls and Interface tabs.
 - Changes are saved and applied immediately.
 
-**Map editor**
-- A Map Editor item on the main menu: edit any skirmish map's terrain, or start a new map (32–96 cells per side, 2–8 players).
-- The map opens in the normal game view with everything frozen and no fog, so the camera, zoom and minimap work as in a mission.
-- Pick a terrain, a brush size (1, 2, 3 or 5), then drag to paint; Shift+drag fills a rectangle; right-click picks the terrain under the cursor. Undo and redo with Ctrl+Z and Ctrl+Y.
-- Smart painting, as in the original editor: terrain blends into its neighbours with the game's own transition tiles, and only goes next to terrain it has transitions for (Lava next to Tar, for example). A refused stroke says what is in the way.
-- Save As writes the map to `DATA\MAPS` after the game's own map processing (pathfinding), so it appears in the skirmish map list. Built-in maps are never overwritten. Test Map (click twice: it asks first) saves and starts a skirmish on it.
+**Map editor** (more in [The map editor, inside the game](#the-map-editor-inside-the-game))
+- The official 1998 editor's terrain tools, on the main menu: edit any map's terrain or make a new one, with the original's smart painting.
+- Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
 
 **Controls** (the full list is in [docs/controls.html](docs/controls.html))
 - Arrow keys scroll smoothly. Optional WASD.
