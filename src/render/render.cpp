@@ -239,6 +239,16 @@ POINT ClientToFrame(POINT c) {
     CropF s = ShownPart(g_mode.w, g_mode.h);
     int vw = std::max<int>(1, v.right - v.left), vh = std::max<int>(1, v.bottom - v.top);
     POINT g{(LONG)floor(s.x + (c.x - v.left) * s.w / vw), (LONG)floor(s.y + (c.y - v.top) * s.h / vh)};
+    // Showing part of the frame (zoomed in past the smallest frame): the mouse at
+    // the window's edge is at the frame's edge, so the game's edge scrolling works.
+    if (s.w < g_mode.w) {
+        if (c.x <= v.left) g.x = 0;
+        if (c.x >= v.right - 1) g.x = g_mode.w - 1;
+    }
+    if (s.h < g_mode.h) {
+        if (c.y <= v.top) g.y = 0;
+        if (c.y >= v.bottom - 1) g.y = g_mode.h - 1;
+    }
     g.x = std::clamp<LONG>(g.x, 0, g_mode.w - 1);
     g.y = std::clamp<LONG>(g.y, 0, g_mode.h - 1);
     return g;
@@ -564,15 +574,25 @@ void BuildLayers() {
         double w = (r.right - r.left) * es, hgt = (r.bottom - r.top) * es;
         double cx = (r.left + r.right) * 0.5, cy = (r.top + r.bottom) * 0.5;
         double x, y;
-        if (cx > g_frame.w / 3.0 && cx < g_frame.w * 2 / 3.0)
+        // The anchor is the edge the element is nearest, or the centre when it has
+        // about as much room on both sides (dialogs). Not the third its centre is
+        // in: an animated element (the Gene Lab's spinning preview) changes its
+        // box every frame, and a centre near a third's line flipped it between
+        // anchors, so the panel jumped.
+        auto anchor = [](double before, double after, double frame) {
+            if (fabs(before - after) < frame * 0.08) return 1;
+            return before < after ? 0 : 2;
+        };
+        int ax = anchor(r.left, g_frame.w - r.right, g_frame.w), ay = anchor(r.top, g_frame.h - r.bottom, g_frame.h);
+        if (ax == 1)
             x = v.left + vw * 0.5 + (cx - g_frame.w * 0.5) * es - w * 0.5;
-        else if (cx <= g_frame.w / 3.0)
+        else if (ax == 0)
             x = v.left + r.left * es;
         else
             x = v.right - (g_frame.w - r.right) * es - w;
-        if (cy > g_frame.h / 3.0 && cy < g_frame.h * 2 / 3.0)
+        if (ay == 1)
             y = v.top + vh * 0.5 + (cy - g_frame.h * 0.5) * es - hgt * 0.5;
-        else if (cy <= g_frame.h / 3.0)
+        else if (ay == 0)
             y = v.top + r.top * es;
         else
             y = v.bottom - (g_frame.h - r.bottom) * es - hgt;
