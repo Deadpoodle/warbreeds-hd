@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+testgame/
+testrun/
+dist/
+build/
+art/
+
+# Reverse-engineering scratch: the disassembly of the game and game screenshots stay local
+re/*
+!re/*.md
+
+third_party/*
+!third_party/fonts/
+
+docs/screenshots/raw/
+*.bmp
+*.log
+*.mkv
+*.mp4

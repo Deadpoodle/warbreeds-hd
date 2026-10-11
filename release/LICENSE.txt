@@ -1,0 +1,39 @@
+WarBreeds HD
+============
+
+THE PATCH (wsock32.dll)
+
+Public domain: anyone is free to copy, modify, publish, use, sell or
+distribute it, for any purpose and by any means, with no conditions.
+(The Unlicense, https://unlicense.org/; the full text is in the project
+repository's LICENSE file.)
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+THE ORBITRON FONT (Fonts\)
+
+Copyright 2018 The Orbitron Project Authors
+(https://github.com/theleagueof/orbitron), with Reserved Font Name "Orbitron".
+Licensed under the SIL Open Font License, Version 1.1; the full licence is in
+Fonts\OFL.txt. Included unmodified.
+
+
+THE WIDESCREEN MENU ARTWORK (Menus\)
+
+Derived from the original WarBreeds artwork (c) 1998 Red Orb Entertainment /
+Broderbund, extended with AI image generation. Provided only so that owners
+of WarBreeds can view the game's menus on widescreen displays; no rights in
+the original artwork are claimed.
+
+
+WARBREEDS
+
+WarBreeds is (c) 1998 Red Orb Entertainment / Broderbund. No game files are
+included in this patch. WarBreeds HD is an unofficial fan project and is not
+affiliated with or endorsed by the rights holders.
