@@ -3,6 +3,9 @@ __pycache__/
 testgame/
 testrun/
 testrun-*/
+
+# The development log stays local (not published)
+WIKI_LOG.md
 dist/
 build/
 art/

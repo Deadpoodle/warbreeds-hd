@@ -1,5 +1,5 @@
 // Addresses in WARBREED.EXE (GOG build 59030556949195281, image base 0x400000).
-// See WIKI_LOG.md for how each one was found.
+// How each one was found is in the re/ notes and the development log.
 #pragma once
 #include <stdint.h>
 

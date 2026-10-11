@@ -9,7 +9,7 @@
 // make the unloader 0x4eb700 a no-op. Arguments are cdecl 32-bit values at
 // [esp+12] inside the dispatcher (stub return, saved ebx, caller return).
 //
-// Playback (see WIKI_LOG): the cutscene scene (SCut/SIntroCut/SRedOrbCut)
+// Playback (see the development log): the cutscene scene (SCut/SIntroCut/SRedOrbCut)
 // stops the frame tick, opens the movie, makes a controller on the game window
 // and starts it, then loops GetMessage while the movie's "playing" status is
 // set. That status is only changed by the game's action filter (called with

@@ -161,7 +161,6 @@ The game imports `WSOCK32.dll`, so a proxy `wsock32.dll` in the game folder is l
 | `src/` | The patch: renderer (`render/`), zoom, interface layers, menu and Settings page, controls, fonts, cutscene player (`movie/`) |
 | `tools/` | The headless test harness (`autotest.sh`, `smoke.ps1`), the disassembly helper (`wbre.py`), Mohawk `.MHK` image extraction (`mhkimg.py`), the menu-art pipeline, packaging |
 | `re/` | Reverse-engineering reports: every hotkey, every mouse action, building in fog |
-| `WIKI_LOG.md` | The full development log: findings, addresses, dead ends and decisions |
 | `docs/` | The controls reference and screenshots |
 
 The patch includes a debug autopilot and a headless mode, so most testing ran hidden, with scripted input and screenshots, while the game was played normally on the same PC.
