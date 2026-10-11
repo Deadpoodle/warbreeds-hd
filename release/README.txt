@@ -1,4 +1,4 @@
-WarBreeds HD 0.13.0
+WarBreeds HD 0.13.1
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -34,7 +34,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
    WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.13.0" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.13.1" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -105,8 +105,9 @@ Map editor
     Ctrl+Shift with Left and Right step through events / conditions /
     actions, A adds, R removes, * makes an event persistent, Esc closes.
   - AI: each computer player's squad, base, scouting and influence. A
-    skirmish resets these to the clan's defaults; they apply when a map is
-    played without the skirmish setup, or through an AI AGGRESSION event.
+    skirmish on a map you made uses these settings (the original game
+    always replaced them with the clan defaults). The game's own skirmish
+    maps still use the clan defaults, so they play as they always have.
   - Check lists possible problems (start points, Shamans, power, start
     points cut off on foot, ...); saving runs it too and only warns.
   - Smart painting, as in the original editor: terrain blends into its

@@ -136,8 +136,8 @@ public:
         }
         RECT c = CloseRect();
         events::DrawText("Close", c.left + 4, c.bottom - 3, Hover(c) ? kStyleLit : kStyle);
-        static const char* const kHint[] = {"Saved with the map. A skirmish", "resets them to the clan defaults;",
-                                            "an AI AGGRESSION event changes", "them during play.", ""};
+        static const char* const kHint[] = {"Saved with the map, and kept in a", "skirmish on it (the game's own",
+                                            "maps use the clan defaults). An AI", "AGGRESSION event changes them", "during play."};
         for (int i = 0; i < 5; ++i) events::DrawText(kHint[i], kLeftX, 318 + 14 * i, kStyleSmall);
     }
 

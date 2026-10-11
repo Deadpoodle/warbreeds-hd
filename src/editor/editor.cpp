@@ -2303,9 +2303,9 @@ void Install(const Hooks& h) {
             open.lit = on;
             v.push_back(open);
             const char* help[] = {"Each computer player's squad,", "base, scouting and influence.",
-                                  "A skirmish resets these to the", "clan's defaults; they apply when",
-                                  "the map is played without the", "skirmish setup, or through an",
-                                  "AI AGGRESSION event."};
+                                  "Your maps keep them in a", "skirmish. (The game's own maps",
+                                  "use the clan defaults, as they", "always have.) An AI AGGRESSION",
+                                  "event changes them in play."};
             for (int i = 0; i < 7; ++i) {
                 PanelItem t;
                 t.row = 2 + i;

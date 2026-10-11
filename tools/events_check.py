@@ -18,6 +18,7 @@ the save), parses the saved .WBM and the original with tools/wbm.py and checks:
 Exit status 0 when every check passes.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -133,6 +134,21 @@ def main(argv):
     check(not bad and len(by_slot) == len(ai_held),
           "the AI settings are the editor's: slot %d squad 5 and scouting 1, slot %d base 1, the rest unchanged%s" % (
               first, second, "" if not bad else " (" + "; ".join(bad) + ")"))
+
+    # The Test Map skirmish keeps the custom map's AI settings (skirmish.cpp).
+    log_path = os.path.join(game, "WarBreedsHD.log")
+    kept = {}
+    if os.path.exists(log_path):
+        for line in open(log_path, encoding="latin-1").read().splitlines():
+            mk = re.search(r"skirmish: player (\d+) keeps the map's AI: squad ([\d.]+), base ([\d.]+), "
+                           r"scouting ([\d.]+), influence ([\d.]+)", line)
+            if mk:
+                kept[int(mk.group(1))] = [float(x) for x in mk.groups()[1:]]
+    wrong = [s for s, v in kept.items() if s not in by_slot or any(
+        abs(v[i] - by_slot[s][k]) > 0.005 for i, k in enumerate(("squad", "base", "scouting", "influence")))]
+    check(kept and not wrong and first in kept and second in kept,
+          "the skirmish kept the map's AI settings for its computer players (%s)%s" % (
+              ", ".join("player %d" % s for s in sorted(kept)), "" if not wrong else "; differ: %s" % wrong))
 
     # Nothing else edited.
     check(m["terrain"] == base["terrain"], "the terrain is the original's")

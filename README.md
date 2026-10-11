@@ -74,7 +74,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - **Test Map** saves and starts a skirmish on the map. It asks first, so click it twice.
 
 - **Events**: the original's event (trigger) editor, the game's own screen for it, which shipped inside the retail game with no way to open it. Conditions (timers, positions, deaths, devices, and more) start actions (dialogs, messages, reinforcements, victory or defeat, and more); the Events tab opens it, with buttons for adding, removing and stepping through events, conditions and actions.
-- **Global AI**: each computer player's squad, base, scouting and influence settings. A skirmish resets these to the clan's defaults, so they take effect when a map is played without the skirmish setup, or through an AI AGGRESSION event.
+- **Global AI**: each computer player's squad, base, scouting and influence settings. **A skirmish on a map you made uses these settings.** In the original game a skirmish always replaced them with each clan's default aggression, so a map's own AI settings never applied; WarBreeds HD keeps them for your maps. The game's own skirmish maps still use the clan defaults, so they play exactly as they always have. An AI AGGRESSION event can change the settings during play.
 
 | The event editor (the game's own, never reachable until now) | An event firing in a test skirmish |
 |---|---|

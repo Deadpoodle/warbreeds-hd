@@ -28,6 +28,7 @@
 #include "fonts.h"
 #include "controls.h"
 #include "editor/editor.h"
+#include "skirmish.h"
 
 #include "version.h"
 
@@ -891,6 +892,7 @@ void Init(HMODULE self) {
     controls::Install(Log);
     ApplyControlOptions();
     editor::Install({Log, g_dir, IniInt("Debug", "Autopilot", 0) != 0});  // after controls: its mouse hooks chain
+    skirmish::Install(Log);
     {
         movie::Hooks mh;
         mh.log = Log;
