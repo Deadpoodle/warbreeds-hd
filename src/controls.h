@@ -10,7 +10,10 @@
 //   - planting into fog: the Shaman walks there and plants (buildings already
 //     could), with the move cursor over fog in build/plant mode;
 //   - the Modern mouse scheme (option): left-click selects, right-click
-//     orders / cancels a mode.
+//     orders / cancels a mode;
+//   - group build (option): with several builders (and nothing else) selected
+//     the panel and B/P/R/U keys work as for one; a placed building is started
+//     by the nearest of them and the others join it (Repair) once it stands.
 
 namespace controls {
 
@@ -19,9 +22,12 @@ struct Options {
     bool quickBuild = true;
     bool buildInFog = true;
     bool modernMouse = false;  // left selects, right orders (Classic: left does both)
+    bool groupBuild = true;    // several selected builders build together
 };
 
 void Install(void (*log)(const char*, ...));
 void SetOptions(const Options& o);
+// Every frame tick; sgame = null outside missions (drops pending group builds).
+void Tick(void* sgame);
 
 }  // namespace controls

@@ -130,6 +130,7 @@ bool ShowFps();
 void SetFakeCursor(bool on, POINT game);
 void SetFakeCursorClient(POINT client);  // the virtual mouse at a window (screen-space) position
 POINT GamePointToClient(POINT game);
+POINT InterfacePointToClient(POINT game);  // where an interface element's frame pixel is shown
 HWND GameWindow();
 
 // Allow one extra display mode (used for continuous zoom).

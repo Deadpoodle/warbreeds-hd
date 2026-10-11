@@ -1,7 +1,9 @@
 #include "controls.h"
 
 #include <windows.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <algorithm>
@@ -107,6 +109,27 @@ void** Selection(int& count) {
     return w ? F<void**>(w, 0x80) : nullptr;
 }
 
+// Group build: two or more own builders and nothing else selected. The first
+// one leads: the panel shows its buttons and lists, and its modes are used.
+void* GroupLead() {
+    if (!g_opt.groupBuild) return nullptr;
+    int n;
+    void** sel = Selection(n);
+    if (n < 2 || !sel) return nullptr;
+    for (int i = 0; i < n; ++i)
+        if (!sel[i] || !IsBuilder(sel[i]) || !Mine(sel[i])) return nullptr;
+    return sel[0];
+}
+
+bool InGroup(void* sh) {
+    if (!GroupLead()) return false;
+    int n;
+    void** sel = Selection(n);
+    for (int i = 0; i < n; ++i)
+        if (sel[i] == sh) return true;
+    return false;
+}
+
 typedef short(__thiscall* Handler_t)(void* sg, int a, int b);
 typedef short(__thiscall* KeyHandler_t)(void* sg, int vk, int mods, int ascii);
 
@@ -160,12 +183,14 @@ const BuildKey kBuildKeys[16] = {
     {'P', true, "Psi Tower+"}, {'W', false, "Warp"},      {'S', false, "Summoner"}, {'C', false, "Collector"},
 };
 
-// The one selected own Shaman, if its build list (state 2) or pod list (4) is open.
+// The one selected own Shaman (or a group's lead), if its build list (state 2)
+// or pod list (4) is open.
 void* ShamanInState(int state) {
     int n;
     void** sel = Selection(n);
-    if (n != 1 || !sel || !sel[0]) return nullptr;
-    void* s = sel[0];
+    if (!sel || n < 1) return nullptr;
+    void* s = n == 1 ? sel[0] : GroupLead();
+    if (!s) return nullptr;
     if (!IsBuilder(s) || !Mine(s) || F<int>(s, kShamanState) != state) return nullptr;
     return s;
 }
@@ -218,6 +243,16 @@ short __thiscall HookKeyDown(void* sg, int vk, int mods, int ascii) {
     int k = vk & 0xff, m = mods & 0xff;
     if (g_opt.quickBuild && k >= 'A' && k <= 'Z' && (m == 0 || m == 4) && QuickBuild(k, m == 4)) return 1;
     if (g_opt.quickBuild && k >= '1' && k <= '3' && m == 0 && QuickPlant(k - '0')) return 1;
+    // B/P/R/U for a group of builders: the stock keys need exactly one Shaman
+    // (SelectionKind 3), then set the mode on the first selected (0x452b60).
+    if (m == 0 || m == 4) {
+        int mode = k == 'B' ? 2 : k == 'P' ? 4 : k == 'R' ? 6 : k == 'U' ? 7 : 0;
+        if (void* lead = mode ? GroupLead() : nullptr) {
+            ((void(__thiscall*)(void*, int))game::ShamanSetMode)(lead, mode);
+            g_log("controls: group of builders, key %c -> mode %d on the first", k, mode);
+            return 1;
+        }
+    }
     if (k >= '0' && k <= '9') {
         int n = k - '0';
         if (m == 4) {  // Shift
@@ -474,7 +509,317 @@ struct PtList {
 
 typedef short(__thiscall* ShamanClick_t)(void* sh, int sx, int sy, int wx, int wy, int zoom);
 
+// --- group build: several builders build one building -----------------------
+
+// The info panel, its clicks and the placement cursor treat a group of
+// builders as its lead alone: for the duration of those calls the selection
+// count reads 1 (the lead is sel[0]). Nothing in them changes the selection.
+// The panel's second page (World+0x6c, the stance page) keeps the group view.
+void* g_shownLead;  // the lead while its panel is drawn for the group
+int g_groupCount;
+
+struct AsLead {
+    void* w = nullptr;
+    int n = 0;
+    explicit AsLead(bool on) {
+        void* lead = on ? GroupLead() : nullptr;
+        if (!lead) return;
+        w = World();
+        n = F<int>(w, game::WorldSelCount);
+        F<int>(w, game::WorldSelCount) = 1;
+        g_shownLead = lead;
+        g_groupCount = n;
+    }
+    ~AsLead() {
+        if (!w) return;
+        F<int>(w, game::WorldSelCount) = n;
+        g_shownLead = nullptr;
+    }
+};
+
+bool StancePage(void* w) { return F<short>(w, game::WorldPanelPage) == 1; }
+
+void __thiscall HookDrawPanel(void* w, int camX, int camY) {
+    AsLead lead(!StancePage(w));
+    ((void(__thiscall*)(void*, int, int))game::WorldDrawInfoPanel)(w, camX, camY);
+}
+
+short __thiscall HookPanelDown(void* w, int sx, int sy) {
+    AsLead lead(!StancePage(w));
+    return ((short(__thiscall*)(void*, int, int))game::WorldPanelClickDown)(w, sx, sy);
+}
+
+// While the lead places a building, the ghost is the pointer (as for one Shaman).
+void __thiscall HookUpdateCursor(void* sg) {
+    void* lead = GroupLead();
+    AsLead as(lead && F<int>(lead, kShamanState) == 3);
+    ((void(__thiscall*)(void*))game::SGameUpdateCursor)(sg);
+}
+
+// The lead's panel with no mode open is titled like the stock group panel,
+// "Squad (n)" ("Squad g (n)" when all share control group g).
+typedef short(__thiscall* ShamanPanel_t)(void* sh, int x, int y, int camX, int camY);
+short __thiscall HookShamanPanel(void* sh, int x, int y, int camX, int camY) {
+    short r = ((ShamanPanel_t)game::ShamanPanel)(sh, x, y, camX, camY);
+    if (sh == g_shownLead && F<int>(sh, kShamanState) == 0) {
+        const char* squad = **(const char***)(*(char**)game::StringTable + game::StrSquadOffset);
+        void** sel = F<void**>(World(), 0x80);
+        uint8_t group = F<uint8_t>(sel[0], kGroup);
+        for (int i = 1; i < g_groupCount && group != 0xff; ++i)
+            if (F<uint8_t>(sel[i], kGroup) != group) group = 0xff;
+        char title[64];
+        if (group != 0xff)
+            snprintf(title, sizeof title, "%s %d (%d)", squad, group, g_groupCount);
+        else
+            snprintf(title, sizeof title, "%s (%d)", squad, g_groupCount);
+        ((void(__thiscall*)(void*, const char*))game::PanelSetTitle)((void*)game::InfoPanel, title);
+    }
+    return r;
+}
+
+struct IdList {
+    uint32_t vtbl;
+    short* data;
+    uint32_t count, cap;
+};
+
+void* Cmd() { return *(void**)kCommands; }
+void* Slot(uintptr_t off) { return (*(void***)Cmd())[off / 4]; }
+
+void MoveTo(void* unit, short x, short y) {
+    Pt pt{0x5031c4, x, y};
+    PtList path{0x5033d4, &pt, 1, 1};
+    short id = F<short>(unit, kId);
+    IdList ids{0x5030dc, &id, 1, 1};
+    ((void(__thiscall*)(void*, IdList*, PtList*, int))Slot(game::CmdMove))(Cmd(), &ids, &path, 0);
+}
+
+void Repair(void* builder, short target) {
+    ((void(__thiscall*)(void*, int, int))Slot(game::CmdRepair))(Cmd(), F<short>(builder, kId), target);
+}
+
+// The selected builder nearest to a world point: it gets the order.
+void* NearestBuilder(int x, int y) {
+    int n;
+    void** sel = Selection(n);
+    void* best = nullptr;
+    double bestD = 1e18;
+    for (int i = 0; i < n; ++i) {
+        double dx = F<short>(sel[i], 0x14) - x, dy = F<short>(sel[i], 0x16) - y, d = dx * dx + dy * dy;
+        if (d < bestD) {
+            bestD = d;
+            best = sel[i];
+        }
+    }
+    return best;
+}
+
+bool Alive(short id, void* p) {
+    void* w = World();
+    return w && (unsigned short)id < (unsigned)F<int>(w, 0x14) && F<void**>(w, 0x10)[(unsigned short)id] == p &&
+           Mine(p) && IsBuilder(p);
+}
+
+// A placed building: the founder builds it; the helpers walk to just outside
+// its footprint and get the Repair order (which finishes construction) as
+// soon as it exists. They can't be sent earlier: there is no building to
+// repair until the founder has worked 0x40 ticks on site, and a second Build
+// order on the same spot would only fail when it finds the first building.
+struct Helper {
+    short id;
+    void* p;
+};
+struct GroupBuild {
+    short founderId;
+    void* founder;
+    int type;
+    short x, y, reach;  // reach: how far from the site a helper may wait or walk
+    DWORD start;
+    bool armed;  // the founder's Build order has taken effect (multiplayer: a turn later)
+    Helper helpers[16];
+    int helperCount;
+};
+GroupBuild g_builds[8];
+int g_buildCount;
+
+void StartGroupBuild(void* founder, int type, short x, short y) {
+    int n;
+    void** sel = Selection(n);
+    if (g_buildCount == 8) g_builds[0] = g_builds[--g_buildCount];  // drop the oldest
+    GroupBuild& b = g_builds[g_buildCount++];
+    b = GroupBuild{};
+    b.founder = founder;
+    b.founderId = F<short>(founder, kId);
+    b.type = type;
+    b.x = x;
+    b.y = y;
+    b.start = GetTickCount();
+    // Helpers wait on the square just outside the footprint's 32 px tiles, on
+    // their own side of it: the founder can only create the building on free
+    // ground (anything else in it makes it step aside and try again).
+    int half = game::at<short>(game::FootprintTable + type * 2) / 2;
+    int edge = half + 56;
+    b.reach = (short)(edge + 160);
+    for (int i = 0; i < n && b.helperCount < 16; ++i) {
+        void* h = sel[i];
+        if (h == founder) continue;
+        double dx = F<short>(h, 0x14) - x, dy = F<short>(h, 0x16) - y, m = std::max(fabs(dx), fabs(dy));
+        if (m < 1) dx = 1, dy = 0, m = 1;
+        short gx = (short)std::max(16, (int)(x + dx * edge / m)), gy = (short)std::max(16, (int)(y + dy * edge / m));
+        MoveTo(h, gx, gy);
+        b.helpers[b.helperCount++] = {F<short>(h, kId), h};
+    }
+    g_log("controls: group build: %s (type %#x, footprint %d) at %d,%d by builder %d (nearest), %d helper(s) heading "
+          "there",
+          kBuildKeys[std::min(15, std::max(0, type - 0x2c))].name, type, half * 2, x, y, b.founderId, b.helperCount);
+}
+
+// The lead placing a building: the stock click (mode 3, 0x441d2e) with the
+// nearest selected builder as the one who builds it, then the others join.
+// An invalid spot falls through to the stock handler, which keeps the mode.
+bool GroupPlace(void* lead) {
+    short x = F<short>(lead, kShamanPlaceX), y = F<short>(lead, kShamanPlaceY);
+    int type = F<int>(lead, kShamanBuildType);
+    short player = F<short>(F<void*>(lead, kOwner), 4);
+    typedef int(__thiscall * CanPlace_t)(void*, int, int, int, int, int, int, int);
+    if (((CanPlace_t)game::WorldCanPlace)(World(), player, x, y, type, 1, 0, 0) != 0) return false;
+    void* founder = NearestBuilder(x, y);
+    ((void(__thiscall*)(void*))game::ButtonRelease)((void*)game::BuildButton);
+    ((void(__thiscall*)(void*))game::ShamanRemoveGhost)(lead);
+    ((void(__cdecl*)())kClickSound)();
+    ((void(__thiscall*)(void*))kResetMode)(lead);
+    ((void(__thiscall*)(void*, int, int, int, int))Slot(game::CmdBuild))(Cmd(), F<short>(founder, kId), type, x, y);
+    StartGroupBuild(founder, type, x, y);
+    return true;
+}
+
+// The lead planting a pod: the nearest selected builder plants it (a pod is
+// one quick action; nothing to join, and one pod each would cost each).
+bool GroupPlant(void* lead, short wx, short wy) {
+    if (!wx && !wy) return false;
+    if (SeenByMe(wx, wy) ? ((short(__thiscall*)(void*, int, int))game::ShamanCanPlantAt)(lead, wx, wy) != 1
+                         : !g_opt.buildInFog)
+        return false;
+    void* planter = NearestBuilder(wx, wy);
+    Pt pt{0x5031c4, wx, wy};
+    PtList path{0x5033d4, &pt, 1, 1};
+    int podType = F<int>(lead, kShamanBuildType);
+    ((void(__cdecl*)())kClickSound)();
+    ((void(__thiscall*)(void*, int, int, PtList*))Slot(kCmdPlant))(Cmd(), F<short>(planter, kId), podType, &path);
+    ((void(__thiscall*)(void*))kResetMode)(lead);
+    g_log("controls: group plant: pod %#x at %d,%d by builder %d (nearest)", podType, wx, wy, F<short>(planter, kId));
+    return true;
+}
+
+// Is a helper still free to join: idle, or walking to somewhere near the site
+// (our move, or the stock "clear the site" nudge)? Anything else is a new
+// order from the player.
+bool FreeToJoin(const GroupBuild& b, void* h) {
+    int act = F<int>(h, game::ThingActivity);
+    if (act == 0x28) return true;
+    if (act != 0x29 || F<uint32_t>(h, game::ThingPathCount) == 0) return false;
+    Pt* goal = F<Pt*>(h, game::ThingPathData);
+    return abs(goal->x - b.x) <= b.reach && abs(goal->y - b.y) <= b.reach;
+}
+
+void JoinBuilding(const GroupBuild& b, short building) {
+    char ids[128] = "";
+    int sent = 0, len = 0;
+    for (int i = 0; i < b.helperCount; ++i) {
+        const Helper& h = b.helpers[i];
+        if (!Alive(h.id, h.p)) continue;
+        if (!FreeToJoin(b, h.p)) {
+            g_log("controls: group build: builder %d has a new order (activity %#x), not joining", h.id,
+                  F<int>(h.p, game::ThingActivity));
+            continue;
+        }
+        Repair(h.p, building);
+        ++sent;
+        if (len < (int)sizeof ids - 8) len += snprintf(ids + len, sizeof ids - len, " %d", h.id);
+    }
+    g_log("controls: group build: building %d (type %#x) is up; %d helper(s) sent to build it:%s", building, b.type, sent,
+          ids);
+}
+
+// Returns false when the group build is finished or dropped.
+bool UpdateGroupBuild(GroupBuild& b) {
+    DWORD age = GetTickCount() - b.start;
+    if (!Alive(b.founderId, b.founder)) {
+        g_log("controls: group build: builder %d is gone, helpers stay", b.founderId);
+        return false;
+    }
+    int act = F<int>(b.founder, game::ThingActivity);
+    if (!b.armed) {
+        if (act == 0x2e && F<short>(b.founder, game::ShamanWalkX) == b.x && F<short>(b.founder, game::ShamanWalkY) == b.y) {
+            b.armed = true;
+        } else if (age > 5000) {
+            g_log("controls: group build: the build order never took effect (activity %#x)", act);
+            return false;
+        }
+        return true;
+    }
+    void* w = World();
+    unsigned short id = F<unsigned short>(b.founder, game::ShamanWorkTarget);
+    void* bld = id != 0xc01 && id < (unsigned)F<int>(w, 0x14) ? F<void**>(w, 0x10)[id] : nullptr;
+    if (bld && IsDevice(bld) && Mine(bld) && Type(bld) == b.type) {
+        JoinBuilding(b, (short)id);
+        return false;
+    }
+    // Still on it: building, or idle for a moment after a failed attempt (the
+    // site wasn't free: +0x1b4 = 1, it steps aside and orders itself the same
+    // Build again, up to 4 tries; work tick 0x4436b0, retry 0x443f10).
+    bool onIt = act == 0x2e ? F<short>(b.founder, game::ShamanWalkX) == b.x && F<short>(b.founder, game::ShamanWalkY) == b.y
+                            : act == 0x28 && F<short>(b.founder, game::ShamanBuildRetry) == 1;
+    if (!onIt) {
+        g_log("controls: group build: builder %d stopped (activity %#x) before the building stood; helpers stay",
+              b.founderId, act);
+        return false;
+    }
+    if (age > 300000) {
+        g_log("controls: group build: gave up waiting for the building");
+        return false;
+    }
+    return true;
+}
+
+// The panel's cancel while the lead works (build/plant/repair...): the stock
+// click-up stops the lead (Cmd+0x2c); a group's other builders stop with it.
+typedef short(__thiscall* ShamanUp_t)(void* sh, int sx, int sy, int wx, int wy);
+short __thiscall HookShamanUp(void* sh, int sx, int sy, int wx, int wy) {
+    bool cancel = InGroup(sh) && ((short(__thiscall*)(void*))game::ShamanWorking)(sh) == 1 &&
+                  game::at<short>(game::CancelButton + 0x16) == 1 &&
+                  ((void*(__thiscall*)(void*, int, int))kPanelWidgetAt)((void*)kPanel, (short)sx, (short)sy) ==
+                      (void*)game::CancelButton;
+    short r = ((ShamanUp_t)game::ShamanClickUp)(sh, sx, sy, wx, wy);
+    if (cancel) {
+        int n;
+        void** sel = Selection(n);
+        for (int i = 0; i < n; ++i)
+            if (sel[i] != sh) ((void(__thiscall*)(void*, int))Slot(game::CmdStop))(Cmd(), F<short>(sel[i], kId));
+        g_log("controls: group cancel: %d builder(s) stopped", n);
+    }
+    return r;
+}
+
 short __thiscall HookShamanDown(void* sh, int sx, int sy, int wx, int wy, int zoom) {
+    int state = F<int>(sh, kShamanState);
+    if ((state == 3 || state == 5 || state == 6) && InGroup(sh) && OnBattlefield((short)sx, (short)sy)) {
+        if (state == 3 && GroupPlace(sh)) return 1;
+        if (state == 5 && GroupPlant(sh, (short)wx, (short)wy)) return 1;
+        if (state == 6) {  // Repair mode: the lead's stock order, then every other builder too
+            short rect[4];
+            void* target = PickAt((void*)((uintptr_t*)game::Scenes)[0], (short)sx, (short)sy, rect);
+            short r = ((ShamanClick_t)kShamanDown)(sh, sx, sy, wx, wy, zoom);
+            if (r == 1 && F<int>(sh, kShamanState) == 0 && RepairTarget(target)) {
+                int n;
+                void** sel = Selection(n);
+                for (int i = 0; i < n; ++i)
+                    if (sel[i] != sh) Repair(sel[i], F<short>(target, kId));
+                g_log("controls: group repair: %d builder(s) on building %d", n, F<short>(target, kId));
+            }
+            return r;
+        }
+    }
     if (g_opt.buildInFog && F<int>(sh, kShamanState) == 5 && ((short)wx || (short)wy) && !SeenByMe((short)wx, (short)wy) &&
         OnBattlefield((short)sx, (short)sy)) {
         static Pt pt;
@@ -511,6 +856,19 @@ bool PatchSlot(uintptr_t slot, uintptr_t expect, void* hook) {
     return true;
 }
 
+// Point a `call rel32` at `site` (which must call `expect`) to `hook`, a
+// function with the same convention.
+bool PatchCall(uintptr_t site, uintptr_t expect, void* hook) {
+    uint8_t* p = (uint8_t*)site;
+    if (p[0] != 0xe8 || site + 5 + *(int32_t*)(p + 1) != expect) return false;
+    DWORD old;
+    if (!VirtualProtect(p + 1, 4, PAGE_EXECUTE_READWRITE, &old)) return false;
+    *(int32_t*)(p + 1) = (int32_t)((uintptr_t)hook - (site + 5));
+    VirtualProtect(p + 1, 4, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), p, 5);
+    return true;
+}
+
 }  // namespace
 
 void Install(void (*log)(const char*, ...)) {
@@ -522,8 +880,28 @@ void Install(void (*log)(const char*, ...)) {
               PatchSlot(kSlotShamanDown, kShamanDown, (void*)&HookShamanDown) &&
               PatchSlot(kSlotShamanCursor, kShamanCursor, (void*)&HookShamanCursor);
     log("controls: %s", ok ? "installed" : "FAILED (unexpected SGame vtable)");
+    // Group build: the panel, its clicks and the placement cursor (see AsLead).
+    bool group = PatchSlot(game::SlotShamanPanel, game::ShamanPanel, (void*)&HookShamanPanel) &&
+                 PatchSlot(game::SlotShamanClickUp, game::ShamanClickUp, (void*)&HookShamanUp) &&
+                 PatchCall(game::DrawInfoPanelCall, game::WorldDrawInfoPanel, (void*)&HookDrawPanel) &&
+                 PatchCall(game::UpdateCursorCall, game::SGameUpdateCursor, (void*)&HookUpdateCursor);
+    for (uintptr_t site : game::PanelClickDownCalls)
+        group = group && PatchCall(site, game::WorldPanelClickDown, (void*)&HookPanelDown);
+    log("controls: group build hooks %s", group ? "installed" : "FAILED (unexpected code)");
 }
 
 void SetOptions(const Options& o) { g_opt = o; }
+
+void Tick(void* sgame) {
+    if (!sgame) {
+        g_buildCount = 0;
+        return;
+    }
+    for (int i = 0; i < g_buildCount;)
+        if (UpdateGroupBuild(g_builds[i]))
+            ++i;
+        else
+            g_builds[i] = g_builds[--g_buildCount];
+}
 
 }  // namespace controls

@@ -110,6 +110,7 @@ The Steam release (app 2464660) has not been checked; its exe may differ.
        - In both schemes, `WM_RBUTTONDBLCLK` is turned into `WM_RBUTTONDOWN`, because the game drops it.
        - Headless test `[Debug] Autopilot=9` (with `MouseScheme=modern`) verified each step: left selects; left on ground deselects; right on ground moves and keeps the selection; right in plant mode cancels and keeps it. The Classic mission regression still passes.
        - **Shift+drag adds a box to the selection** in both schemes. The stock game turned Shift+drag into a Shift+click at the release point, because `0x4804c0` turns off the drag box while Shift is held. Our left-up hook does the 32 px drag test itself and calls `World::BoxSelect 0x44afe0(&rect{x0,y0,x1,y1}, ground, air, add=1)`, honouring PgUp/PgDn. Verified headless (`Autopilot=9`): nothing selected, then a Shift+drag round the Shaman selects it.
+     - **Group build** (player request; `[Input] GroupBuild=1`, Settings → Controls → Group Build): several builders selected together can build. See the 2026-10-11 log.
      - **Headless test:** `[Debug] Autopilot=8` (`AutopilotTarget` = the quick-build key) selects the Shaman, plants a pod (P, 1), quick-builds, stops, clicks the building, then tests the groups. It logs the selection state, own buildings and the valid spots.
        - Verified: quick-plant planted on the first click; quick-build entered Refinery placement; Ctrl+1, the double tap and Shift+1 all worked; the mission regression still passes.
        - The builder-click repair needs a real unfinished building, and a fresh skirmish has no valid Refinery spot until a pod grows, so the tester checks that one in play.
@@ -512,3 +513,32 @@ The Steam release (app 2464660) has not been checked; its exe may differ.
     - a resolution-zoom frame of 3200x1800 (wider than the map) shows the whole map, black only beyond its edge;
     - the skirmish mission test is unchanged.
   - Wiki note: on small maps with a large render size, the original engine shows only part of the battlefield.
+- **Group build (player request; `[Input] GroupBuild=1`, default on; Settings → Controls → Group Build).**
+  - Stock rule: a builder's panel buttons (build, plant, upgrade, repair) and B/P/R/U exist only with exactly one own Shaman selected.
+    - World::DrawInfoPanel `0x449410` (called at `0x47c1a9`) draws the thing's own panel (AShaman slot +0x14, `0x442f10`) only when the selection count `World+0x84` is 1; with more it shows just "Squad (n)" (string 51).
+    - World::PanelClickDown `0x44f620` (called at `0x47dad6`, `0x47eec9`, `0x47d97b`) gives the click to the thing (slot +0x18) only for one selected thing. That presses the button and captures the mouse, so the button-up (slot +0x1c, `0x442230`) and every later placement click go straight to that Shaman.
+    - The keys test SelectionKind `0x44a1c0` == 3, then call SetMode `0x442720` on the first selected thing (`0x452b60`).
+  - What counts as a group: two or more selected things, all own builders. A mixed selection keeps the stock army panel (its stance page and group title), and a building order means nothing to soldiers. The first selected builder "leads": its panel, lists and modes are used, as if it were selected alone.
+  - Hooks (`src/controls.cpp`; addresses in `src/game.h`):
+    - the three PanelClickDown calls, the DrawInfoPanel call and the cursor-pick call `0x47c26b` (`0x47c3d0`, only while the lead places a building, so the ghost is the pointer) run with the selection count reading 1. The panel's second page (`World+0x6c`, the I key) keeps the group's stance page;
+    - the lead's panel with no mode open is titled "Squad (n)" like the stock group panel (AShaman slot `0x504a40`);
+    - B/P/R/U set the lead's mode; quick-build letters use the lead's list;
+    - AShaman click-down `0x504a44` and click-up `0x504a48` for the group cases below.
+  - **Placing a building** (mode 3): the stock click is repeated (CanPlace `0x4517e0` == 0, release the build button, remove the ghost, click sound, reset the mode), but the Build order (`Cmd+0x5c`) goes to the selected builder **nearest the site**.
+    - The others get a Move to just outside the footprint (`0x54e370[type]`, plus 56 px, on their own side).
+    - When the building exists (the founder's `+0x18e` holds its id; the build tick `0x4436b0` creates it 0x40 ticks after arriving), each helper that is idle or still walking near the site gets the game's Repair order (`Cmd+0x88`), which finishes construction. A helper the player has given another order is left alone.
+    - They can't join earlier: there is nothing to repair yet, and a second Build order on the same spot only fails once the first building stands. Helpers must also stay off the footprint, because creation (`0x446db0`) fails on any object there except the founder.
+    - The founder's own failed attempts are expected: it goes idle with `+0x1b4` = 1, steps aside and repeats the Build (`0x443f10`, at most 4 tries). The same happens with one Shaman. The group build waits through it, and is dropped when the founder stops, dies or gets another order (helpers stay where they are), or after 5 minutes.
+  - **Invalid spot, cancel, Shift:** a refused spot goes to the stock handler (the mode stays; nobody moves). Back, the panel's cancel or a right-click leave the mode without orders. The stock placement ignores Shift, and so does the group: one click, one building.
+  - **Pods:** the nearest builder plants the pod and the rest do nothing. A pod is one quick action with nothing to join, and planting one each would cost each. Fog planting (BuildInFog) works the same way.
+  - **Repair** mode sends every selected builder; the panel's **cancel** while the lead works stops them all (`Cmd+0x2c`). **Upgrade** and **Get Genes** act on the lead only.
+  - Not covered: Tab-queued planting of several pods (`0x452b80` wants one Shaman) still moves the group instead.
+  - The Settings Controls tab is now full (rows 2–12; Reset is row 13).
+  - **Headless test `[Debug] Autopilot=12`:**
+    - A skirmish starts with one Shaman, so the test creates two more of its type beside it with the engine's own cheat-console placement (`0x4472d0`, as `0x47d6d3` calls it). `AutopilotTarget` = how many; -1 = none, the stock one-Shaman flow for comparison.
+    - E selects all three: the panel reads "Squad (3)" with the builder buttons.
+    - The panel's plant button and the first pod (clicked where the renderer shows them), then a click on pod soil: the nearest Shaman planted.
+    - B, then R (quick-build Refinery). A click with no pod in reach was refused: the mode stayed and nobody moved. Then a click beside the pod: builder 7 founded it, builders 12 and 13 walked to its edge, and when building 25 stood (about 12 s later, after one stock step-aside retry) both got Repair (activity 0x39, work target 25).
+    - The panel's cancel stopped all three. Repair through the panel and a click on the building sent all three; the Refinery completed.
+    - Progress over 5 s: 214 with one Shaman, about 640 with three.
+    - Mode 1 (mission), mode 8 (controls) and mode 2 (Settings) still pass.

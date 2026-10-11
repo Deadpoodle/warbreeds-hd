@@ -846,6 +846,17 @@ void SetFakeCursor(bool on, POINT game) {
 }
 
 POINT GamePointToClient(POINT game) { return GameToClient(game); }
+POINT InterfacePointToClient(POINT game) {
+    // The inverse of ClientToGame: the topmost interface element showing this frame pixel.
+    for (size_t i = g_layers.size(); i-- > 1;) {
+        const Layer& l = g_layers[i];
+        if (l.kind == Layer::Cursor || l.kind == Layer::MenuCursor || !Inside(l.src, game)) continue;
+        int sw = std::max<int>(1, l.src.right - l.src.left), sh = std::max<int>(1, l.src.bottom - l.src.top);
+        return {(LONG)(l.dst.left + ((int64_t)(game.x - l.src.left) * 2 + 1) * (l.dst.right - l.dst.left) / (2 * sw)),
+                (LONG)(l.dst.top + ((int64_t)(game.y - l.src.top) * 2 + 1) * (l.dst.bottom - l.dst.top) / (2 * sh))};
+    }
+    return GameToClient(game);
+}
 void SetFakeCursorClient(POINT client) {
     g_fakeCursor = true;
     g_fakePos = client;

@@ -51,8 +51,30 @@ void LogView() {
     g_h.log("autopilot:   camera %d,%d view %dx%d zoomedOut %d screen %dx%d", sh(game::SGameCameraX),
             sh(game::SGameCameraY), sh(game::SGameViewW), sh(game::SGameViewH), sh(game::SGameZoomedOut),
             game::at<short>(game::ScreenRight), game::at<short>(game::ScreenBottom));
-    // Selection and own buildings (mode 8, the controls test).
-    if (g_h.mode == 8 || g_h.mode == 9) {
+    // Mode 12 (group build): every own builder, selected or not.
+    if (g_h.mode == 12) {
+        char* w = *(char**)0x579278;
+        void* me = ((void* (*)())0x46f8e0)();
+        char** sel = *(char***)(w + 0x80);
+        int n = *(int*)(w + 0x84);
+        char** things = *(char***)(w + 0x10);
+        int count = *(int*)(w + 0x14);
+        g_h.log("autopilot:   selected %d", n);
+        for (int i = 0; i < count; ++i) {
+            char* t = things[i];
+            int ty = t ? *(int*)(t + 0x18) : -1;
+            if (!t || *(void**)(t + 0x20) != me || !(ty == 0 || ty == 9 || ty == 0x12 || ty == 0x1b)) continue;
+            bool s = false;
+            for (int k = 0; k < n; ++k) s |= sel[k] == t;
+            short gx = -1, gy = -1;
+            if (*(int*)(t + 0xb4) > 0) gx = *(short*)(*(char**)(t + 0xb0) + 4), gy = *(short*)(*(char**)(t + 0xb0) + 6);
+            g_h.log("autopilot:   builder id %d%s state %d activity %#x workTarget %d pos %d,%d goal %d,%d",
+                    *(short*)(t + 0x1c), s ? " (selected)" : "", *(int*)(t + 0x1ac), *(int*)(t + 0xc0),
+                    *(short*)(t + 0x18e), *(short*)(t + 0x14), *(short*)(t + 0x16), gx, gy);
+        }
+    }
+    // Selection and own buildings (mode 8, the controls test; 12, group build).
+    if (g_h.mode == 8 || g_h.mode == 9 || g_h.mode == 12) {
         char* w = *(char**)0x579278;
         void* me = ((void* (*)())0x46f8e0)();
         int n = *(int*)(w + 0x84);
@@ -136,7 +158,8 @@ void Key(WPARAM vk) {
 // open and close the Esc menu. Points are in thousandths of the frame size, so
 // they stay on screen at every zoom.
 enum Act { SaveShot, ZoomOut, ZoomIn, Esc, Quit, CursorCentre, Glide, ClickHere, KeyTap, RightClickHere, ShiftDrag,
-           RecordStart, RecordStop, HoldKey, ReleaseKey };
+           RecordStart, RecordStop, HoldKey, ReleaseKey, SpawnBuilders, GlideToBuildSpot,
+           ClickPanelButton, GlideToOwnBuilding };
 struct Step {
     DWORD at;
     Act act;
@@ -265,6 +288,51 @@ const Step kControls[] = {
     {31200, KeyTap, nullptr, {'1', VK_SHIFT}},
     {31800, SaveShot, "c6-shift-add", {}},
     {32200, Quit, nullptr, {}},
+};
+
+// Mode 12, group build ([Input] GroupBuild): a skirmish starts with one Shaman,
+// so two more of its type are created beside it with the engine's own
+// cheat-console placement (0x4472d0, as SGame::LButtonDown 0x47d6d3 calls it;
+// AutopilotTarget = how many, -1 none). E selects all three. Then, with the
+// panel's own buttons, plant and pod 1 and a click on pod soil (the nearest
+// plants); B and R (quick-build Refinery), first a click where it can't go
+// (refused: the mode stays, nobody moves), then a glide to a valid Refinery
+// spot beside the pod and a click (the nearest builds, the others join);
+// later the panel's cancel (all stop) and repair, then a click on the
+// building (all repair, which finishes it). The log lists every builder.
+const Step kGroup[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {2000, SpawnBuilders, nullptr, {2, 0}},
+    {2600, KeyTap, nullptr, {'E', 0}},  // select all own units on screen
+    {3200, SaveShot, "g0-group", {}},
+    {3400, ClickPanelButton, nullptr, {0x544e20, 0}},  // plant
+    {3900, SaveShot, "g1-podlist", {}},
+    {4100, ClickPanelButton, nullptr, {0x545730, 0}},  // the first pod
+    {4300, Glide, nullptr, {150, 88}},                // pod soil
+    {5500, ClickHere, nullptr, {}},
+    {6000, SaveShot, "g2-planting", {}},
+    {15000, SaveShot, "g3-planted", {}},
+    {15200, KeyTap, nullptr, {'B', 0}},
+    {15800, SaveShot, "g4-buildlist", {}},
+    {16000, KeyTap, nullptr, {'R', 0}},
+    {16200, Glide, nullptr, {500, 600}},  // no pod in reach: refused, the mode stays
+    {17400, ClickHere, nullptr, {}},
+    {18000, SaveShot, "g5a-refused", {}},
+    {18200, GlideToBuildSpot, nullptr, {}},
+    {19600, SaveShot, "g5-placing", {}},
+    {19800, ClickHere, nullptr, {}},
+    {20600, SaveShot, "g6-heading", {}},
+    {24000, SaveShot, "g7-founding", {}},
+    {28000, SaveShot, "g8-building", {}},
+    {33000, SaveShot, "g9-together", {}},
+    {33200, ClickPanelButton, nullptr, {0x546df8, 0}},  // cancel: all stop
+    {34000, SaveShot, "g10-cancelled", {}},
+    {34200, ClickPanelButton, nullptr, {0x546928, 0}},  // repair
+    {34600, GlideToOwnBuilding, nullptr, {0x2c, 0}},
+    {35900, ClickHere, nullptr, {}},
+    {36800, SaveShot, "g11-repair", {}},
+    {46000, SaveShot, "g12-later", {}},
+    {46500, Quit, nullptr, {}},
 };
 
 }  // namespace
@@ -584,11 +652,16 @@ void Tick(const std::string& scene, int frameW, int frameH) {
     } else if (scene == ".?AVSMultiSetup@@") {
         if (g_step == 0 && t > 2000) { Click({437, 457}); ++g_step; }  // Start
     } else if (scene == ".?AVSGame@@") {
-        const Step* script = g_h.mode == 8 ? kControls : g_h.mode == 9 ? kModern : g_h.mode == 10 ? kRecord : kMission;
-        int steps = g_h.mode == 8   ? (int)(sizeof kControls / sizeof kControls[0])
-                    : g_h.mode == 9 ? (int)(sizeof kModern / sizeof kModern[0])
+        const Step* script = g_h.mode == 8    ? kControls
+                             : g_h.mode == 9  ? kModern
+                             : g_h.mode == 10 ? kRecord
+                             : g_h.mode == 12 ? kGroup
+                                              : kMission;
+        int steps = g_h.mode == 8    ? (int)(sizeof kControls / sizeof kControls[0])
+                    : g_h.mode == 9  ? (int)(sizeof kModern / sizeof kModern[0])
                     : g_h.mode == 10 ? (int)(sizeof kRecord / sizeof kRecord[0])
-                                    : (int)(sizeof kMission / sizeof kMission[0]);
+                    : g_h.mode == 12 ? (int)(sizeof kGroup / sizeof kGroup[0])
+                                     : (int)(sizeof kMission / sizeof kMission[0]);
         if (g_step >= steps || t <= script[g_step].at) return;
         const Step& st = script[g_step++];
         if (st.act != ReleaseKey && st.act != HoldKey)
@@ -657,6 +730,125 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             Post(WM_RBUTTONUP, 0, g_glideTo);
             g_h.log("autopilot: right-click %ld,%ld", g_glideTo.x, g_glideTo.y);
             break;
+        case SpawnBuilders: {  // to.x more builders of the first own builder's type, beside it
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            int count = *(int*)(w + 0x14);
+            char* first = nullptr;
+            for (int i = 0; i < count && !first; ++i) {
+                char* t = things[i];
+                int ty = t ? *(int*)(t + 0x18) : -1;
+                if (t && *(char**)(t + 0x20) == me && (ty == 0 || ty == 9 || ty == 0x12 || ty == 0x1b)) first = t;
+            }
+            if (!first) {
+                g_h.log("autopilot: no own builder to copy");
+                break;
+            }
+            // World::PlaceCreature 0x4472d0(player, type, x, y, 4 gene values; 100 = default).
+            typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
+            static const short off[][2] = {{70, 0}, {0, 70}, {70, 70}, {-70, 0}, {0, -70}, {-70, 70}, {140, 0}, {0, 140}};
+            int made = 0;
+            for (const auto& o : off) {
+                // AutopilotTarget: how many (default to.x; -1 = none, the stock one-Shaman flow).
+                if (made == (g_h.target < 0 ? 0 : g_h.target > 0 ? g_h.target : st.to.x)) break;
+                unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), *(int*)(first + 0x18),
+                                                        *(short*)(first + 0x14) + o[0], *(short*)(first + 0x16) + o[1],
+                                                        100, 100, 100, 100);
+                if (id == 0xc01) continue;
+                ++made;
+                g_h.log("autopilot: created builder id %d (type %#x) at %d,%d", id, *(int*)(first + 0x18),
+                        *(short*)(first + 0x14) + o[0], *(short*)(first + 0x16) + o[1]);
+            }
+            break;
+        }
+        case GlideToBuildSpot: {  // to a spot the selected lead's building may go, nearest an own pod
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** sel = *(char***)(w + 0x80);
+            if (*(int*)(w + 0x84) < 1 || !sel[0]) break;
+            int type = *(int*)(sel[0] + 0x188);
+            char** things = *(char***)(w + 0x10);
+            int count = *(int*)(w + 0x14);
+            char* pod = nullptr;  // the pod nearest the lead (pods may have no owner)
+            int podD = 1 << 30;
+            for (int i = 0; i < count; ++i) {
+                char* t = things[i];
+                if (!t || *(int*)(t + 0x18) < 0x3f || *(int*)(t + 0x18) > 0x41) continue;
+                int dx = *(short*)(t + 0x14) - *(short*)(sel[0] + 0x14), dy = *(short*)(t + 0x16) - *(short*)(sel[0] + 0x16);
+                if (dx * dx + dy * dy < podD) podD = dx * dx + dy * dy, pod = t;
+            }
+            if (!pod) {
+                g_h.log("autopilot: no pod yet");
+                break;
+            }
+            g_h.log("autopilot: pod owner %p (me %p)", *(void**)(pod + 0x20), (void*)me);
+            uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+            int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+            int camX = *(short*)(g + game::SGameCameraX), camY = *(short*)(g + game::SGameCameraY);
+            int px = *(short*)(pod + 0x14), py = *(short*)(pod + 0x16);
+            typedef int(__thiscall * Valid_t)(void*, int, int, int, int, int, int, int);
+            int best = 1 << 30;
+            POINT spot{-1, -1};
+            for (int y = py - 192; y <= py + 192; y += 8)
+                for (int x = px - 192; x <= px + 192; x += 8) {
+                    int sx = (x - camX) / f, sy = (y - camY) / f;
+                    if (sx < 100 || sy < 100 || sx > frameW - 100 || sy > frameH - 100) continue;
+                    if (sx > frameW - 400 && sy < 300) continue;  // the info panel
+                    if (((Valid_t)0x4517e0)(w, *(short*)(me + 4), x, y, type, 1, 0, 0) != 0) continue;
+                    int d = (x - px) * (x - px) + (y - py) * (y - py);
+                    if (d < best) best = d, spot = {sx, sy};
+                }
+            g_h.log("autopilot: pod id %d at %d,%d; nearest valid spot for %#x: frame %ld,%ld", *(short*)(pod + 0x1c), px,
+                    py, type, spot.x, spot.y);
+            if (spot.x < 0) break;
+            g_glideFrom = {game::at<short>(game::CursorX), game::at<short>(game::CursorY)};
+            g_glideTo = spot;
+            g_glideStart = now;
+            g_gliding = true;
+            break;
+        }
+        case ClickPanelButton: {  // the info panel's button at address to.x, clicked where it is shown
+            void* btn = (void*)(uintptr_t)st.to.x;
+            long sx = 0, sy = 0, hits = 0;
+            for (int y = 0; y < std::min(frameH, 400); y += 2)
+                for (int x = std::max(0, frameW - 400); x < frameW; x += 2)
+                    if (((void*(__thiscall*)(void*, int, int))0x497c60)((void*)game::InfoPanel, x, y) == btn)
+                        sx += x, sy += y, ++hits;
+            if (!hits) {
+                g_h.log("autopilot: panel button %p not shown", btn);
+                break;
+            }
+            POINT g{sx / hits, sy / hits};
+            POINT c = render::InterfacePointToClient(g);
+            HWND hw = render::GameWindow();
+            render::SetFakeCursorClient(c);
+            PostMessageA(hw, WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+            PostMessageA(hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.x, c.y));
+            PostMessageA(hw, WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
+            g_h.log("autopilot: click panel button %p at frame %ld,%ld (client %ld,%ld)", btn, g.x, g.y, c.x, c.y);
+            break;
+        }
+        case GlideToOwnBuilding: {  // the first own building of type to.x
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            int count = *(int*)(w + 0x14);
+            uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+            int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+            for (int i = 0; i < count; ++i) {
+                char* t = things[i];
+                if (!t || *(char**)(t + 0x20) != me || *(int*)(t + 0x18) != st.to.x) continue;
+                g_glideFrom = {game::at<short>(game::CursorX), game::at<short>(game::CursorY)};
+                g_glideTo = {(*(short*)(t + 0x14) - *(short*)(g + game::SGameCameraX)) / f,
+                             (*(short*)(t + 0x16) - *(short*)(g + game::SGameCameraY)) / f};
+                g_glideStart = now;
+                g_gliding = true;
+                g_h.log("autopilot: to building id %d at frame %ld,%ld", *(short*)(t + 0x1c), g_glideTo.x, g_glideTo.y);
+                break;
+            }
+            break;
+        }
         case RecordStart: render::d3d11::Record(g_h.dir + "rec"); break;
         case RecordStop: render::d3d11::Record(""); break;
         case HoldKey:  // held for the smooth scroll (the game itself never sees it)

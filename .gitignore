@@ -19,3 +19,7 @@ docs/screenshots/raw/
 *.mkv
 *.mp4
 !re/names.tsv
+
+# The official 1998 map editor (Red Orb): local reference only, never published
+wbedit/
+wb20edit.zip

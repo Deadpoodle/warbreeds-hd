@@ -62,6 +62,7 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 - Shift+drag adds a box of units to the selection.
 - Quick-build: B, then a letter (R Refinery, T Turret, …); P, then 1–3 for pods.
 - Builders clicked onto your own unfinished or damaged building go and finish or repair it.
+- Group build: with several builders selected, the build, plant and repair buttons and keys still work. The nearest builder starts the building and the others walk over and help build it.
 - Pods can be planted in fog: the Shaman walks there and plants.
 - An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default.
 - Alt+F4 quits.

@@ -306,7 +306,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 
     <div class="part">
       <h3>Quick-build</h3>
-      <p class="note">Press <kbd>B</kbd> to open a Shaman's build list, then the building's letter. With the pod list open (<kbd>P</kbd>), <kbd>1</kbd>–<kbd>3</kbd> pick a pod. Letters for buildings you can't build yet keep their usual meaning.</p>
+      <p class="note">With one or more Shamans selected, press <kbd>B</kbd> to open the build list, then the building's letter. With the pod list open (<kbd>P</kbd>), <kbd>1</kbd>–<kbd>3</kbd> pick a pod. Letters for buildings you can't build yet keep their usual meaning.</p>
       <div class="table-scroll"><table>
         <thead><tr><th>Key</th><th>Building</th><th>Key</th><th>Building</th></tr></thead>
         <tbody>
@@ -329,6 +329,9 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
         <tbody>
           <tr><td class="wrapok">Click a Shaman onto your unfinished or damaged building</td><td>It goes and finishes or repairs it (the game's Repair order). The building must be powered and switched on.</td></tr>
           <tr><td class="wrapok">Plant mode, click fogged ground</td><td>The Shaman walks there and plants. Buildings could always be placed in fog. In build or plant mode the cursor over fog shows that the Shaman will walk.</td></tr>
+          <tr><td class="wrapok">Several Shamans selected (and nothing else)</td><td>The panel shows the build, plant, upgrade and repair buttons, and <kbd>B</kbd>, <kbd>P</kbd>, <kbd>R</kbd>, <kbd>U</kbd> and quick-build work. The original offered them only with exactly one Shaman. Settings → Controls → Group Build.</td></tr>
+          <tr><td class="wrapok">Place a building with several Shamans</td><td>The nearest Shaman starts it. The others walk to its edge and help build it as soon as it stands. If the building can't go there, nothing happens and you stay in build mode, as with one Shaman.</td></tr>
+          <tr><td class="wrapok">Plant, repair or cancel with several Shamans</td><td>The nearest Shaman plants the pod. Repair sends them all. The panel's cancel stops them all. Upgrade and Get Genes act on the first Shaman only.</td></tr>
         </tbody>
       </table></div>
     </div>

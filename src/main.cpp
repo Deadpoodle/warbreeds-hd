@@ -70,6 +70,7 @@ struct Config {
     bool mouseWheel = true;
     bool keys = true;
     bool altF4 = true;
+    bool captureMouse = false;  // [Input] CaptureMouse: keep the pointer inside the game window
     bool manageDDrawCompat = true;
     bool cameraScan = false;
     std::string renderer = "d3d11";  // d3d11 | gdi | off (off = GOG's DDrawCompat draws)
@@ -172,6 +173,11 @@ void WriteDefaultIni() {
         "; Pods can be planted on fogged ground: the Shaman walks there and plants (buildings\n"
         "; already could). In build/plant mode the cursor over fog shows that it will walk.\n"
         "BuildInFog=1\n"
+        "; With several builders (and nothing else) selected, the build/plant/repair/upgrade\n"
+        "; buttons and B/P/R/U still work (the original needs exactly one). A placed building\n"
+        "; is started by the nearest of them; the others walk over and help build it as soon\n"
+        "; as it stands. A pod is planted by the nearest; Repair sends them all. 0 = original.\n"
+        "GroupBuild=1\n"
         "; Mouse in missions:\n"
         ";   classic - the original: left-click selects and orders, right-click deselects\n"
         ";   modern  - left-click selects, right-click moves / attacks / acts (and cancels a\n"
@@ -269,6 +275,7 @@ void ApplyControlOptions() {
     o.quickBuild = IniInt("Input", "QuickBuild", 1) != 0;
     o.buildInFog = IniInt("Input", "BuildInFog", 1) != 0;
     o.modernMouse = _stricmp(IniGet("Input", "MouseScheme", "classic").c_str(), "modern") == 0;
+    o.groupBuild = IniInt("Input", "GroupBuild", 1) != 0;
     controls::SetOptions(o);
 }
 
@@ -282,6 +289,7 @@ void ApplyLiveSettings() {
     std::string hs = IniGet("HUD", "Scale", "auto");
     g_cfg.hudScale = _stricmp(hs.c_str(), "auto") == 0 ? g_cfg.smooth.maxMag : std::max(0.5, atof(hs.c_str()));
     g_cfg.altF4 = IniInt("Input", "AltF4", 1) != 0;
+    g_cfg.captureMouse = IniInt("Input", "CaptureMouse", 0) != 0;
     std::string filter = IniGet("Render", "Filter", "sharp");
     g_cfg.filter = _stricmp(filter.c_str(), "nearest") == 0 ? 0 : _stricmp(filter.c_str(), "bilinear") == 0 ? 1 : 2;
     g_cfg.vsync = IniInt("Render", "VSync", 1) != 0;
@@ -348,6 +356,7 @@ void LoadConfig() {
     g_cfg.mouseWheel = IniInt("Zoom", "MouseWheel", 1) != 0;
     g_cfg.keys = IniInt("Zoom", "Keys", 1) != 0;
     g_cfg.altF4 = IniInt("Input", "AltF4", 1) != 0;
+    g_cfg.captureMouse = IniInt("Input", "CaptureMouse", 0) != 0;
     g_cfg.manageDDrawCompat = IniInt("DDrawCompat", "Manage", 1) != 0;
     g_cfg.cameraScan = IniInt("Debug", "MemoryScan", 0) != 0;
     g_cfg.renderer = IniGet("Render", "Renderer", "d3d11");
@@ -564,6 +573,7 @@ void ApplyNativeZoom() {
 // event handler: the safe place to change resolution. Rapid wheel input
 // coalesces into one change per frame.
 void EnsureSubclassed();
+void UpdateMouseCapture();
 
 void __cdecl OnFrameTick() {
     prof::FrameTick();
@@ -574,6 +584,8 @@ void __cdecl OnFrameTick() {
     EnsureSubclassed();
     if (g_cfg.cameraScan) scan::Tick(InMission() ? BaseScene() : nullptr);
     camera::Tick(InMission() ? BaseScene() : nullptr, g_hwnd);
+    controls::Tick(InMission() ? BaseScene() : nullptr);
+    UpdateMouseCapture();
     // [Debug] NoFog=1: switch the local player's fog of war off (screenshots only).
     static int noFog = IniInt("Debug", "NoFog", 0);
     if (noFog && InMission())
@@ -674,11 +686,47 @@ DWORD WINAPI QuitWatchdog(LPVOID) {
     ExitProcess(0);
 }
 
+// Mouse capture ([Input] CaptureMouse): armed by a click in the game window, confines the
+// pointer to the client area while the game is in front, released when it isn't.
+bool g_captureArmed;
+RECT g_captureRect;
+bool g_captured;
+
+void ReleaseMouseCapture() {
+    if (g_captured) ClipCursor(nullptr);
+    g_captured = false;
+}
+
+void UpdateMouseCapture() {
+    bool want = g_cfg.captureMouse && g_captureArmed && g_hwnd && GetForegroundWindow() == g_hwnd && !IsIconic(g_hwnd);
+    if (!want) {
+        if (!g_cfg.captureMouse || GetForegroundWindow() != g_hwnd) g_captureArmed = false;
+        ReleaseMouseCapture();
+        return;
+    }
+    RECT r;
+    GetClientRect(g_hwnd, &r);
+    MapWindowPoints(g_hwnd, nullptr, (POINT*)&r, 2);
+    if (r.right <= r.left || r.bottom <= r.top) return;
+    if (!g_captured || !EqualRect(&r, &g_captureRect)) {
+        ClipCursor(&r);
+        g_captureRect = r;
+        g_captured = true;
+    }
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     watchdog::Beat();
     // The game ignores WM_RBUTTONDBLCLK (its window class has CS_DBLCLKS), so a
     // quick second right-click would be lost.
     if (msg == WM_RBUTTONDBLCLK) msg = WM_RBUTTONDOWN;
+    if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+        g_captureArmed = true;  // a click in the client area: capture (if enabled) from now on
+        UpdateMouseCapture();
+    } else if ((msg == WM_ACTIVATEAPP && !wp) || msg == WM_KILLFOCUS || msg == WM_ENTERSIZEMOVE) {
+        g_captureArmed = false;
+        ReleaseMouseCapture();
+    }
     switch (msg) {
     case WM_MOUSEWHEEL:
         if (g_cfg.mouseWheel) {

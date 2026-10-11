@@ -52,7 +52,7 @@ take effect immediately.
              VSync, FPS counter, movie scaling and size.
   Controls   Smooth arrow-key scrolling, WASD, scroll speed, zoom limits,
              Alt+F4, mouse scheme (Classic / Modern), builder click,
-             quick-build keys.
+             quick-build keys, group build.
   Interface  Menu art (widescreen / original), font (original / Orbitron),
              interface size.
 
@@ -86,6 +86,9 @@ Controls (full list in Controls.html)
     pods.
   - Builders clicked onto your unfinished or damaged building finish or
     repair it.
+  - Group build: with several builders selected, the build, plant and repair
+    buttons and keys still work. The nearest one starts the building and the
+    others walk over and help build it.
   - Pods can be planted in fog: the Shaman walks there and plants.
   - Optional Modern mouse scheme: left-click selects, right-click gives
     orders. Classic (the original) is the default.

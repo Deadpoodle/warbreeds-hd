@@ -96,6 +96,85 @@ constexpr uintptr_t InfoPanel = 0x5476e8;          // static WInfoBox: selection
 constexpr uintptr_t SGameMessageBox1 = 0x400;      // SGame member widget pointers (bottom centre)
 constexpr uintptr_t SGameMessageBox2 = 0x404;
 
+// --- Group build: several selected builders (controls.cpp) ------------------
+// The stock game offers a builder's panel buttons (build, plant, repair,
+// upgrade) and its B/P/R/U keys only when exactly one own Shaman is selected:
+// the info panel tests the selection count, the keys SelectionKind() == 3.
+// World selection count (int): World + 0x84 (data World + 0x80).
+constexpr uintptr_t WorldSelCount = 0x84;
+// short World + 0x6c: 1 = the info panel shows its second page (the stance page
+// for creatures; the I key / the panel's page button toggle it).
+constexpr uintptr_t WorldPanelPage = 0x6c;
+// void __thiscall World::DrawInfoPanel(short camX, short camY) (ret 8): one own
+// thing selected -> its panel (thing vtable +0x14); several -> "Squad (n)" only.
+constexpr uintptr_t WorldDrawInfoPanel = 0x449410;
+constexpr uintptr_t DrawInfoPanelCall = 0x47c1a9;  // in SGame_DrawInterface 0x47c000
+// short __thiscall World::PanelClickDown(short sx, short sy) (ret 8): one thing
+// selected -> thing vtable +0x18 (sx, sy, 0, 0, 0), which presses its panel
+// button and captures the mouse; several -> the panel's own hit test only.
+constexpr uintptr_t WorldPanelClickDown = 0x44f620;
+constexpr uintptr_t PanelClickDownCalls[] = {
+    0x47dad6,  // SGame::LButtonDown 0x47d500
+    0x47eec9,  // SGame vtable slot 0x24 0x47eea0 (the second click of a double click)
+    0x47d97b,  // SGame::LButtonDown with F10 held (debug panel drag)
+};
+// void __thiscall SGame::UpdateCursor 0x47c3d0 (no args): picks the mission
+// cursor. With one own builder placing a building (World 0x452bc0: kind 3 and
+// state 3) it draws no pointer, because the building's ghost is the pointer.
+constexpr uintptr_t SGameUpdateCursor = 0x47c3d0;
+constexpr uintptr_t UpdateCursorCall = 0x47c26b;  // in SGame_DrawInterface
+// AShaman (vtable 0x504a2c) panel draw, slot +0x14: 0x442f10 (x, y, camX, camY),
+// ret 0x10; per mode (+0x1ac) it adds the buttons, the build list or the pod list.
+constexpr uintptr_t SlotShamanPanel = 0x504a40, ShamanPanel = 0x442f10;
+// AShaman click-up, slot +0x1c: 0x442230 (sx, sy, wx, wy), ret 0x10; reached
+// through the mouse capture. It releases the pressed panel button and acts:
+// SetMode for the buttons, or, while working (AShaman 0x443410() == 1), the
+// cancel button 0x546df8 (pressed word +0x16) stops it: Cmd+0x2c(shamanId).
+constexpr uintptr_t SlotShamanClickUp = 0x504a48, ShamanClickUp = 0x442230;
+constexpr uintptr_t ShamanWorking = 0x443410, CancelButton = 0x546df8;
+constexpr uintptr_t CmdStop = 0x2c;  // (short id)
+// void __thiscall AShaman::SetMode(int mode) 0x442720: from mode 0 only; 1 Get
+// Genes, 2 build list, 4 pod list, 6 repair, 7 upgrade (what B/P/R/U/G call).
+constexpr uintptr_t ShamanSetMode = 0x442720;
+// void __thiscall WInfoBox::SetTitle(const char*) 0x497c00 on InfoPanel (copies).
+constexpr uintptr_t PanelSetTitle = 0x497c00;
+// char** strings[] (string table, id - 1): [0x55dd54] + 0xc8 = id 51 "Squad",
+// the multi-selection title ("%s (%ld)", or "%s %ld (%ld)" when they share a group).
+constexpr uintptr_t StringTable = 0x55dd54;
+constexpr uintptr_t StrSquadOffset = 0xc8;
+// int __thiscall World::CanPlace(short player, short x, short y, int type, short
+// ignoreUnits, short skipSite, int) 0x4517e0 (ret 0x1c): 0 valid, 1 blocked,
+// 2 no power / no pod near a Refinery. The placement click calls it with (1, 0, 0).
+constexpr uintptr_t WorldCanPlace = 0x4517e0;
+// The stock placement click (AShaman click-down 0x4419c0, mode 3, 0x441d2e):
+// CanPlace == 0 -> Button::Release 0x49a6f0 (the build button 0x5452b0),
+// AShaman::RemoveGhost 0x442d20, PlayClickSound 0x46fa70, AShaman::ResetMode
+// 0x442c00, then Cmd+0x5c Build(shamanId, type, x, y). Nothing reads Shift.
+constexpr uintptr_t ButtonRelease = 0x49a6f0, BuildButton = 0x5452b0, ShamanRemoveGhost = 0x442d20;
+// short __thiscall AShaman::CanPlantAt(short wx, short wy) 0x442b10: pod soil,
+// free, currently visible.
+constexpr uintptr_t ShamanCanPlantAt = 0x442b10;
+// Building footprint size in world pixels: short[type] (filled at run time).
+constexpr uintptr_t FootprintTable = 0x54e370;
+// Commands object [0x579260] vtable slots (single player executes at once,
+// multiplayer serialises them for the lockstep turn).
+constexpr uintptr_t CmdMove = 0x34;    // (IdList*, PtList*, short flag)
+constexpr uintptr_t CmdPlant = 0x58;   // (short shamanId, int podType, PtList*)
+constexpr uintptr_t CmdBuild = 0x5c;   // (short shamanId, int type, short x, short y), centre
+constexpr uintptr_t CmdRepair = 0x88;  // (short builderId, short targetId): also finishes construction
+// Creature / AShaman fields.
+constexpr uintptr_t ThingActivity = 0xc0;  // int: 0x28 idle, 0x29 move, 0x2d plant, 0x2e build, 0x39 repair
+constexpr uintptr_t ThingPathData = 0xb0, ThingPathCount = 0xb4;  // Pt[]: data[0] = final goal
+constexpr uintptr_t ShamanWorkTarget = 0x18e;  // short: building being built/repaired (0xc01 none)
+constexpr uintptr_t ShamanWalkX = 0x16c, ShamanWalkY = 0x16e;  // short: Build's site (0x441750)
+// The build work tick 0x4436b0 (activity 0x2e): 0x40 ticks after arriving it
+// creates the building (World 0x447410 -> 0x446db0, collision against every
+// object but the builder itself) and stores its id in +0x18e. If that fails it
+// goes idle with +0x1b4 = 1 and its failure count +0x170 (byte) raised; while
+// +0x1b4 is set 0x443f10 steps it aside and then repeats the Build at +0x16c,
+// +0x16e (gives up after 4 failures).
+constexpr uintptr_t ShamanBuildRetry = 0x1b4;  // short
+
 template <typename T>
 inline T& at(uintptr_t addr) { return *reinterpret_cast<T*>(addr); }
 

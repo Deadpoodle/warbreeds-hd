@@ -116,9 +116,11 @@ const std::vector<Setting>& Settings() {
         {"Zoom In Limit", "Zoom", "Max", "2.0", {{"2x", "2.0"}, {"2.5x", "2.5"}, {"3x", "3.0"}, {"1.5x", "1.5"}},
          kControls},
         {"Alt+F4 Quits", "Input", "AltF4", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
+        {"Capture Mouse", "Input", "CaptureMouse", "0", {{"Off", "0"}, {"On", "1"}}, kControls},
         {"Mouse Scheme", "Input", "MouseScheme", "classic", {{"Classic", "classic"}, {"Modern", "modern"}}, kControls},
         {"Builder Click", "Input", "BuilderRepair", "1", {{"Finish/Repair", "1"}, {"Select", "0"}}, kControls},
         {"Quick-Build Keys", "Input", "QuickBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
+        {"Group Build", "Input", "GroupBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
         // Interface
         {"Menu Art", "Display", "MenuArt", "widescreen", {{"Widescreen", "widescreen"}, {"Original", "original"}},
          kInterface},
