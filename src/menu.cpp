@@ -10,7 +10,11 @@
 //              (hidden).
 //   OnCommand: "Settings" swaps the main items for the settings page; a
 //              setting cycles its value, saves it to WarBreedsHD.ini and
-//              applies it; "Back" swaps back. Anything else goes to the game.
+//              applies it; "Back" swaps back. "Map Editor" (under Settings;
+//              Quit moves down another row) swaps in the map list (New Map,
+//              then every DATA\MAPS\*.WBM by its header name); a map opens
+//              in the editor (editor/editor.cpp). Anything else goes to the
+//              game.
 // Everything is drawn, highlighted and hit-tested by the engine itself.
 //
 // Text button (WTextButton2, vtable 0x50925c, 0x78 bytes) fields we use:
@@ -23,6 +27,8 @@
 
 #include "version.h"
 #include "fonts.h"
+#include "editor/editor.h"
+#include "editor/raw_paint.h"
 
 #include <windows.h>
 #include <stdio.h>
@@ -30,6 +36,7 @@
 #include <math.h>
 #include <string.h>
 
+#include <algorithm>
 #include <map>
 #include <vector>
 
@@ -64,6 +71,17 @@ constexpr short kCmdBack = 0x7f;
 constexpr short kCmdFirstSetting = 0x80;
 constexpr short kCmdMoreAbove = 0x77;  // the scroll indicators of a long tab (text, clickable)
 constexpr short kCmdMoreBelow = 0x78;
+// The map editor's pages.
+constexpr short kCmdEditor = 0x6d;     // main menu: "Map Editor"
+constexpr short kCmdMapTitle = 0x6e;   // text only
+constexpr short kCmdMapAbove = 0x6f, kCmdMapBelow = 0x70;  // scroll indicators (clickable)
+constexpr short kCmdMapBack = 0x71;
+constexpr short kCmdMapHint = 0x72;    // text only
+constexpr short kCmdFirstMapRow = 0xa0;  // 0xa0..0xaa: the visible rows of the map list
+constexpr short kCmdNewTitle = 0x73;   // text only
+constexpr short kCmdFirstNewRow = 0xb0;  // 0xb0..0xb4: size preset, width, height, terrain, players
+constexpr short kCmdNewCreate = 0xb5, kCmdNewBack = 0xb6;
+constexpr int kNewRows = 5;
 
 typedef void(__thiscall* Draw_t)(void* button);
 typedef short(__thiscall* Init_t)(void* scene);
@@ -375,23 +393,69 @@ void MoveHotspots(void* scene, bool away) {
     g_hotspotsAway = away;
 }
 
-bool g_pageOpen;
-void* g_pageScene;
+enum Page { kPageMain, kPageSettings, kPageMaps, kPageNew };
+Page g_page = kPageMain;
+bool g_pageOpen;    // the settings page (wheel, right-click)
+void* g_pageScene;  // the scene showing a page other than the main items
 
-void ShowSettingsPage(void* scene, bool settings) {
+// --- map editor pages -----------------------------------------------------------
+
+// The map list: "New Map", then every map in DATA\MAPS (re-read each time the
+// page opens), 11 rows at a time; it scrolls like a long settings tab.
+std::vector<editor::MapEntry> g_maps;
+int g_mapScroll;
+constexpr int kMapRows = 11;  // rows 2..12
+int MapItems() { return 1 + (int)g_maps.size(); }
+int MaxMapScroll() { return MapItems() > kMapRows ? MapItems() - kMapRows : 0; }
+
+std::string MapItemText(int i) {
+    if (i == 0) return "New Map";
+    const editor::MapEntry& m = g_maps[i - 1];
+    return m.name + "  (" + m.file.substr(0, m.file.find_last_of('.')) + ")";
+}
+
+// New Map: size (presets, or width and height), base terrain, players.
+editor::NewMapSpec g_new;
+const int kPresets[][2] = {{32, 32}, {48, 48}, {64, 64}, {96, 96}};
+constexpr int kPresetCount = 4;
+
+int PresetIndex() {
+    for (int i = 0; i < kPresetCount; ++i)
+        if (kPresets[i][0] == g_new.width && kPresets[i][1] == g_new.height) return i;
+    return -1;
+}
+
+std::string NewRowText(int r) {
+    char buf[64];
+    switch (r) {
+    case 0: snprintf(buf, sizeof buf, "Size: %d x %d%s", g_new.width, g_new.height, PresetIndex() < 0 ? " (custom)" : ""); break;
+    case 1: snprintf(buf, sizeof buf, "Width: %d cells", g_new.width); break;
+    case 2: snprintf(buf, sizeof buf, "Height: %d cells", g_new.height); break;
+    case 3: snprintf(buf, sizeof buf, "Terrain: %s", editor::RawPainter::BaseName(g_new.terrain)); break;
+    default: snprintf(buf, sizeof buf, "Players: %d", g_new.players); break;
+    }
+    return buf;
+}
+
+int Wrap(int v, int lo, int hi) { return v < lo ? hi : v > hi ? lo : v; }
+
+void ShowPage(void* scene, Page page) {
     const auto& all = Settings();
+    bool settings = page == kPageSettings, maps = page == kPageMaps, fresh = page == kPageNew;
+    g_page = page;
     g_pageOpen = settings;
-    g_pageScene = settings ? scene : nullptr;
+    g_pageScene = page != kPageMain ? scene : nullptr;
     if (g_scroll[g_tab] > MaxScroll(g_tab)) g_scroll[g_tab] = MaxScroll(g_tab);
+    g_mapScroll = std::min(std::max(g_mapScroll, 0), MaxMapScroll());
     Layout(scene);
-    MoveHotspots(scene, settings);
+    MoveHotspots(scene, page != kPageMain);
     for (void* b : Buttons(scene)) {
         short c = Cmd(b);
-        bool mainItem = (c >= 0x64 && c <= kCmdQuit) || c == kCmdSettings;
-        bool page = c == kCmdBack || c == kCmdHint || c == kCmdReset || (c >= kCmdFirstTab && c < kCmdFirstTab + kTabCount);
+        bool mainItem = (c >= 0x64 && c <= kCmdQuit) || c == kCmdSettings || c == kCmdEditor;
+        bool setPage = c == kCmdBack || c == kCmdHint || c == kCmdReset || (c >= kCmdFirstTab && c < kCmdFirstTab + kTabCount);
         bool setting = c >= kCmdFirstSetting && c < kCmdFirstSetting + (short)all.size();
-        if (mainItem) Show(b, !settings);
-        if (page) Show(b, settings);
+        if (mainItem) Show(b, page == kPageMain);
+        if (setPage) Show(b, settings);
         if (setting) {
             int row = SettingRow(c - kCmdFirstSetting);
             if (row >= 0) SetHome(b, RowRect(row), 0);
@@ -404,30 +468,104 @@ void ShowSettingsPage(void* scene, bool settings) {
             ((SetStyle_t)kSetStyle)(b, active ? kStyleMenuHover : kStyleMenu, kStyleMenuHover);
             Dirty(b) = 1;
         }
+        // Map list.
+        if (c == kCmdMapTitle || c == kCmdMapBack || c == kCmdMapHint) Show(b, maps);
+        if (c == kCmdMapAbove) Show(b, maps && g_mapScroll > 0);
+        if (c == kCmdMapBelow) Show(b, maps && g_mapScroll < MaxMapScroll());
+        if (c >= kCmdFirstMapRow && c < kCmdFirstMapRow + kMapRows) {
+            int item = g_mapScroll + c - kCmdFirstMapRow;
+            bool shown = maps && item < MapItems();
+            if (shown) ((SetText_t)kSetText)(b, MapItemText(item).c_str());
+            Show(b, shown);
+        }
+        // New Map.
+        if (c == kCmdNewTitle || c == kCmdNewCreate || c == kCmdNewBack) Show(b, fresh);
+        if (c >= kCmdFirstNewRow && c < kCmdFirstNewRow + kNewRows) {
+            if (fresh) ((SetText_t)kSetText)(b, NewRowText(c - kCmdFirstNewRow).c_str());
+            Show(b, fresh);
+        }
     }
     if (settings) Refresh(scene);
     ArmReset(scene, false);
 }
 
+void ShowSettingsPage(void* scene, bool settings) { ShowPage(scene, settings ? kPageSettings : kPageMain); }
+
+void OpenMapList(void* scene) {
+    g_maps = editor::ListMaps(g_h.dir);
+    g_h.log("menu: map list: %zu maps", g_maps.size());
+    ShowPage(scene, kPageMaps);
+}
+
+// The New Map rows step their value forwards (+1) or backwards (-1).
+bool CycleNew(void* scene, short c, int dir) {
+    int r = c - kCmdFirstNewRow;
+    if (r < 0 || r >= kNewRows) return false;
+    if (r == 0) {
+        int p = PresetIndex();
+        p = p < 0 ? (dir > 0 ? 0 : kPresetCount - 1) : (p + dir + kPresetCount) % kPresetCount;
+        g_new.width = kPresets[p][0];
+        g_new.height = kPresets[p][1];
+    } else if (r == 1) {
+        g_new.width = Wrap(g_new.width + 8 * dir, 32, 96);
+    } else if (r == 2) {
+        g_new.height = Wrap(g_new.height + 8 * dir, 32, 96);
+    } else if (r == 3) {
+        g_new.terrain = Wrap(g_new.terrain + dir, 0, editor::RawPainter::BaseCount() - 1);
+    } else {
+        g_new.players = Wrap(g_new.players + dir, 2, 8);
+    }
+    PlaySelect();
+    ShowPage(scene, kPageNew);
+    return true;
+}
+
 // --- hooks ----------------------------------------------------------------
+
+void AddEditorPages(void* scene) {
+    if (void* b = AddButton(scene, "Map Editor", kCmdMapTitle, 0, RowRect(0), kStyleMenuHover, kStyleMenuHover)) Show(b, false);
+    for (int i = 0; i < kMapRows; ++i)
+        if (void* b = AddButton(scene, "", (short)(kCmdFirstMapRow + i), 0, RowRect(2 + i))) Show(b, false);
+    for (short c : {kCmdMapAbove, kCmdMapBelow}) {
+        const char* text = c == kCmdMapAbove ? "More above" : "More below";
+        int w = fonts::TextWidth("WBMd14", text);
+        RECT r = RowRect(c == kCmdMapAbove ? 2 : 2 + kMapRows - 1);
+        if (void* b = AddButton(scene, text, c, 0, {622 - w, r.top + 3, 640, r.bottom}, kStyleSmall, kStyleMenuHover)) Show(b, false);
+    }
+    if (void* b = AddButton(scene, "Back", kCmdMapBack, 'B', ActionRect(14))) Show(b, false);
+    if (void* b = AddButton(scene, "Built-in maps are always saved under a new name", kCmdMapHint, 0, {kLeft, 452, 450, 468},
+                            kStyleSmall, kStyleSmall))
+        Show(b, false);
+    if (void* b = AddButton(scene, "New Map", kCmdNewTitle, 0, RowRect(0), kStyleMenuHover, kStyleMenuHover)) Show(b, false);
+    for (int i = 0; i < kNewRows; ++i)
+        if (void* b = AddButton(scene, NewRowText(i).c_str(), (short)(kCmdFirstNewRow + i), 0, RowRect(2 + i))) Show(b, false);
+    if (void* b = AddButton(scene, "Create Map", kCmdNewCreate, 'C', RowRect(2 + kNewRows + 1))) Show(b, false);
+    if (void* b = AddButton(scene, "Back", kCmdNewBack, 'B', ActionRect(14))) Show(b, false);
+}
 
 short __thiscall HookInit(void* scene) {
     short r = ((Init_t)kInit)(scene);
     if (Find(scene, kCmdSettings)) {  // already set up (scene re-shown)
-        ShowSettingsPage(scene, false);
+        if (editor::TakeReturnToMapList())
+            OpenMapList(scene);
+        else
+            ShowSettingsPage(scene, false);
         return r;
     }
     g_home.clear();
     g_hotspotsAway = false;
+    g_page = kPageMain;
     void* quit = Find(scene, kCmdQuit);
     if (!quit) {
         g_h.log("menu: Quit button not found; Settings not added");
         return r;
     }
-    // Settings takes Quit's row; Quit moves down one.
+    // Settings takes Quit's row, Map Editor the next; Quit moves down two.
     RECT qr{Rect(quit)[0], Rect(quit)[1], Rect(quit)[2], Rect(quit)[3]};
-    RECT below{qr.left, qr.top + kRowStep, qr.right, qr.bottom + kRowStep};
+    RECT next{qr.left, qr.top + kRowStep, qr.right, qr.bottom + kRowStep};
+    RECT below{qr.left, qr.top + 2 * kRowStep, qr.right, qr.bottom + 2 * kRowStep};
     AddButton(scene, "Settings", kCmdSettings, 'O', qr);
+    AddButton(scene, "Map Editor", kCmdEditor, 0, next);
     short qrect[4] = {(short)below.left, (short)below.top, (short)below.right, (short)below.bottom};
     memcpy(Rect(quit), qrect, sizeof qrect);
     SetHome(quit, below, Hotkey(quit));
@@ -450,10 +588,12 @@ short __thiscall HookInit(void* scene) {
     if (void* hint = AddButton(scene, "Click: next    Right-click: previous    Saved automatically",
                                kCmdHint, 0, {kLeft, 452, 450, 468}, kStyleSmall, kStyleSmall))
         Show(hint, false);
+    AddEditorPages(scene);
     // Bottom right: shows the mod is running (placed by Layout).
     AddButton(scene, kVersion, kCmdVersion, 0, {0, 452, 640, 468}, kStyleSmall, kStyleSmall);
     Layout(scene);
-    g_h.log("menu: Settings added to the main menu");
+    g_h.log("menu: Settings and Map Editor added to the main menu");
+    if (editor::TakeReturnToMapList()) OpenMapList(scene);
     return r;
 }
 
@@ -462,6 +602,7 @@ short __thiscall HookInit(void* scene) {
 bool Cycle(void* button, int dir) {
     const auto& all = Settings();
     short c = Cmd(button);
+    if (g_page == kPageNew && g_pageScene) return CycleNew(g_pageScene, c, dir);
     if (c < kCmdFirstSetting || c >= kCmdFirstSetting + (short)all.size()) return false;
     const Setting& s = all[c - kCmdFirstSetting];
     int n = (int)s.choices.size();
@@ -486,6 +627,46 @@ int __thiscall HookCommand(void* scene, void* button) {
     if (c == kCmdBack) {
         PlaySelect();
         ShowSettingsPage(scene, false);
+        return 0;
+    }
+    // Map editor pages.
+    if (c == kCmdEditor || c == kCmdNewBack) {
+        PlaySelect();
+        if (c == kCmdEditor) g_mapScroll = 0;
+        OpenMapList(scene);
+        return 0;
+    }
+    if (c == kCmdMapBack) {
+        PlaySelect();
+        ShowPage(scene, kPageMain);
+        return 0;
+    }
+    if (c == kCmdMapTitle || c == kCmdMapHint || c == kCmdNewTitle) return 0;
+    if (c == kCmdMapAbove || c == kCmdMapBelow) {
+        PlaySelect();
+        g_mapScroll += c == kCmdMapBelow ? kMapRows - 1 : -(kMapRows - 1);
+        ShowPage(scene, kPageMaps);
+        return 0;
+    }
+    if (c >= kCmdFirstMapRow && c < kCmdFirstMapRow + kMapRows) {
+        int item = g_mapScroll + c - kCmdFirstMapRow;
+        if (item >= MapItems()) return 0;
+        PlaySelect();
+        if (item == 0) {
+            ShowPage(scene, kPageNew);
+        } else {
+            g_h.log("menu: map editor: open %s", g_maps[item - 1].file.c_str());
+            editor::OpenMap(g_maps[item - 1]);
+        }
+        return 0;
+    }
+    if (c == kCmdNewCreate) {
+        PlaySelect();
+        editor::NewMap(g_new);
+        return 0;
+    }
+    if (c >= kCmdFirstNewRow && c < kCmdFirstNewRow + kNewRows) {
+        CycleNew(scene, c, +1);
         return 0;
     }
     if (c == kCmdHint || c == kCmdVersion) return 0;
@@ -515,6 +696,7 @@ int __thiscall HookCommand(void* scene, void* button) {
     if (Cycle(button, +1)) return 0;
     return ((Command_t)kCommand)(scene, button);
 }
+
 
 // --- hover highlight --------------------------------------------------------
 
@@ -660,6 +842,12 @@ void HideAllText() {
 
 // The mouse wheel scrolls a long settings tab, a row per notch (notches > 0: up).
 bool OnWheel(int notches) {
+    if (g_installed && g_page == kPageMaps && g_pageScene && TopScene() == g_pageScene) {
+        int before = g_mapScroll;
+        g_mapScroll = std::min(std::max(g_mapScroll - notches, 0), MaxMapScroll());
+        if (g_mapScroll != before) ShowPage(g_pageScene, kPageMaps);
+        return true;
+    }
     if (!g_installed || !g_pageOpen || !g_pageScene || TopScene() != g_pageScene) return false;
     int before = g_scroll[g_tab];
     g_scroll[g_tab] -= notches;
@@ -685,7 +873,8 @@ void Tick() {
         for (void* b : Buttons(scene)) {
             short* r = Rect(b);
             RECT rc{r[0], r[1], r[2], r[3]};
-            if (Visible(b) && Cmd(b) != kCmdHint && Cmd(b) != kCmdVersion && *(short*)((char*)b + 0x68) > 0 && PtInRect(&rc, p)) hover = b;
+            if (Visible(b) && Cmd(b) != kCmdHint && Cmd(b) != kCmdVersion && Cmd(b) != kCmdMapHint &&
+                Cmd(b) != kCmdMapTitle && Cmd(b) != kCmdNewTitle && *(short*)((char*)b + 0x68) > 0 && PtInRect(&rc, p)) hover = b;
         }
     }
     if (hover == g_hover) return;

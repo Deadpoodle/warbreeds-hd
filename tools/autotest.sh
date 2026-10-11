@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build, install into testrun (the automated-test copy, always hidden) and run
 # the headless autopilot. Never touches testgame (the player's copy).
-# Usage: autotest.sh [mode] [seconds]   mode 1 = mission test (default), 2 = main-menu Settings test
+# Usage: autotest.sh [mode] [seconds]   mode 1 = mission test (default), 2 = main-menu Settings test,
+#        13 = map editor (TARGET=0 edit, 1 New Map, 2 Exit; then python tools/editor_check.py testrun)
 #        PROFILE=1 autotest.sh ...      also profile
 set -e
 cd "$(dirname "$0")/.."
@@ -16,5 +17,5 @@ python tools/watchvis.py "$SECS" > build/vis.txt &
 powershell -NoProfile -File tools/smoke.ps1 -Seconds "$SECS" -Dir $T
 wait
 cat build/vis.txt
-grep -aE "not closed|autopilot: (saved|key|done|click|right-click)|menu: " $T/WarBreedsHD.log || true
+grep -aE "not closed|autopilot: (saved|key|done|click|right-click)|menu: |editor: " $T/WarBreedsHD.log || true
 python tools/hudbounds.py $T

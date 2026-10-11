@@ -8,9 +8,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <string>
+#include <vector>
 
 #include "diag.h"
 #include "game.h"
@@ -18,6 +21,7 @@
 #include "prof.h"
 #include "render/render.h"
 #include "camera.h"
+#include "editor/editor.h"
 
 namespace autopilot {
 namespace {
@@ -335,6 +339,402 @@ const Step kGroup[] = {
     {46500, Quit, nullptr, {}},
 };
 
+// --- mode 13: the map editor ---------------------------------------------------
+//
+// AutopilotTarget 0: main menu -> Map Editor -> "4 Corners" (MPMAP1); paint
+// three strokes (Lava brush 1, Sand brush 3, Crystal brush 1), undo the last
+// (Ctrl+Z), right-click pick, Save As HDTEST, Test Map (a skirmish on it).
+// AutopilotTarget 1: Map Editor -> New Map, 48 x 48, Create; one Lava stroke,
+// Save As HDNEW, Test Map.
+// AutopilotTarget 2: Map Editor -> "East vs. West" (MPMAP7), one stroke, Exit
+// (refused once: unsaved changes), Exit again: back to the map list.
+// Every painted cell, in order, goes to WarBreedsHD-editor-expect.txt, and the
+// editor writes its own diff on save (WarBreedsHD-editor-save.txt), for
+// tools/editor_check.py to compare with the saved file.
+FILE* g_expect;
+
+void Expect(const char* fmt, ...) {
+    if (!g_expect) g_expect = fopen((g_h.dir + "WarBreedsHD-editor-expect.txt").c_str(), "w");
+    if (!g_expect) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(g_expect, fmt, ap);
+    va_end(ap);
+    fputc('\n', g_expect);
+    fflush(g_expect);
+}
+
+// Click a widget of the top scene (found by its text) where the interface layer shows it.
+bool ClickWidget(const char* text, bool menu) {
+    long x, y;
+    if (!menu::FindWidget(text, x, y) || x < 0 || y < 0) {
+        g_h.log("autopilot: widget \"%s\" not found", text);
+        return false;
+    }
+    if (menu) {  // menus: the frame is the screen
+        Click({x, y});
+        return true;
+    }
+    POINT c = render::InterfacePointToClient({x, y});
+    HWND hw = render::GameWindow();
+    render::SetFakeCursorClient(c);
+    PostMessageA(hw, WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
+    g_h.log("autopilot: click \"%s\" at frame %ld,%ld (client %ld,%ld)", text, x, y, c.x, c.y);
+    return true;
+}
+
+std::vector<POINT> g_strokePts;  // a drag in progress
+size_t g_strokeAt;
+
+// One step of a drag each frame; true while it lasts.
+bool StrokeTick() {
+    if (g_strokePts.empty()) return false;
+    if (g_strokeAt < g_strokePts.size()) {
+        POINT p = g_strokePts[g_strokeAt++];
+        render::SetFakeCursor(true, p);
+        Post(WM_MOUSEMOVE, MK_LBUTTON, p);
+    } else {
+        Post(WM_LBUTTONUP, 0, g_strokePts.back());
+        g_strokePts.clear();
+    }
+    return true;
+}
+
+// A palette name as one word, for the expect file ("Hot Mud" -> Hot_Mud).
+std::string OneWord(std::string s) {
+    std::replace(s.begin(), s.end(), ' ', '_');
+    return s;
+}
+
+// The first terrain in `prefer` (other than `skip`) the painter accepts along a
+// stroke. The raw painter accepts anything; the smart one only what the
+// original editor's rules allow next to the terrain already there.
+std::string Choose(std::initializer_list<const char*> prefer, const std::string& skip, int size, int x0, int y0,
+                   int x1, int y1) {
+    for (const char* t : prefer) {
+        std::string why;
+        if (t == skip) continue;
+        if (editor::StrokeWorks(t, size, x0, y0, x1, y1, &why)) return t;
+        g_h.log("autopilot: %s refused here: %s", t, why.empty() ? "(no change)" : why.c_str());
+    }
+    g_h.log("autopilot: no terrain paints at %d,%d -> %d,%d", x0, y0, x1, y1);
+    return *prefer.begin();
+}
+
+// A stroke over cells (x0, y0) -> (x1, y1), one cell per frame.
+bool Stroke(const char* type, int brush, int x0, int y0, int x1, int y1) {
+    int n = std::max(abs(x1 - x0), abs(y1 - y0));
+    std::vector<POINT> pts;
+    for (int i = 0; i <= n; ++i) {
+        POINT p;
+        int cx = n ? x0 + (x1 - x0) * i / n : x0, cy = n ? y0 + (y1 - y0) * i / n : y0;
+        if (!editor::CellCentre(cx, cy, p)) {
+            g_h.log("autopilot: cell %d,%d is off screen", cx, cy);
+            return false;
+        }
+        pts.push_back(p);
+    }
+    Expect("begin %s %d %s", OneWord(type).c_str(), editor::TypeTile(type), editor::TypeTiles(type).c_str());
+    for (int i = 0; i <= n; ++i)
+        Expect("paint %d %d %d %d", editor::TypeTile(type), brush, n ? x0 + (x1 - x0) * i / n : x0,
+               n ? y0 + (y1 - y0) * i / n : y0);
+    Expect("end");
+    // The game polls the cursor once a frame (0x46f400), so the drag moves
+    // one cell per frame (StrokeTick); the button goes down here.
+    render::SetFakeCursor(true, pts[0]);
+    Post(WM_MOUSEMOVE, 0, pts[0]);
+    Post(WM_LBUTTONDOWN, MK_LBUTTON, pts[0]);
+    g_strokePts = pts;
+    g_strokeAt = 1;
+    g_h.log("autopilot: stroke %s brush %d cells %d,%d -> %d,%d", type, brush, x0, y0, x1, y1);
+    return true;
+}
+
+void PostKey(UINT msg, WPARAM vk) { PostMessageA(render::GameWindow(), msg, vk, msg == WM_KEYUP ? 0xC0000001 : 1); }
+
+void TypeName(const char* name) {
+    for (int i = 0; i < 10; ++i) {
+        PostKey(WM_KEYDOWN, VK_BACK);
+        PostKey(WM_KEYUP, VK_BACK);
+    }
+    for (const char* p = name; *p; ++p) PostMessageA(render::GameWindow(), WM_CHAR, (WPARAM)*p, 1);
+    PostKey(WM_KEYDOWN, VK_RETURN);
+    PostKey(WM_KEYUP, VK_RETURN);
+    g_h.log("autopilot: typed %s + Enter", name);
+}
+
+void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
+    static int stage;
+    static DWORD at;
+    static int bx, by;  // the strokes' base cell
+    static std::string t1, t2, t3;  // the strokes' terrains
+    static int clicks;
+    bool fresh = g_h.target == 1, quit = g_h.target == 2;
+    const char* name = fresh ? "HDNEW" : "HDTEST";
+    auto next = [&](int s) {
+        stage = s;
+        at = now;
+    };
+    if (StrokeTick()) {
+        at = now;
+        return;
+    }
+    DWORD dt = now - at;
+    switch (stage) {
+    case 0:
+        if (scene == ".?AVSHeadquarters@@" && g_h.topScene && strstr(g_h.topScene(), "SMissionMenu") && dt > 0 &&
+            now - g_sceneStart > 2500) {
+            DeleteFileA((g_h.dir + "DATA\\MAPS\\" + name + ".WBM").c_str());  // left from an earlier run
+            Save("e0-main-menu");
+            ClickWidget("Map Editor", true);
+            next(1);
+        }
+        break;
+    case 1:
+        if (dt > 1500) {
+            Save("e1-map-list");
+            ClickWidget(fresh ? "New Map" : quit ? "East vs. West" : "4 Corners", true);
+            next(fresh ? 20 : 2);
+        }
+        break;
+    case 20:  // New Map page: the size preset to 48 x 48
+        if (dt > 1200) {
+            long x, y;
+            if (menu::FindWidget("Size: 48 x 48", x, y)) {
+                Save("n0-new-map-page");
+                ClickWidget("Create Map", true);
+                next(2);
+            } else if (++clicks > 6) {
+                g_h.log("autopilot: could not set the size");
+                next(99);
+            } else {
+                ClickWidget("Size:", true);
+                at = now - 600;
+            }
+        }
+        break;
+    case 2:  // the editor opens (loading screen, then the mission scene)
+        if (editor::Active() && scene == ".?AVSGame@@" && dt > 4000) {
+            render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+            Save(fresh ? "n1-editor-new" : "e2-editor-open");
+            LogView();
+            // The base cell: the one at 45% / 40% of the frame.
+            uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+            int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+            bx = (*(short*)(g + game::SGameCameraX) + frameW * 45 / 100 * f) / 64;
+            by = (*(short*)(g + game::SGameCameraY) + frameH * 40 / 100 * f) / 64;
+            g_h.log("autopilot: editor open: %s; base cell %d,%d", editor::Status().c_str(), bx, by);
+            t1 = Choose({"Lava", "Tar", "Crystal", "Sand", "Cropland", "Roots", "Hot Mud", "Crushed Crystal"}, "", 1, bx,
+                        by, bx + 5, by);
+            // Lava refused here (smart painter): try it anyway, for the message.
+            ClickWidget(t1 == "Lava" ? t1.c_str() : "Lava", false);
+            next(t1 == "Lava" ? 3 : 21);
+        }
+        break;
+    case 21:  // one click of Lava where it may not go
+        if (dt > 600) {
+            POINT p;
+            if (editor::CellCentre(bx, by, p)) {
+                render::SetFakeCursor(true, p);
+                Post(WM_MOUSEMOVE, 0, p);
+                Post(WM_LBUTTONDOWN, MK_LBUTTON, p);
+                Post(WM_LBUTTONUP, 0, p);
+            }
+            next(22);
+        }
+        break;
+    case 22:
+        if (dt > 800) {
+            Save("e2b-refused");
+            g_h.log("autopilot: refused Lava: %s", editor::Status().c_str());
+            Expect("refused %s", OneWord(editor::Status()).c_str());
+            ClickWidget(t1.c_str(), false);
+            next(3);
+        }
+        break;
+    case 3:
+        if (dt > 600) {
+            g_h.log("autopilot: chosen %s", editor::TypeName().c_str());
+            Stroke(t1.c_str(), 1, bx, by, bx + 5, by);
+            next(fresh ? 9 : quit ? 30 : 4);
+        }
+        break;
+    case 4:
+        if (dt > 800) {
+            Save("e3-stroke1");
+            t2 = Choose({"Sand", "Cropland", "Crystal", "Tar", "Roots", "Hot Mud", "Crushed Crystal", "Lava"}, t1, 3,
+                        bx + 2, by + 2, bx + 2, by + 5);
+            ClickWidget(t2.c_str(), false);
+            next(5);
+        }
+        break;
+    case 5:
+        if (dt > 500) {
+            ClickWidget("3", false);  // brush 3
+            next(6);
+        }
+        break;
+    case 6:
+        if (dt > 500) {
+            Stroke(t2.c_str(), 3, bx + 2, by + 2, bx + 2, by + 5);
+            next(7);
+        }
+        break;
+    case 7:
+        if (dt > 800) {
+            Save("e4-stroke2");
+            t3 = Choose({"Crystal", "Cropland", "Sand", "Tar", "Roots", "Hot Mud", "Crushed Crystal", "Lava"}, t2, 1,
+                        bx + 8, by + 1, bx + 10, by + 1);
+            ClickWidget(t3.c_str(), false);
+            next(70);
+        }
+        break;
+    case 70:
+        if (dt > 500) {
+            ClickWidget("1", false);  // brush 1
+            next(71);
+        }
+        break;
+    case 71:
+        if (dt > 500) {
+            Stroke(t3.c_str(), 1, bx + 8, by + 1, bx + 10, by + 1);
+            next(8);
+        }
+        break;
+    case 8:
+        if (dt > 800) {
+            Save("e5-stroke3");
+            PostKey(WM_KEYDOWN, VK_CONTROL);
+            PostKey(WM_KEYDOWN, 'Z');
+            PostKey(WM_KEYUP, 'Z');
+            PostKey(WM_KEYUP, VK_CONTROL);
+            Expect("undo");
+            g_h.log("autopilot: Ctrl+Z");
+            next(80);
+        }
+        break;
+    case 80:
+        if (dt > 800) {
+            Save("e6-undone");
+            g_h.log("autopilot: after undo: %s", editor::Status().c_str());
+            POINT p;
+            if (editor::CellCentre(bx + 1, by, p)) {  // right-click pick on the first stroke
+                ClickWidget(t2.c_str(), false);  // something else first
+                render::SetFakeCursor(true, p);
+                Post(WM_MOUSEMOVE, 0, p);
+                Post(WM_RBUTTONDOWN, MK_RBUTTON, p);
+                Post(WM_RBUTTONUP, 0, p);
+            }
+            next(81);
+        }
+        break;
+    case 81:
+        if (dt > 800) {
+            g_h.log("autopilot: picked: %s (%s)", editor::TypeName().c_str(), editor::Status().c_str());
+            Expect("picked %s", OneWord(editor::TypeName()).c_str());
+            next(9);
+        }
+        break;
+    case 30:  // Exit with unsaved changes: asks once
+        if (dt > 800) {
+            ClickWidget("Exit", false);
+            next(31);
+        }
+        break;
+    case 31:
+        if (dt > 800) {
+            Save("x1-exit-asks");
+            g_h.log("autopilot: after Exit: %s", editor::Status().c_str());
+            ClickWidget("Exit", false);
+            next(32);
+        }
+        break;
+    case 32:
+        if (scene == ".?AVSHeadquarters@@" && !editor::Active() && g_h.topScene && strstr(g_h.topScene(), "SMissionMenu") &&
+            now - g_sceneStart > 2500) {
+            long x, y;
+            g_h.log("autopilot: back in the menu; map list %s", menu::FindWidget("New Map", x, y) && x > 0 ? "shown" : "NOT shown");
+            Save("x2-back-to-list");
+            next(99);
+        } else if (dt > 30000) {
+            next(99);
+        }
+        break;
+    case 9:
+        if (dt > 800) {
+            if (fresh) Save("n2-stroke");
+            ClickWidget("Save As", false);
+            next(10);
+        }
+        break;
+    case 10:
+        if (dt > 600) {
+            Save(fresh ? "n3-name-prompt" : "e7-name-prompt");
+            TypeName(name);
+            next(11);
+        }
+        break;
+    case 11:  // processing and saving
+        if (editor::SaveCount() > 0 && editor::Idle() && dt > 500) {
+            Save(fresh ? "n4-saved" : "e8-saved");
+            g_h.log("autopilot: saved: %s", editor::Status().c_str());
+            Expect("saved %s", name);
+            if (g_expect) fclose(g_expect), g_expect = nullptr;
+            for (int i = 0; i < 4; ++i) g_h.zoomStep(+1);  // zoom out: the panel keeps its size
+            next(110);
+        } else if (dt > 60000) {
+            g_h.log("autopilot: no save after 60 s (%s)", editor::Status().c_str());
+            next(99);
+        }
+        break;
+    case 110:
+        if (dt > 2000) {
+            Save(fresh ? "n4b-zoomed-out" : "e8b-zoomed-out");
+            LogView();
+            for (int i = 0; i < 4; ++i) g_h.zoomStep(-1);
+            next(111);
+        }
+        break;
+    case 111:
+        if (dt > 2000) {
+            ClickWidget("Test Map", false);
+            next(12);
+        }
+        break;
+    case 12:  // Test Map: the hub, the skirmish setup, then the skirmish
+        if (scene == ".?AVSMultiSetup@@" && !strcmp(g_h.topScene(), ".?AVSMultiSetup@@") && now - g_sceneStart > 2600 &&
+            !(clicks & 0x100)) {
+            Save(fresh ? "n5-skirmish-setup" : "e9-skirmish-setup");
+            clicks |= 0x100;
+        }
+        if (scene == ".?AVSGame@@" && !editor::Active() && ((short (*)())0x46f960)() == 1 && now - g_sceneStart > 5000) {
+            render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+            Save(fresh ? "n6-test-skirmish" : "e10-test-skirmish");
+            LogView();
+            char* w = *(char**)0x579278;
+            int things = 0;
+            for (int i = 0; w && i < *(int*)(w + 0x14); ++i) things += (*(char***)(w + 0x10))[i] != nullptr;
+            g_h.log("autopilot: Test Map skirmish running: map tiles %dx%d, %d things, turn period %d, paused %d",
+                    game::at<uint8_t>(game::MapTilesW), game::at<uint8_t>(game::MapTilesH), things,
+                    *(int*)(0x567ef8 + 0x188), *(int*)(0x567ef8 + 0x460));
+            next(99);
+        } else if (dt > 60000) {
+            g_h.log("autopilot: the Test Map skirmish did not start");
+            next(99);
+        }
+        break;
+    case 99:
+        if (dt > 500) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            next(100);
+        }
+        break;
+    }
+}
+
 }  // namespace
 
 void Init(const Hooks& h) {
@@ -553,6 +953,10 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
         return;
     }
+    if (g_h.mode == 13) {
+        EditorTest(scene, frameW, frameH, now);
+        return;
+    }
     if (g_h.mode == 5) {  // cutscene test: done once the main menu is up
         if (scene == ".?AVSHeadquarters@@" && t > 1000) {
             g_h.log("autopilot: done, quitting");
@@ -611,7 +1015,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
     } else if (scene == ".?AVSHeadquarters@@" && g_h.mode == 2) {
         // Settings page: open it, change two settings, go back.
-        enum Kind { SaveShot, LeftClick, Hover, RightClick, Quit, WheelDown, WheelUp };
+        enum Kind { SaveShot, LeftClick, Hover, RightClick, Quit, WheelDown, WheelUp, ClickText };
         struct MenuStep {
             DWORD at;
             Kind kind;
@@ -624,13 +1028,13 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             {2500, SaveShot, {}, "m0-main"},     {3000, LeftClick, {60, 222}, nullptr},   // Settings
             {4000, SaveShot, {}, "m1-video"},    {4300, LeftClick, {60, 194}, nullptr},   // FPS Counter (row 6)
             {5000, SaveShot, {}, "m2-fps"},      {5300, LeftClick, {200, 26}, nullptr},   // Controls tab
-            {6000, SaveShot, {}, "m3-controls"}, {6300, LeftClick, {360, 26}, nullptr},   // Interface tab
+            {6000, SaveShot, {}, "m3-controls"}, {6300, ClickText, {}, "Interface"},      // Interface tab
             {7000, SaveShot, {}, "m4-interface"}, {7300, LeftClick, {60, 82}, nullptr},   // Menu Art -> Original
             {8000, SaveShot, {}, "m5-original"}, {8200, Hover, {60, 82}, nullptr},
             {8500, RightClick, {60, 82}, nullptr},                                      // Menu Art back
-            {9200, SaveShot, {}, "m6-widescreen"}, {9500, LeftClick, {60, 390}, nullptr},  // Reset (arm)
-            {10000, LeftClick, {60, 390}, nullptr},                                      // Reset (confirm)
-            {10700, SaveShot, {}, "m7-reset"},   {11000, LeftClick, {60, 418}, nullptr},  // Back
+            {9200, SaveShot, {}, "m6-widescreen"}, {9500, LeftClick, {60, 404}, nullptr},  // Reset (arm)
+            {10000, LeftClick, {60, 404}, nullptr},                                      // Reset (confirm)
+            {10700, SaveShot, {}, "m7-reset"},   {11000, LeftClick, {60, 432}, nullptr},  // Back
             {12000, SaveShot, {}, "m8-back"},    {12300, Quit, {}, nullptr},
         };
         // AutopilotTarget=2: a long tab scrolling (run with [Debug] SettingsRows=6).
@@ -654,6 +1058,11 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             switch (m.kind) {
             case SaveShot: Save(m.tag); break;
             case LeftClick: Click(m.p); break;
+            case ClickText: {  // a tab, wherever the font puts it
+                long x, y;
+                if (menu::FindWidget(m.tag, x, y)) Click({x, y});
+                break;
+            }
             case Hover: render::SetFakeCursor(true, m.p); Post(WM_MOUSEMOVE, 0, m.p); break;
             case RightClick:
                 Post(WM_RBUTTONDOWN, MK_RBUTTON, m.p);

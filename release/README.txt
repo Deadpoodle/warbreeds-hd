@@ -4,8 +4,8 @@ WarBreeds HD 0.11.0
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
 run well on modern Windows: native widescreen resolutions, smooth zoom, sharp
 scaling, windowed mode, working cutscenes, a Settings page on the main menu,
-and modern controls. You need your own copy of the game (tested with the
-GOG.com release).
+modern controls and a map editor. You need your own copy of the game (tested
+with the GOG.com release).
 
 Nothing in the game's own files is changed. The patch is a set of extra files
 next to the game, and removing them puts everything back as it was.
@@ -77,6 +77,21 @@ Display
 Cutscenes
   - The movies play again (the game needed QuickTime 2, which modern Windows
     lacks). Movie Scaling and Movie Size are on the Video tab. Space skips.
+
+Map editor
+  - Map Editor on the main menu: edit the terrain of any skirmish map, or
+    New Map (size 32-96 cells per side, base terrain, 2-8 players).
+  - The map opens in the normal game view, frozen and without fog; scroll,
+    zoom and the minimap work as in a mission.
+  - Pick a terrain and a brush size (1, 2, 3, 5), then drag to paint.
+    Shift+drag fills a rectangle, right-click picks the terrain under the
+    cursor, Ctrl+Z / Ctrl+Y undo and redo.
+  - Smart painting, as in the original editor: terrain blends into its
+    neighbours, and only goes next to terrain it has transitions for (Lava
+    next to Tar, for example). A refused stroke says what is in the way.
+  - Save As (up to 8 letters) processes the map for pathfinding and saves it
+    in DATA\MAPS, where the skirmish setup finds it. The game's own maps are
+    never overwritten. Test Map saves and starts a skirmish on the map.
 
 Controls (full list in Controls.html)
   - Mouse wheel and numpad +/- zoom. Arrow keys scroll smoothly.

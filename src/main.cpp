@@ -27,6 +27,7 @@
 #include "headless.h"
 #include "fonts.h"
 #include "controls.h"
+#include "editor/editor.h"
 
 #include "version.h"
 
@@ -585,6 +586,7 @@ void __cdecl OnFrameTick() {
     if (g_cfg.cameraScan) scan::Tick(InMission() ? BaseScene() : nullptr);
     camera::Tick(InMission() ? BaseScene() : nullptr, g_hwnd);
     controls::Tick(InMission() ? BaseScene() : nullptr);
+    editor::Tick();
     UpdateMouseCapture();
     // [Debug] NoFog=1: switch the local player's fog of war off (screenshots only).
     static int noFog = IniInt("Debug", "NoFog", 0);
@@ -752,6 +754,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case WM_KEYUP:
         if (InMission() && camera::OwnsKey(wp)) return 0;
+        if (editor::OnMessage(msg, wp, lp)) return 0;
+        break;
+    case WM_CHAR:
+        if (editor::OnMessage(msg, wp, lp)) return 0;  // the map editor: no game keys, typed names
         break;
     case WM_KEYDOWN:
         if (InMission() && camera::OwnsKey(wp)) return 0;
@@ -768,6 +774,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == VK_ADD) { RequestZoomStep(-1, false); return 0; }
             if (wp == VK_SUBTRACT) { RequestZoomStep(+1, false); return 0; }
         }
+        if (editor::OnMessage(msg, wp, lp)) return 0;
         break;
     case WM_SYSKEYDOWN:  // F10 arrives as a system key
         if (wp == VK_RETURN && (lp & (1 << 29)) && render::Active()) {  // Alt+Enter: fullscreen <-> windowed
@@ -870,9 +877,10 @@ void Init(HMODULE self) {
     // Needed whatever the zoom mode: any frame as large as a small map halved the view.
     Log("view fix: %s", camera::InstallViewFix() ? "installed" : "FAILED (unexpected code)");
     // [Debug] NoMenu=1: the stock main menu (no Settings item), e.g. for before/after shots.
-    if (!IniInt("Debug", "NoMenu", 0)) menu::Install({Log, IniPath(), ApplyLiveSettings});
+    if (!IniInt("Debug", "NoMenu", 0)) menu::Install({Log, IniPath(), g_dir, ApplyLiveSettings});
     controls::Install(Log);
     ApplyControlOptions();
+    editor::Install({Log, g_dir, IniInt("Debug", "Autopilot", 0) != 0});  // after controls: its mouse hooks chain
     {
         movie::Hooks mh;
         mh.log = Log;

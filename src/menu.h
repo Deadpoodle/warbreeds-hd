@@ -7,6 +7,7 @@ namespace menu {
 struct Hooks {
     void (*log)(const char*, ...);
     std::string ini;          // WarBreedsHD.ini path
+    std::string dir;          // game folder, with trailing backslash
     void (*applySettings)();  // re-read the ini and apply what can change live
 };
 

@@ -21,6 +21,7 @@ checked against the disassembly), **M** mechanism clear but purpose inferred, **
 | Subsystem | Report |
 |---|---|
 | Map loading, terrain, map format | `re/map-loading.md`, `re/wbm-format.md`, `re/tutorial-terrain.md`, `re/editor-original.md` |
+| In-game map editor (WarBreeds HD) | `re/editor-shell.md` (shell, hooks, saving, New Map), `re/terrain-painter.md` (smart painter) |
 | Save/load, campaign record | `re/save-load.md` |
 | Pathfinding and movement | `re/pathfinding.md` |
 | Players, AI, alliances, commands | `re/players-ai.md` |
