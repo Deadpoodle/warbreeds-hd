@@ -78,7 +78,7 @@ void LogView() {
         }
     }
     // Selection and own buildings (mode 8, the controls test; 12, group build).
-    if (g_h.mode == 8 || g_h.mode == 9 || g_h.mode == 12) {
+    if (g_h.mode == 8 || g_h.mode == 9 || g_h.mode == 12 || g_h.mode == 16) {
         char* w = *(char**)0x579278;
         void* me = ((void* (*)())0x46f8e0)();
         int n = *(int*)(w + 0x84);
@@ -163,7 +163,7 @@ void Key(WPARAM vk) {
 // they stay on screen at every zoom.
 enum Act { SaveShot, ZoomOut, ZoomIn, Esc, Quit, CursorCentre, Glide, ClickHere, KeyTap, RightClickHere, ShiftDrag,
            RecordStart, RecordStop, HoldKey, ReleaseKey, SpawnBuilders, GlideToBuildSpot,
-           ClickPanelButton, GlideToOwnBuilding };
+           ClickPanelButton, GlideToOwnBuilding, SpawnThing, CursorClient, WheelNotches, ClickClient, SetCGK, PickSpecies, SpawnAllCreatures, SpawnFlyers };
 struct Step {
     DWORD at;
     Act act;
@@ -337,6 +337,133 @@ const Step kGroup[] = {
     {36800, SaveShot, "g11-repair", {}},
     {46000, SaveShot, "g12-later", {}},
     {46500, Quit, nullptr, {}},
+};
+
+// Mode 16, the tallest panel: a finished Gene Lab+ is created beside the
+// starting Shaman (CreateThing with its checks skipped, kept powered) and
+// selected, a species chosen, which opens Select Components with every
+// component (gene level 5): the panel that sets the interface size cap. It
+// must fit the window; a hover and a click on its bottom button (count 1)
+// show the clicks still land where it is drawn.
+// CursorClient / ClickClient: thousandths of the window.
+const Step kTallPanel[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {1800, SetCGK, nullptr, {5, 0}},         // every clan's gene level 5: every component
+    {2000, SpawnThing, nullptr, {0x35, 0}},  // a Gene Lab+
+    {2600, GlideToOwnBuilding, nullptr, {0x35, 0}},
+    {3800, ClickHere, nullptr, {}},
+    {4600, SaveShot, "t0a-genelab", {}},
+    {4800, PickSpecies, nullptr, {1, 0}},  // a scout: Select Components
+    {5000, CursorClient, nullptr, {500, 500}},
+    {5600, SaveShot, "t0-tall-panel", {}},
+    {5800, CursorClient, nullptr, {965, 870}},  // near the bottom of the panel
+    {6400, SaveShot, "t1-hover-bottom", {}},
+    {6600, ClickClient, nullptr, {965, 870}},
+    {7400, SaveShot, "t2-clicked-bottom", {}},
+    {7600, ZoomIn, nullptr, {}},
+    {7700, ZoomIn, nullptr, {}},
+    {9800, SaveShot, "t3-full-in", {}},
+    {10000, WheelNotches, nullptr, {-1, 0}},
+    {11400, SaveShot, "t4-out1a", {}},
+    {11550, SaveShot, "t4-out1b", {}},
+    {11800, WheelNotches, nullptr, {-1, 0}},
+    {13200, SaveShot, "t4-out2a", {}},
+    {13350, SaveShot, "t4-out2b", {}},
+    {13600, WheelNotches, nullptr, {-1, 0}},
+    {15000, SaveShot, "t4-out3a", {}},
+    {15150, SaveShot, "t4-out3b", {}},
+    {15400, WheelNotches, nullptr, {-1, 0}},
+    {16800, SaveShot, "t4-out4a", {}},
+    {16950, SaveShot, "t4-out4b", {}},
+    {17200, WheelNotches, nullptr, {-1, 0}},
+    {18600, SaveShot, "t4-out5a", {}},
+    {18750, SaveShot, "t4-out5b", {}},
+    {19000, WheelNotches, nullptr, {-1, 0}},
+    {20400, SaveShot, "t4-out6a", {}},
+    {20550, SaveShot, "t4-out6b", {}},
+    {20800, WheelNotches, nullptr, {-1, 0}},
+    {22200, SaveShot, "t4-out7a", {}},
+    {22350, SaveShot, "t4-out7b", {}},
+    {22600, Quit, nullptr, {}},
+};
+
+// Mode 17: what a dead creature leaves behind (two creatures created beside
+// the Shaman and killed at once), photographed over 10 seconds.
+const Step kCorpse[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {2000, SpawnThing, nullptr, {3, 1}},  // T-Rex, killed
+    {2100, SpawnThing, nullptr, {2, 1}},  // raptor, killed
+    {3000, SaveShot, "k0-died", {}},
+    {6000, SaveShot, "k1-later", {}},
+    {12000, SaveShot, "k2-much-later", {}},
+    {12500, Quit, nullptr, {}},
+};
+
+// Mode 18: every creature type for player 1 (an enemy), in a grid right of
+// the Shaman, photographed at the starting zoom, fully zoomed out (the game's
+// half-scale view) and back in. The log lists each type and where it stands.
+const Step kAllCreatures[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {2000, SpawnAllCreatures, nullptr, {1, 1}},  // armed
+    {2600, SaveShot, "z0-normal", {}},
+    {2800, ZoomOut, nullptr, {}},
+    {2900, ZoomOut, nullptr, {}},
+    {5000, SaveShot, "z1-zoomed-out", {}},
+    {6000, SaveShot, "z1b-zoomed-out", {}},
+    {7000, SaveShot, "z1c-zoomed-out", {}},
+    {9000, SaveShot, "z1d-zoomed-out", {}},
+    {12000, SaveShot, "z1e-zoomed-out", {}},
+    {12200, ZoomIn, nullptr, {}},
+    {14500, SaveShot, "z2-back-in", {}},
+    {15000, Quit, nullptr, {}},
+};
+
+// Mode 19, flying units in flight at every zoom: two of each air unit (Jubjub,
+// Aphid, Viper) for the local player beside the Shaman, armed; E selects them,
+// then they are ordered back and forth while the zoom steps out a notch at a
+// time from fully in, with shots during each flight.
+const Step kFlyers[] = {
+    {1500, CursorCentre, nullptr, {}},
+    {2000, SpawnFlyers, nullptr, {}},
+    {2400, ZoomIn, nullptr, {}},
+    {2500, ZoomIn, nullptr, {}},
+    {4500, KeyTap, nullptr, {'E', 0}},
+    {5000, Glide, nullptr, {750, 600}},
+    {5900, ClickHere, nullptr, {}},
+    {6500, SaveShot, "f0-a", {}},
+    {7300, SaveShot, "f0-b", {}},
+    {7600, WheelNotches, nullptr, {-1, 0}},
+    {9200, Glide, nullptr, {250, 300}},
+    {10100, ClickHere, nullptr, {}},
+    {10700, SaveShot, "f1-a", {}},
+    {11500, SaveShot, "f1-b", {}},
+    {11800, WheelNotches, nullptr, {-1, 0}},
+    {13400, Glide, nullptr, {750, 600}},
+    {14300, ClickHere, nullptr, {}},
+    {14900, SaveShot, "f2-a", {}},
+    {15700, SaveShot, "f2-b", {}},
+    {16000, WheelNotches, nullptr, {-1, 0}},
+    {17600, Glide, nullptr, {250, 300}},
+    {18500, ClickHere, nullptr, {}},
+    {19100, SaveShot, "f3-a", {}},
+    {19900, SaveShot, "f3-b", {}},
+    {20200, WheelNotches, nullptr, {-1, 0}},
+    {21800, Glide, nullptr, {750, 600}},
+    {22700, ClickHere, nullptr, {}},
+    {23300, SaveShot, "f4-a", {}},
+    {24100, SaveShot, "f4-b", {}},
+    {24400, WheelNotches, nullptr, {-1, 0}},
+    {26000, Glide, nullptr, {250, 300}},
+    {26900, ClickHere, nullptr, {}},
+    {27500, SaveShot, "f5-a", {}},
+    {28300, SaveShot, "f5-b", {}},
+    {28600, WheelNotches, nullptr, {-1, 0}},
+    {30200, Glide, nullptr, {750, 600}},
+    {31100, ClickHere, nullptr, {}},
+    {31700, SaveShot, "f6-a", {}},
+    {32500, SaveShot, "f6-b", {}},
+    {32800, WheelNotches, nullptr, {-1, 0}},
+    {34400, Quit, nullptr, {}},
 };
 
 // --- mode 13: the map editor ---------------------------------------------------
@@ -1841,12 +1968,29 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                              : g_h.mode == 9  ? kModern
                              : g_h.mode == 10 ? kRecord
                              : g_h.mode == 12 ? kGroup
+                             : g_h.mode == 16 ? kTallPanel
+                             : g_h.mode == 17 ? kCorpse
+                             : g_h.mode == 18 ? kAllCreatures
+                             : g_h.mode == 19 ? kFlyers
                                               : kMission;
         int steps = g_h.mode == 8    ? (int)(sizeof kControls / sizeof kControls[0])
                     : g_h.mode == 9  ? (int)(sizeof kModern / sizeof kModern[0])
                     : g_h.mode == 10 ? (int)(sizeof kRecord / sizeof kRecord[0])
                     : g_h.mode == 12 ? (int)(sizeof kGroup / sizeof kGroup[0])
+                    : g_h.mode == 16 ? (int)(sizeof kTallPanel / sizeof kTallPanel[0])
+                    : g_h.mode == 17 ? (int)(sizeof kCorpse / sizeof kCorpse[0])
+                    : g_h.mode == 18 ? (int)(sizeof kAllCreatures / sizeof kAllCreatures[0])
+                    : g_h.mode == 19 ? (int)(sizeof kFlyers / sizeof kFlyers[0])
                                      : (int)(sizeof kMission / sizeof kMission[0]);
+        if (g_h.mode == 16) {  // test only: the Gene Lab stays powered (no power network was built)
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            for (int i = 0; i < *(int*)(w + 0x14); ++i)
+                if (things[i] && *(char**)(things[i] + 0x20) == me &&
+                    (*(int*)(things[i] + 0x18) == 0x2d || *(int*)(things[i] + 0x18) == 0x35))
+                    *(short*)(things[i] + 0x28) = 0;
+        }
         if (g_step >= steps || t <= script[g_step].at) return;
         const Step& st = script[g_step++];
         if (st.act != ReleaseKey && st.act != HoldKey)
@@ -2014,6 +2158,142 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             g_h.log("autopilot: click panel button %p at frame %ld,%ld (client %ld,%ld)", btn, g.x, g.y, c.x, c.y);
             break;
         }
+        case SpawnThing: {  // a thing of type to.x for the local player, beside its first creature
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            int count = *(int*)(w + 0x14);
+            for (int i = 0; i < count; ++i) {
+                char* t = things[i];
+                if (!t || *(char**)(t + 0x20) != me) continue;
+                typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
+                static const short off[][2] = {{160, 0},    {0, 160},   {-160, 0}, {0, -160}, {224, 224},
+                                               {-224, 224}, {224, -224}, {320, 0},  {0, 320},  {-320, 0}};
+                bool device = st.to.x >= 0x2c && st.to.x <= 0x3b;
+                for (const auto& o : off) {
+                    int x = *(short*)(t + 0x14) + o[0], y = *(short*)(t + 0x16) + o[1];
+                    if (!device) {
+                        unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), (int)st.to.x, x, y, 100, 100, 100, 100);
+                        g_h.log("autopilot: create thing type %#lx at %d,%d: id %#x", st.to.x, x, y, id);
+                        if (id == 0xc01) continue;
+                        if (st.to.y == 1) {  // and kill it at once (AThing::Die, vtbl+0x38): what does it leave?
+                            char** all = *(char***)(w + 0x10);
+                            for (int j = 0; j < *(int*)(w + 0x14); ++j)
+                                if (all[j] && *(unsigned short*)(all[j] + 0x1c) == id) {
+                                    void** vt = *(void***)all[j];
+                                    ((void(__thiscall*)(void*, short))vt[0x38 / 4])(all[j], (short)0xc01);
+                                    g_h.log("autopilot:   killed id %#x", id);
+                                }
+                        }
+                        break;
+                    }
+                    // AThingRegistry::CreateThing 0x446db0(owner, type, x, y, skipChecks, activate, arg)
+                    // with the placement checks skipped (a Gene Lab needs power nearby), then
+                    // the game's own build step with the progress at its end: a finished building.
+                    int before = *(int*)(w + 0x14);
+                    ((short(__thiscall*)(void*, short, int, short, short, short, short, short))0x446db0)(
+                        w, *(short*)(me + 4), (int)st.to.x, (short)x, (short)y, 1, 1, (short)0xc01);
+                    char** all = *(char***)(w + 0x10);
+                    char* made = nullptr;
+                    for (int j = 0; j < *(int*)(w + 0x14); ++j)
+                        if (all[j] && *(char**)(all[j] + 0x20) == me && *(int*)(all[j] + 0x18) == st.to.x) made = all[j];
+                    g_h.log("autopilot: create device type %#lx at %d,%d: %s (things %d -> %d)", st.to.x, x, y,
+                            made ? "made" : "failed", before, *(int*)(w + 0x14));
+                    if (!made) continue;
+                    *(short*)(made + 0x32) = 30000;
+                    short done = ((short(__thiscall*)(void*))0x40c8a0)(made);
+                    ((void(__thiscall*)(void*, short))0x40dfe0)(made, 0);  // ADevice::SetUnpowered(0): powered
+                    g_h.log("autopilot:   finished %d, id %d, unpowered %d, on %d", done, *(short*)(made + 0x1c),
+                            *(short*)(made + 0x28), *(short*)(made + 0x2a));
+                    break;
+                }
+                break;
+            }
+            break;
+        }
+        case SpawnAllCreatures: {  // every creature type for player to.x, 6 per row, 150 px apart
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            char* first = nullptr;
+            for (int i = 0; i < *(int*)(w + 0x14) && !first; ++i)
+                if (things[i] && *(char**)(things[i] + 0x20) == me) first = things[i];
+            if (!first) break;
+            typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
+            // AutopilotTarget: the clan (0 Tanu, 1 Sen-Soth, 2 Kelika, 3 Magha: types clan*9+0..4;
+            // 4: Yedda and Dhuer), or -1 for all.
+            static const int kTypes[] = {0, 1, 2, 3, 4, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 27, 28, 29, 30, 31, 35, 36};
+            int n = 0;
+            for (int ty : kTypes) {
+                int clan = ty >= 35 ? 4 : ty / 9;
+                if (g_h.target >= 0 && clan != g_h.target) continue;
+                int x = *(short*)(first + 0x14) + 250 + (n % 6) * 150, y = *(short*)(first + 0x16) - 150 + (n / 6) * 150;
+                // to.y = 1: armed (gizmo 1 in both arm slots, 4 on the head; 100 = empty).
+                int arm = st.to.y == 1 ? 1 : 100, head = st.to.y == 1 ? 4 : 100;
+                unsigned short id = ((Place_t)0x4472d0)(w, (int)st.to.x, ty, x, y, arm, head, arm, 100);
+                g_h.log("autopilot: creature type %#x (%s) for player %ld at %d,%d: id %#x", ty, "", st.to.x, x, y, id);
+                ++n;
+            }
+            break;
+        }
+        case SpawnFlyers: {  // two of each air unit for the local player, armed, beside its first thing
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** roster = *(char***)(w + 0x10);
+            char* first = nullptr;
+            for (int i = 0; i < *(int*)(w + 0x14) && !first; ++i)
+                if (roster[i] && *(char**)(roster[i] + 0x20) == me) first = roster[i];
+            if (!first) break;
+            typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
+            static const int kAir[] = {4, 0xd, 0x1f, 4, 0xd, 0x1f};
+            for (int n = 0; n < 6; ++n) {
+                unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), kAir[n], *(short*)(first + 0x14) + 120 + (n % 3) * 90,
+                                                        *(short*)(first + 0x16) + (n / 3) * 90, 1, 4, 1, 100);
+                g_h.log("autopilot: flyer type %#x: id %#x", kAir[n], id);
+            }
+            break;
+        }
+        case SetCGK: {  // APlayer +0x4850 int level[5]: the local player's gene level per clan
+            char* me = ((char* (*)())0x46f8e0)();
+            for (int i = 0; i < 5; ++i) *(int*)(me + 0x4850 + 4 * i) = (int)st.to.x;
+            g_h.log("autopilot: gene levels set to %ld", st.to.x);
+            break;
+        }
+        case PickSpecies: {  // the own Gene Lab's species choice (0x42bde0 on AGeneLab+0x40): Select Components
+            char* w = *(char**)0x579278;
+            char* me = ((char* (*)())0x46f8e0)();
+            char** things = *(char***)(w + 0x10);
+            for (int i = 0; i < *(int*)(w + 0x14); ++i) {
+                char* t = things[i];
+                if (!t || *(char**)(t + 0x20) != me || (*(int*)(t + 0x18) != 0x2d && *(int*)(t + 0x18) != 0x35)) continue;
+                ((void(__fastcall*)(void*, unsigned, int))0x42bde0)(t + 0x40, 0, (int)st.to.x);
+                g_h.log("autopilot: Gene Lab id %d: species %ld chosen; unpowered %d on %d complete %d paused %d, ui state %d type %d",
+                        *(short*)(t + 0x1c), st.to.x, *(short*)(t + 0x28), *(short*)(t + 0x2a), *(short*)(t + 0x2c),
+                        *(short*)(t + 0x2e), *(int*)(t + 0x40 + 0x1a4), *(int*)(t + 0x40 + 0x2c));
+                break;
+            }
+            break;
+        }
+        case CursorClient:
+        case ClickClient: {
+            RECT r;
+            GetClientRect(render::GameWindow(), &r);
+            POINT c{(LONG)((int64_t)st.to.x * r.right / 1000), (LONG)((int64_t)st.to.y * r.bottom / 1000)};
+            render::SetFakeCursorClient(c);
+            HWND hw = render::GameWindow();
+            PostMessageA(hw, WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+            if (st.act == ClickClient) {
+                PostMessageA(hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.x, c.y));
+                PostMessageA(hw, WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
+            }
+            g_h.log("autopilot: %s client %ld,%ld (game cursor %d,%d)", st.act == ClickClient ? "click" : "cursor to",
+                    c.x, c.y, game::at<short>(game::CursorX), game::at<short>(game::CursorY));
+            break;
+        }
+        case WheelNotches:
+            PostMessageA(render::GameWindow(), WM_MOUSEWHEEL, MAKEWPARAM(0, (short)(st.to.x * WHEEL_DELTA)), 0);
+            g_h.log("autopilot: wheel %ld notches", st.to.x);
+            break;
         case GlideToOwnBuilding: {  // the first own building of type to.x
             char* w = *(char**)0x579278;
             char* me = ((char* (*)())0x46f8e0)();

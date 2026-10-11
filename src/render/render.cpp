@@ -56,6 +56,12 @@ std::vector<Mode> g_modes;  // advertised: settings + one extra (zoom)
 double g_hudScale = 1.0;  // screen px per game px for the interface (missions), at g_hudBaseH
 int g_hudBaseH;            // window height g_hudScale is meant for (0 = any)
 std::vector<Layer> g_layers;  // last presented; [0] = whole frame
+// The interface size is capped so the tallest panel fits the window: the
+// Gene Lab+'s Select Components with all 15 components reaches 585 game px
+// down from the top of the screen. Every panel keeps the same size relative
+// to the others; a short window gets a smaller interface.
+constexpr int kTallestPanel = 585;
+constexpr int kFitMargin = 8;  // client px left below it
 bool g_gdiLog;  // [Debug] GdiLog: log the game's frame-DIB handling
 
 // The part of the current mode's frames that is shown (frame pixels).
@@ -233,6 +239,16 @@ POINT ClientToFrame(POINT c) {
     CropF s = ShownPart(g_mode.w, g_mode.h);
     int vw = std::max<int>(1, v.right - v.left), vh = std::max<int>(1, v.bottom - v.top);
     POINT g{(LONG)floor(s.x + (c.x - v.left) * s.w / vw), (LONG)floor(s.y + (c.y - v.top) * s.h / vh)};
+    // Showing part of the frame (zoomed in past the smallest frame): the mouse at
+    // the window's edge is at the frame's edge, so the game's edge scrolling works.
+    if (s.w < g_mode.w) {
+        if (c.x <= v.left) g.x = 0;
+        if (c.x >= v.right - 1) g.x = g_mode.w - 1;
+    }
+    if (s.h < g_mode.h) {
+        if (c.y <= v.top) g.y = 0;
+        if (c.y >= v.bottom - 1) g.y = g_mode.h - 1;
+    }
     g.x = std::clamp<LONG>(g.x, 0, g_mode.w - 1);
     g.y = std::clamp<LONG>(g.y, 0, g_mode.h - 1);
     return g;
@@ -540,27 +556,50 @@ void BuildLayers() {
     if (g_useD3D) d3d11::SetBackgroundRect(false, {});
     int vw = v.right - v.left;
     double world = (double)vw / g_frame.w;  // screen px per frame px
-    double s = g_hudBaseH > 0 ? g_hudScale * ClientH() / g_hudBaseH : g_hudScale;
-    (void)world;
     int vh = v.bottom - v.top;
+    double want = g_hudBaseH > 0 ? g_hudScale * ClientH() / g_hudBaseH : g_hudScale;
+    double s = std::min(want, (double)(vh - kFitMargin) / kTallestPanel);
+    static double logged;
+    if (s < want && fabs(s - logged) > 0.01) {
+        logged = s;
+        g_log("render: interface %.3f (capped from %.3f so the Gene Lab+ panel fits %d px)", s, want, vh);
+    }
+    (void)world;
     for (const RECT& r : InterfaceElements(g_frame)) {
         // Keep the element's distance from its nearest screen edge (or the
         // centre) in interface pixels, so it sits in the same place at every zoom.
-        double w = (r.right - r.left) * s, hgt = (r.bottom - r.top) * s;
+        // Anything still taller than the window (none known) is drawn smaller to fit.
+        double full = (r.bottom - r.top) * s;
+        double es = full > vh ? s * vh / full : s;
+        double w = (r.right - r.left) * es, hgt = (r.bottom - r.top) * es;
         double cx = (r.left + r.right) * 0.5, cy = (r.top + r.bottom) * 0.5;
         double x, y;
-        if (cx > g_frame.w / 3.0 && cx < g_frame.w * 2 / 3.0)
-            x = v.left + vw * 0.5 + (cx - g_frame.w * 0.5) * s - w * 0.5;
-        else if (cx <= g_frame.w / 3.0)
-            x = v.left + r.left * s;
+        // The anchor is the edge the element is nearest, or the centre when it has
+        // about as much room on both sides (dialogs). Not the third its centre is
+        // in: an animated element (the Gene Lab's spinning preview) changes its
+        // box every frame, and a centre near a third's line flipped it between
+        // anchors, so the panel jumped.
+        auto anchor = [](double before, double after, double frame) {
+            if (fabs(before - after) < frame * 0.08) return 1;
+            return before < after ? 0 : 2;
+        };
+        int ax = anchor(r.left, g_frame.w - r.right, g_frame.w), ay = anchor(r.top, g_frame.h - r.bottom, g_frame.h);
+        if (ax == 1)
+            x = v.left + vw * 0.5 + (cx - g_frame.w * 0.5) * es - w * 0.5;
+        else if (ax == 0)
+            x = v.left + r.left * es;
         else
-            x = v.right - (g_frame.w - r.right) * s - w;
-        if (cy > g_frame.h / 3.0 && cy < g_frame.h * 2 / 3.0)
-            y = v.top + vh * 0.5 + (cy - g_frame.h * 0.5) * s - hgt * 0.5;
-        else if (cy <= g_frame.h / 3.0)
-            y = v.top + r.top * s;
+            x = v.right - (g_frame.w - r.right) * es - w;
+        if (ay == 1)
+            y = v.top + vh * 0.5 + (cy - g_frame.h * 0.5) * es - hgt * 0.5;
+        else if (ay == 0)
+            y = v.top + r.top * es;
         else
-            y = v.bottom - (g_frame.h - r.bottom) * s - hgt;
+            y = v.bottom - (g_frame.h - r.bottom) * es - hgt;
+        // Kept inside the window where it fits (an element anchored near an edge
+        // may otherwise hang off the other one).
+        if (w <= vw) x = std::clamp(x, (double)v.left, (double)v.right - w);
+        if (hgt <= vh) y = std::clamp(y, (double)v.top, (double)v.bottom - hgt);
         g_layers.push_back({r, {(LONG)x, (LONG)y, (LONG)(x + w), (LONG)(y + hgt)}, Layer::InterfaceScaled});
     }
     // Cursor: a box around the game cursor position, drawn so that position

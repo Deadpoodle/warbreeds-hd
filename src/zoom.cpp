@@ -11,6 +11,11 @@
 // zoomed-out view the animation will show, and the renderer shows the part of
 // it the current magnification covers (SetWorldCrop). Zooming out resizes
 // once at the start, zooming in once at the end.
+//
+// The frame is never less than kMinFrameH tall: the game lays its panels out
+// in it, and the tallest (the Gene Lab+'s Select Components, 585 px) loses its
+// header in a shorter frame. Zooming in further shows the middle part of a
+// frame of that size (the same crop, kept at rest).
 #include "zoom.h"
 
 #include <windows.h>
@@ -39,6 +44,8 @@ void* g_mission;         // SGame the above applies to
 // While animating: the shown world area's top-left (world pixels) and the
 // camera position we last left the game with.
 bool g_cropping;
+bool g_restCrop;  // cropping at rest: the zoom wants a frame shorter than kMinFrameH
+constexpr int kMinFrameW = 640, kMinFrameH = 600;
 bool g_atCursor = true;  // anchor of the current zoom: cursor or screen centre
 double g_viewX, g_viewY;
 int g_lastCamX, g_lastCamY;
@@ -56,8 +63,11 @@ Plan PlanFor(double m, int currentFactor) {
     Plan p;
     for (int f : {1, 2}) {
         p.factor = f;
-        p.w = std::max(640, (int)lround(g_screenW / (m * f)) & ~1);
-        p.h = std::max(480, (int)lround(g_screenH / (m * f)) & ~1);
+        // Grown to the minimum size in the screen's shape, so a crop of it fills the screen.
+        double w = g_screenW / (m * f), h = g_screenH / (m * f);
+        double grow = std::max({1.0, kMinFrameW / w, kMinFrameH / h});
+        p.w = (int)lround(w * grow) & ~1;
+        p.h = (int)lround(h * grow) & ~1;
         // Hysteresis: once half-scale, stay there until comfortably under budget.
         double budget = (double)g_s.maxPixels * (currentFactor == 2 ? 0.8 : 1.0);
         if (!g_s.halfScale || g_halfUnavailable || (double)p.w * p.h <= budget) break;
@@ -161,7 +171,10 @@ void Tick(void* sgame) {
     double fx = 0.5, fy = 0.5;
     if (g_atCursor) render::CursorClientFraction(fx, fy);
     double ax = g_viewX + fx * g_screenW / g_cur, ay = g_viewY + fy * g_screenH / g_cur;
-    if (!g_cropping) g_log("zoom: %.2fx -> %.2fx at %.3f,%.3f of the screen, map point %.0f,%.0f", g_cur, g_target, fx, fy, ax, ay);
+    if ((!g_cropping || g_restCrop) && g_cur != g_target) {
+        g_log("zoom: %.2fx -> %.2fx at %.3f,%.3f of the screen, map point %.0f,%.0f", g_cur, g_target, fx, fy, ax, ay);
+        g_restCrop = false;
+    }
 
     // Ease towards the target (exponential; ~0.25 s to settle).
     double k = 1.0 - exp(-dt * g_s.speed);
@@ -206,8 +219,31 @@ void Tick(void* sgame) {
     };
 
     if (done) {
-        // Final view: the frame becomes exactly the shown area again.
         apply(PlanFor(g_cur, factor));
+        double vw = g_screenW / g_cur, vh = g_screenH / g_cur;
+        if (g_resW * factor > vw + 1 || g_resH * factor > vh + 1) {
+            // The frame stays bigger than the view (kMinFrameH): show the view's part,
+            // centred in the frame where the map allows. The game's own scrolling moves
+            // the camera, and the view with it (g_viewX above).
+            g_viewX = ax - fx * vw;
+            g_viewY = ay - fy * vh;
+            camX = (short)lround(g_viewX - (g_resW * factor - vw) / 2);
+            camY = (short)lround(g_viewY - (g_resH * factor - vh) / 2);
+            ((SGameFn)game::SGameClampCamera)(g);
+            double cx = std::clamp(g_viewX - camX, 0.0, g_resW * factor - vw);
+            double cy = std::clamp(g_viewY - camY, 0.0, g_resH * factor - vh);
+            g_viewX = camX + cx;
+            g_viewY = camY + cy;
+            render::SetWorldCrop(true, cx / factor, cy / factor, vw / factor, vh / factor);
+            if (!g_restCrop)
+                g_log("zoom: settled at %.2fx, showing %.0fx%.0f of a %dx%d frame", g_cur, vw, vh, g_resW, g_resH);
+            g_restCrop = g_cropping = true;
+            g_lastCamX = camX;
+            g_lastCamY = camY;
+            return;
+        }
+        g_restCrop = false;
+        // Final view: the frame becomes exactly the shown area again.
         g_viewX = ax - fx * g_screenW / g_cur;
         g_viewY = ay - fy * g_screenH / g_cur;
         camX = (short)lround(g_viewX);

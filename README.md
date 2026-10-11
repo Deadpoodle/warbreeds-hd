@@ -80,6 +80,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - Scaling is crisp, through our own Direct3D 11 presenter.
 - Borderless fullscreen or a resizable window; Alt+Enter switches between them.
 - Smooth mouse-wheel zoom towards the cursor. The interface stays one size while the battlefield zooms.
+- The interface is sized so every panel fits the window, even the tallest (the Gene Lab+'s Select Components with all 15 components), and panels stay put at every zoom.
 - Widescreen menu screens. A setting brings back the original 4:3 art for anyone who'd rather not see AI-extended artwork.
 - F2 shows a frame-rate counter.
 
@@ -109,9 +110,10 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 **Fixes**
 - Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same.
 - Removes the in-mission resolution slider, which fought the new resolution handling.
+- Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
 
 **Fonts**
-- An optional modern font, Orbitron, which switches live.
+- An optional modern font, Orbitron, which switches live. Text that would run wider than the original font is narrowed to fit, so titles stay inside their bars.
 
 ## Install
 
