@@ -122,9 +122,22 @@ void __cdecl BeginInterface() {
 // 0x47b9a7 calls the overlay for drawing; 0x47ce2e calls it to record dirty
 // areas only. The interface starts part-way through, and only when drawing.
 void __cdecl ArmInterface() { g_armed = true; }
+
+// The world overlay (the map editor's start points), drawn into the back
+// buffer after the world-space part of the overlay call.
+void (*g_worldOverlay)();
+Port g_worldPort;  // the back buffer while the overlay draws
+
 void __cdecl BeginArmedInterface() {
     if (!g_armed) return;
     g_armed = false;
+    if (g_worldOverlay && !g_active && InMissionScene()) {
+        g_worldPort.handle = BackBufferHandle();
+        g_worldPort.w = game::at<short>(game::ScreenRight);
+        g_worldPort.h = game::at<short>(game::ScreenBottom);
+        g_worldOverlay();
+        g_worldPort.handle = nullptr;
+    }
     BeginInterface();
 }
 
@@ -427,6 +440,17 @@ uintptr_t InterfacePixelAddress(int x, int y) {
     if (!bits || x < 0 || y < 0 || x >= g_ui.w || y >= g_ui.h) return 0;
     int pitch = (g_ui.w + 3) & ~3;
     int row = (g_bottomUp ? g_bottomUp(bits) : true) ? g_ui.h - 1 - y : y;
+    return (uintptr_t)(bits + (size_t)row * pitch + x);
+}
+
+void SetWorldOverlay(void (*draw)()) { g_worldOverlay = draw; }
+
+uintptr_t WorldPixelAddress(int x, int y) {
+    const Port& p = g_worldPort;
+    const uint8_t* bits = PortBits(p);
+    if (!bits || x < 0 || y < 0 || x >= p.w || y >= p.h) return 0;
+    int pitch = (p.w + 3) & ~3;
+    int row = (g_bottomUp ? g_bottomUp(bits) : true) ? p.h - 1 - y : y;
     return (uintptr_t)(bits + (size_t)row * pitch + x);
 }
 

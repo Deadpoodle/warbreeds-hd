@@ -354,14 +354,24 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 
     <div class="part">
       <h3>Map editor</h3>
-      <p class="note">Main menu → Map Editor. Painting works like the original editor's smart palette: terrain blends into its neighbours, and a terrain only goes next to the terrains it has transitions for (Lava next to Tar, for example). When a stroke can't go somewhere, the panel says what is in the way.</p>
+      <p class="note">Main menu → Map Editor. The panel sits in the top-right corner, with tabs: Terrain, Things, Units, Players and Map. Painting works like the original editor's smart palette: terrain blends into its neighbours, and a terrain only goes next to the terrains it has transitions for (Lava next to Tar, for example). When a stroke or a placement can't go somewhere, the panel says why. An outline at the cursor shows the cells a brush will paint, the rectangle a fill will cover, or the ground a thing will take.</p>
       <div class="table-scroll"><table>
         <thead><tr><th>Control</th><th>Action</th></tr></thead>
         <tbody>
-          <tr><td>Left-drag</td><td>Paint the chosen terrain with the chosen brush (1, 2, 3 or 5 cells).</td></tr>
-          <tr><td><kbd>Shift</kbd><span class="plus">+</span>left-drag</td><td>Fill a rectangle.</td></tr>
-          <tr><td>Right-click</td><td>Pick the terrain under the cursor.</td></tr>
-          <tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Z</kbd> / <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Y</kbd></td><td>Undo / redo a stroke.</td></tr>
+          <tr><td><kbd>Tab</kbd>, or Hide / Show (Tab)</td><td>Fold the panel to a one-line strip and open it again. The chosen terrain, brush or thing stays in use, so you can paint and place where the panel was.</td></tr>
+          <tr><td>Terrain: left-drag</td><td>Paint the chosen terrain with the chosen brush (1, 2, 3 or 5 cells).</td></tr>
+          <tr><td>Terrain: <kbd>Shift</kbd><span class="plus">+</span>left-drag</td><td>Fill a rectangle.</td></tr>
+          <tr><td>Terrain: right-click</td><td>Pick the terrain under the cursor.</td></tr>
+          <tr><td>Things: left-click or drag</td><td>Place trees, rocks, ruins or crops (one per tile). Trees and rocks go on their own subtype (crushed crystal, roots, hardened tar), ruins on open ground, crops on cropland.</td></tr>
+          <tr><td>Things: right-click</td><td>Remove the crop, tree, rock or ruin under the cursor.</td></tr>
+          <tr><td>Things: Fill Pods / Spores / Weeds, Clear Crops</td><td>Every empty cropland tile gets a crop; or every crop goes.</td></tr>
+          <tr><td>Units: Creatures / Devices, then left-click</td><td>Place one for the chosen player (<kbd>&lt;</kbd> <kbd>&gt;</kbd> on the panel). Devices are placed complete, with or without power.</td></tr>
+          <tr><td>Units: Select, then left-click / drag</td><td>Select a thing; drag it to move it. The panel then sets hit points (<kbd>-</kbd> <kbd>+</kbd>; right-click for single points), rank and gizmos (click for the next, right-click for the previous), or deletes it (<kbd>Del</kbd> works too). Right-click deselects.</td></tr>
+          <tr><td>Players: the panel</td><td>Type (Computer, Human, Either, None; player 1 is always Human), race, CGK level per clan (click +1, right-click -1) and available clans.</td></tr>
+          <tr><td>Players: left-click on the map</td><td>Put the chosen player's start point there (a numbered ring in its colour).</td></tr>
+          <tr><td>Map: the panel</td><td>Name (click, type, <kbd>Enter</kbd>), fog (fog and shroud, fog only, none), players supported and recommended. The size is shown only.</td></tr>
+          <tr><td>Check</td><td>List what may be wrong with the map: missing start points or Shamans, devices without power, start points cut off from each other, cropland leaving a narrow gap at the edge and more. Saving runs the same check and only warns.</td></tr>
+          <tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Z</kbd> / <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Y</kbd></td><td>Undo / redo: strokes, placements, moves, deletions and settings.</td></tr>
           <tr><td>Arrow keys, mouse wheel, minimap</td><td>Scroll and zoom, as in a mission.</td></tr>
           <tr><td>Save As, then type a name</td><td>Up to 8 letters or digits; <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels. Built-in maps are never overwritten; an existing map of yours asks first.</td></tr>
           <tr><td>Test Map, twice</td><td>Save, then start a skirmish on the map. The first click only asks; anything else you do in between cancels it.</td></tr>

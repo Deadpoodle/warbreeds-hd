@@ -191,4 +191,4 @@ It replays the logged strokes (`WarBreedsHD-editor-expect.txt`) on the original 
 
 - A shipped map re-saved by the editor keeps the AI state of the paused load. A new map's AI starts fresh (marker 0 at its first load). Whether fresh AI state differs in play from the 1998 editor's saved state isn't known. **M**
 - The skirmish setup's Start shuffles or keeps start slots as configured, so Test Map uses whatever the setup page last had.
-- Pods, trees, rocks, start points and devices are Stage 2. A new map has no pod soil until Cropland is painted.
+- Pods, trees, rocks, start points, units, devices, players and map settings came in Stage 2 (`re/editor-stage2.md`), which also moved the panel to the top right. A new map has no pod soil until Cropland is painted.

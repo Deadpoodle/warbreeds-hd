@@ -79,13 +79,26 @@ Cutscenes
     lacks). Movie Scaling and Movie Size are on the Video tab. Space skips.
 
 Map editor
-  - Map Editor on the main menu: edit the terrain of any skirmish map, or
-    New Map (size 32-96 cells per side, base terrain, 2-8 players).
+  - Map Editor on the main menu: edit any skirmish map, or New Map (size
+    32-96 cells per side, base terrain, 2-8 players).
   - The map opens in the normal game view, frozen and without fog; scroll,
     zoom and the minimap work as in a mission.
-  - Pick a terrain and a brush size (1, 2, 3, 5), then drag to paint.
+  - The tools panel is in the top-right corner, with tabs: Terrain,
+    Things, Units, Players, Map. Tab folds it to a one-line strip (and opens
+    it again); the chosen tool stays in use, so you can paint behind it.
+  - Terrain: pick a terrain and a brush size (1, 2, 3, 5), then drag to
+    paint; an outline at the cursor shows what a stroke will cover.
     Shift+drag fills a rectangle, right-click picks the terrain under the
-    cursor, Ctrl+Z / Ctrl+Y undo and redo.
+    cursor. Ctrl+Z / Ctrl+Y undo and redo any change.
+  - Things: trees and rocks (on their own ground), ruins, crops; Fill Pods,
+    Spores or Weeds fills every empty cropland tile; right-click removes.
+  - Units: creatures and devices for the chosen player. Select a thing to
+    drag it, delete it (Del), or set hit points, rank and gizmos.
+  - Players: type, race, CGK levels, available clans; click the map to set
+    the start point (shown as a numbered ring).
+  - Map: name, fog, players supported and recommended.
+  - Check lists possible problems (start points, Shamans, power, start
+    points cut off on foot, ...); saving runs it too and only warns.
   - Smart painting, as in the original editor: terrain blends into its
     neighbours, and only goes next to terrain it has transitions for (Lava
     next to Tar, for example). A refused stroke says what is in the way.

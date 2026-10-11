@@ -588,9 +588,10 @@ void __cdecl OnFrameTick() {
     controls::Tick(InMission() ? BaseScene() : nullptr);
     editor::Tick();
     UpdateMouseCapture();
-    // [Debug] NoFog=1: switch the local player's fog of war off (screenshots only).
+    // [Debug] NoFog=1: switch the local player's fog of war off (screenshots only;
+    // not in the map editor, which keeps it off itself and saves the map's own).
     static int noFog = IniInt("Debug", "NoFog", 0);
-    if (noFog && InMission())
+    if (noFog && InMission() && !editor::Active())
         if (char* me = *(char**)0x579288) *(short*)(me + 0x484c) = 0;
     if (g_autopilot)
         autopilot::Tick(SceneName(BaseScene()), game::at<short>(game::ScreenRight), game::at<short>(game::ScreenBottom));

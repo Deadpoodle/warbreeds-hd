@@ -349,6 +349,22 @@ const Step kGroup[] = {
 // Save As HDNEW, Test Map.
 // AutopilotTarget 2: Map Editor -> "East vs. West" (MPMAP7), one stroke, Exit
 // (refused once: unsaved changes), Exit again: back to the map list.
+// AutopilotTarget 3 (Stage 2, things and units): New Map 48 x 48; Roots and
+// Cropland strokes; Things: a Sand Tree on the roots, Yedda Ruins, Fill Pods,
+// right-click removes a pod, Ctrl+Z puts it back; Units: a Refinery by the
+// cropland, a Turret in its power field and one far away, a Raptor and a
+// Scout; Select: the Raptor's hit points, rank and a gizmo, drag it
+// elsewhere; delete the Scout, undo, redo; Check (the far Turret has no
+// power); Save As HDTHING; Test Map.
+// AutopilotTarget 4 (Stage 2, players and map): "4 Corners"; Players: player
+// 2 Computer -> Human -> Either, next race, CGK +1, a clan toggled, a start
+// point; player 6 -> None; Map: name "HD Test Map", fog without shroud,
+// Supported 6 -> 5 (a second step refused: player 5 exists), Recommended 4 ->
+// 3, undo and redo it; Units: delete player 3's Shaman; Check (player 3 has
+// no Shaman); Save As HDPLAY; Test Map.
+// Targets 3 and 4 log what they did as "x ..." lines in the expect file;
+// the editor writes the engine's things, players and map header on save
+// (WarBreedsHD-editor-world.txt).
 // Every painted cell, in order, goes to WarBreedsHD-editor-expect.txt, and the
 // editor writes its own diff on save (WarBreedsHD-editor-save.txt), for
 // tools/editor_check.py to compare with the saved file.
@@ -466,14 +482,111 @@ void TypeName(const char* name) {
     g_h.log("autopilot: typed %s + Enter", name);
 }
 
+// Stage 2 helpers: panel items by exact text or by row, map clicks and drags.
+bool ClickPanelAt(long x, long y, const char* what, bool right = false) {
+    POINT c = render::InterfacePointToClient({x, y});
+    HWND hw = render::GameWindow();
+    render::SetFakeCursorClient(c);
+    PostMessageA(hw, WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, right ? WM_RBUTTONDOWN : WM_LBUTTONDOWN, right ? MK_RBUTTON : MK_LBUTTON, MAKELPARAM(c.x, c.y));
+    PostMessageA(hw, right ? WM_RBUTTONUP : WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
+    g_h.log("autopilot: click%s \"%s\" at frame %ld,%ld", right ? " (right)" : "", what, x, y);
+    return true;
+}
+
+bool ClickItem(const std::string& text) {
+    long x, y;
+    if (!editor::FindItem(text.c_str(), x, y)) {
+        g_h.log("autopilot: item \"%s\" not shown", text.c_str());
+        return false;
+    }
+    return ClickPanelAt(x, y, text.c_str());
+}
+
+bool ClickRow(int row, int index, const char* what) {
+    long x, y;
+    if (!editor::FindItemOnRow(row, index, x, y)) {
+        g_h.log("autopilot: no item %d on page row %d (%s)", index, row, what);
+        return false;
+    }
+    return ClickPanelAt(x, y, what);
+}
+
+void ClickMap(POINT p, bool right = false) {
+    render::SetFakeCursor(true, p);
+    Post(WM_MOUSEMOVE, 0, p);
+    Post(right ? WM_RBUTTONDOWN : WM_LBUTTONDOWN, right ? MK_RBUTTON : MK_LBUTTON, p);
+    Post(right ? WM_RBUTTONUP : WM_LBUTTONUP, 0, p);
+    g_h.log("autopilot: %s map at %ld,%ld", right ? "right-click" : "click", p.x, p.y);
+}
+
+bool ClickCell(int cx, int cy) {
+    POINT p;
+    if (!editor::CellCentre(cx, cy, p)) {
+        g_h.log("autopilot: cell %d,%d is off screen", cx, cy);
+        return false;
+    }
+    ClickMap(p);
+    return true;
+}
+
+// A free cell of the kind near (x, y), clicked; false (logged) if there is none.
+bool ClickFreeCell(int what, int x, int y, int clear, int& cx, int& cy) {
+    if (!editor::FindCell(what, x, y, cx, cy, clear)) {
+        g_h.log("autopilot: no free cell of kind %d near %d,%d", what, x, y);
+        return false;
+    }
+    return ClickCell(cx, cy);
+}
+
+void DragMap(POINT a, POINT b) {
+    render::SetFakeCursor(true, a);
+    Post(WM_MOUSEMOVE, 0, a);
+    Post(WM_LBUTTONDOWN, MK_LBUTTON, a);
+    for (int i = 1; i <= 6; ++i) Post(WM_MOUSEMOVE, MK_LBUTTON, {a.x + (b.x - a.x) * i / 6, a.y + (b.y - a.y) * i / 6});
+    render::SetFakeCursor(true, b);
+    Post(WM_LBUTTONUP, 0, b);
+    g_h.log("autopilot: drag %ld,%ld -> %ld,%ld", a.x, a.y, b.x, b.y);
+}
+
+void CtrlKey(WPARAM k) {
+    PostKey(WM_KEYDOWN, VK_CONTROL);
+    PostKey(WM_KEYDOWN, k);
+    PostKey(WM_KEYUP, k);
+    PostKey(WM_KEYUP, VK_CONTROL);
+    g_h.log("autopilot: Ctrl+%c", (char)k);
+}
+
+void TypeText(const char* text) {
+    for (const char* p = text; *p; ++p) PostMessageA(render::GameWindow(), WM_CHAR, (WPARAM)*p, 1);
+    PostKey(WM_KEYDOWN, VK_RETURN);
+    PostKey(WM_KEYUP, VK_RETURN);
+    g_h.log("autopilot: typed \"%s\" + Enter", text);
+}
+
+void ExpectFindings() {
+    std::vector<std::string> f = editor::Findings();
+    Expect("x findings %d", (int)f.size());
+    for (const std::string& s : f) Expect("x finding %s", s.c_str());
+}
+
 void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     static int stage;
     static DWORD at;
     static int bx, by;  // the strokes' base cell
     static std::string t1, t2, t3;  // the strokes' terrains
     static int clicks;
-    bool fresh = g_h.target == 1, quit = g_h.target == 2;
-    const char* name = fresh ? "HDNEW" : "HDTEST";
+    bool fresh = g_h.target == 1, quit = g_h.target == 2, things = g_h.target == 3, players = g_h.target == 4;
+    bool newMap = fresh || things;
+    bool stage2 = things || players;
+    const char* name = fresh ? "HDNEW" : things ? "HDTHING" : players ? "HDPLAY" : "HDTEST";
+    static int rx, ry;  // target 3: the Refinery's cell
+    static int hx, hy;  // target 3: a cell behind the panel
+    auto tag = [&](const char* n, const char* e, const char* s2) {
+        static std::string t;
+        t = stage2 ? std::string(things ? "t" : "p") + s2 : fresh ? n : e;
+        return t.c_str();
+    };
     auto next = [&](int s) {
         stage = s;
         at = now;
@@ -496,8 +609,9 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     case 1:
         if (dt > 1500) {
             Save("e1-map-list");
-            ClickWidget(fresh ? "New Map" : quit ? "East vs. West" : "4 Corners", true);
-            next(fresh ? 20 : 2);
+            if (stage2) Expect("x target %d", g_h.target);
+            ClickWidget(newMap ? "New Map" : quit ? "East vs. West" : "4 Corners", true);
+            next(newMap ? 20 : 2);
         }
         break;
     case 20:  // New Map page: the size preset to 48 x 48
@@ -519,14 +633,24 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     case 2:  // the editor opens (loading screen, then the mission scene)
         if (editor::Active() && scene == ".?AVSGame@@" && dt > 4000) {
             render::SetFakeCursor(true, {frameW / 2, frameH / 2});
-            Save(fresh ? "n1-editor-new" : "e2-editor-open");
+            Save(tag("n1-editor-new", "e2-editor-open", "0-editor-open"));
             LogView();
-            // The base cell: the one at 45% / 40% of the frame.
+            // The base cell: the one at 30% / 45% of the frame (the panel is top right).
             uintptr_t g = ((uintptr_t*)game::Scenes)[0];
             int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
-            bx = (*(short*)(g + game::SGameCameraX) + frameW * 45 / 100 * f) / 64;
-            by = (*(short*)(g + game::SGameCameraY) + frameH * 40 / 100 * f) / 64;
+            bx = (*(short*)(g + game::SGameCameraX) + frameW * 30 / 100 * f) / 64;
+            by = (*(short*)(g + game::SGameCameraY) + frameH * 45 / 100 * f) / 64;
             g_h.log("autopilot: editor open: %s; base cell %d,%d", editor::Status().c_str(), bx, by);
+            if (things) {
+                ClickItem("Roots");
+                next(300);
+                break;
+            }
+            if (players) {
+                ClickItem("Players");
+                next(400);
+                break;
+            }
             t1 = Choose({"Lava", "Tar", "Crystal", "Sand", "Cropland", "Roots", "Hot Mud", "Crushed Crystal"}, "", 1, bx,
                         by, bx + 5, by);
             // Lava refused here (smart painter): try it anyway, for the message.
@@ -638,6 +762,595 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
             next(9);
         }
         break;
+    // --- target 3: things and units (Stage 2) ---------------------------------------
+    case 300:
+        if (dt > 500) {
+            ClickItem("5");
+            next(350);
+        }
+        break;
+    case 350:  // the brush ghost: the cursor over the map, no button
+        if (dt > 500) {
+            POINT p;
+            if (editor::CellCentre(bx + 2, by - 5, p)) {
+                render::SetFakeCursor(true, p);
+                Post(WM_MOUSEMOVE, 0, p);
+            }
+            next(351);
+        }
+        break;
+    case 351:  // (a screenshot is of the next frame: nothing else is posted until it is taken)
+        if (dt > 500) {
+            Save("t0b-brush-ghost");
+            Expect("x ghost-brush %d %d %s", bx + 2, by - 5, editor::GhostInfo().c_str());
+            next(355);
+        }
+        break;
+    case 355:
+        if (dt > 300) {
+            ClickItem("Sand");
+            next(352);
+        }
+        break;
+    case 352:  // a Shift+drag fill, captured mid-drag (Sand on sand: no change)
+        if (dt > 500) {
+            POINT a, b;
+            if (editor::CellCentre(bx - 3, by - 6, a) && editor::CellCentre(bx + 1, by - 4, b)) {
+                PostKey(WM_KEYDOWN, VK_SHIFT);
+                render::SetFakeCursor(true, a);
+                Post(WM_MOUSEMOVE, MK_SHIFT, a);
+                Post(WM_LBUTTONDOWN, MK_LBUTTON | MK_SHIFT, a);
+                Post(WM_MOUSEMOVE, MK_LBUTTON | MK_SHIFT, b);
+                render::SetFakeCursor(true, b);
+                g_shiftDragTo = b;
+            }
+            next(353);
+        }
+        break;
+    case 353:
+        if (dt > 500) {
+            Save("t0c-fill-ghost");
+            Expect("x ghost-fill %d %d %d %d %s", bx - 3, by - 6, bx + 1, by - 4, editor::GhostInfo().c_str());
+            Post(WM_LBUTTONUP, MK_SHIFT, g_shiftDragTo);
+            PostKey(WM_KEYUP, VK_SHIFT);
+            g_h.log("autopilot: fill ghost: %s", editor::Status().c_str());
+            next(354);
+        }
+        break;
+    case 354:
+        if (dt > 500) {
+            ClickItem("Roots");
+            next(301);
+        }
+        break;
+    case 301:
+        if (dt > 500) {
+            std::string why;
+            if (!editor::StrokeWorks("Roots", 5, bx, by, bx + 4, by, &why)) g_h.log("autopilot: Roots refused: %s", why.c_str());
+            Stroke("Roots", 5, bx, by, bx + 4, by);
+            next(302);
+        }
+        break;
+    case 302:
+        if (dt > 800) {
+            Save("t1-roots");
+            next(370);
+        }
+        break;
+    // The panel folds away (Tab) and the tool stays: paint where it was, open it
+    // with the strip's button, then Tab twice more.
+    case 370:
+        if (dt > 300) {
+            uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+            int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+            hx = (*(short*)(g + game::SGameCameraX) + (frameW - 150) * f) / 64;
+            hy = (*(short*)(g + game::SGameCameraY) + 180 * f) / 64;
+            POINT p;
+            Expect("x hidden-expanded %d", editor::CellCentre(hx, hy, p) && editor::Hidden(p) ? 1 : 0);
+            Expect("x behind-cell %d %d", hx, hy);
+            PostKey(WM_KEYDOWN, VK_TAB);
+            PostKey(WM_KEYUP, VK_TAB);
+            g_h.log("autopilot: Tab (cell %d,%d behind the panel)", hx, hy);
+            next(371);
+        }
+        break;
+    case 371:
+        if (dt > 600) {
+            POINT p;
+            Expect("x collapsed %d", editor::Collapsed() ? 1 : 0);
+            Expect("x hidden-collapsed %d", editor::CellCentre(hx, hy, p) && editor::Hidden(p) ? 1 : 0);
+            Save("t1b-collapsed");
+            std::string why;
+            if (!editor::StrokeWorks("Roots", 5, hx, hy, hx, hy + 1, &why)) g_h.log("autopilot: Roots refused there: %s", why.c_str());
+            Stroke("Roots", 5, hx, hy, hx, hy + 1);
+            next(372);
+        }
+        break;
+    case 372:
+        if (dt > 800) {
+            Save("t1c-painted-behind");
+            g_h.log("autopilot: painted behind the panel: %s", editor::Status().c_str());
+            ClickItem("Show (Tab)");
+            next(373);
+        }
+        break;
+    case 373:
+        if (dt > 600) {
+            Expect("x expanded-by-click %d", editor::Collapsed() ? 0 : 1);
+            Save("t1d-expanded");
+            PostKey(WM_KEYDOWN, VK_TAB);
+            PostKey(WM_KEYUP, VK_TAB);
+            next(374);
+        }
+        break;
+    case 374:
+        if (dt > 600) {
+            Expect("x collapsed-by-tab %d", editor::Collapsed() ? 1 : 0);
+            PostKey(WM_KEYDOWN, VK_TAB);
+            PostKey(WM_KEYUP, VK_TAB);
+            next(375);
+        }
+        break;
+    case 375:
+        if (dt > 600) {
+            Expect("x expanded-by-tab %d", editor::Collapsed() ? 0 : 1);
+            ClickItem("Cropland");
+            next(303);
+        }
+        break;
+    case 303:
+        if (dt > 500) {
+            ClickItem("3");
+            next(304);
+        }
+        break;
+    case 304:
+        if (dt > 500) {
+            std::string why;
+            if (!editor::StrokeWorks("Cropland", 3, bx + 1, by, bx + 3, by, &why))
+                g_h.log("autopilot: Cropland refused: %s", why.c_str());
+            Stroke("Cropland", 3, bx + 1, by, bx + 3, by);
+            next(305);
+        }
+        break;
+    case 305:
+        if (dt > 800) {
+            Save("t2-cropland");
+            ClickItem("Things");
+            next(306);
+        }
+        break;
+    case 306:
+        if (dt > 600) {
+            ClickItem(editor::ThingName(0x46));  // Sand Tree
+            next(307);
+        }
+        break;
+    case 307:  // the footprint ghost at the cursor, then the click
+        if (dt > 500) {
+            static int cx, cy;
+            POINT p;
+            if (editor::FindCell(editor::kCellRoots, bx - 2, by, cx, cy) && editor::CellCentre(cx, cy, p)) {
+                render::SetFakeCursor(true, p);
+                Post(WM_MOUSEMOVE, 0, p);
+                rx = cx, ry = cy;
+            } else {
+                g_h.log("autopilot: no roots cell for the tree");
+            }
+            next(360);
+        }
+        break;
+    case 360:
+        if (dt > 500) {
+            Save("t2b-thing-ghost");
+            Expect("x ghost-thing %d %d %s", rx, ry, editor::GhostInfo().c_str());
+            next(361);
+        }
+        break;
+    case 361:
+        if (dt > 300) {
+            if (ClickCell(rx, ry)) Expect("x tree-cell %d %d", rx, ry);
+            next(308);
+        }
+        break;
+    case 308:
+        if (dt > 600) {
+            g_h.log("autopilot: after the tree: %s", editor::Status().c_str());
+            Expect("x count 70 %d", editor::CountThings(0x46, -1));
+            ClickItem(editor::ThingName(0x43));  // Yedda Ruins
+            next(309);
+        }
+        break;
+    case 309:
+        if (dt > 500) {
+            int cx, cy;
+            if (ClickFreeCell(editor::kCellOpen, bx + 9, by + 3, 128, cx, cy)) Expect("x ruins-cell %d %d", cx, cy);
+            next(310);
+        }
+        break;
+    case 310:
+        if (dt > 600) {
+            g_h.log("autopilot: after the ruins: %s", editor::Status().c_str());
+            Expect("x count 67 %d", editor::CountThings(0x43, -1));
+            Save("t3-tree-ruins");
+            ClickItem("Fill Pods");
+            next(311);
+        }
+        break;
+    case 311:
+        if (dt > 800) {
+            Expect("x pods %d", editor::CountThings(0x3f, -1));
+            g_h.log("autopilot: after Fill Pods: %s", editor::Status().c_str());
+            Save("t4-pods");
+            POINT p;
+            if (editor::ThingPoint(0x3f, -1, p)) ClickMap(p, true);
+            next(312);
+        }
+        break;
+    case 312:
+        if (dt > 600) {
+            Expect("x pods-removed %d", editor::CountThings(0x3f, -1));
+            CtrlKey('Z');
+            next(313);
+        }
+        break;
+    case 313:
+        if (dt > 600) {
+            Expect("x pods-undone %d", editor::CountThings(0x3f, -1));
+            ClickItem("Units");
+            next(314);
+        }
+        break;
+    case 314:
+        if (dt > 500) {
+            ClickItem("Devices");
+            next(315);
+        }
+        break;
+    case 315:
+        if (dt > 500) {
+            ClickItem(editor::ThingName(0x2c));  // Refinery
+            next(316);
+        }
+        break;
+    case 316:
+        if (dt > 500) {
+            if (ClickFreeCell(editor::kCellOpen, bx + 2, by + 3, 40, rx, ry)) Expect("x refinery-cell %d %d", rx, ry);
+            next(317);
+        }
+        break;
+    case 317:
+        if (dt > 600) {
+            g_h.log("autopilot: after the Refinery: %s", editor::Status().c_str());
+            Expect("x count 44 %d", editor::CountThings(0x2c, 0));
+            ClickItem("Next >");
+            next(318);
+        }
+        break;
+    case 318:
+        if (dt > 500) {
+            ClickItem(editor::ThingName(0x31));  // Turret
+            next(319);
+        }
+        break;
+    case 319:
+        if (dt > 500) {
+            int cx, cy;
+            if (ClickFreeCell(editor::kCellOpen, rx + 2, ry + 1, 40, cx, cy)) Expect("x turret-near %d %d", cx, cy);
+            next(320);
+        }
+        break;
+    case 320:
+        if (dt > 600) {
+            int cx, cy;
+            if (ClickFreeCell(editor::kCellOpen, bx + 16, by + 8, 128, cx, cy)) Expect("x turret-far %d %d", cx, cy);
+            next(321);
+        }
+        break;
+    case 321:
+        if (dt > 600) {
+            Expect("x count 49 %d", editor::CountThings(0x31, 0));
+            Save("t5-devices");
+            ClickItem("Creatures");
+            next(322);
+        }
+        break;
+    case 322:
+        if (dt > 500) {
+            ClickItem(editor::ThingName(2));  // Raptor
+            next(323);
+        }
+        break;
+    case 323:
+        if (dt > 500) {
+            int cx, cy;
+            ClickFreeCell(editor::kCellOpen, bx - 6, by + 5, 128, cx, cy);
+            next(324);
+        }
+        break;
+    case 324:
+        if (dt > 600) {
+            Expect("x count 2 %d", editor::CountThings(2, 0));
+            ClickItem(editor::ThingName(1));  // Scout
+            next(325);
+        }
+        break;
+    case 325:
+        if (dt > 500) {
+            int cx, cy;
+            ClickFreeCell(editor::kCellOpen, bx - 9, by + 1, 128, cx, cy);
+            next(326);
+        }
+        break;
+    case 326:
+        if (dt > 600) {
+            Expect("x count 1 %d", editor::CountThings(1, 0));
+            ClickItem("Select");
+            next(327);
+        }
+        break;
+    case 327:
+        if (dt > 500) {
+            POINT p;
+            if (editor::ThingPoint(2, 0, p)) ClickMap(p);
+            next(328);
+        }
+        break;
+    case 328:
+        if (dt > 600) {
+            Expect("x raptor-before %s", editor::Selected().c_str());
+            Save("t6-selected");
+            ClickItem("-");  // hit points down a tenth
+            next(329);
+        }
+        break;
+    case 329:
+        if (dt > 500) {
+            ClickItem("Rank: Rookie");
+            next(330);
+        }
+        break;
+    case 330:
+        if (dt > 500) {
+            ClickRow(5, 0, "first gizmo slot");
+            next(331);
+        }
+        break;
+    case 331:
+        if (dt > 600) {
+            Expect("x raptor-after %s", editor::Selected().c_str());
+            g_h.log("autopilot: raptor after: %s (%s)", editor::Selected().c_str(), editor::Status().c_str());
+            Save("t7-attributes");
+            POINT a, b;
+            int cx, cy;
+            if (editor::ThingPoint(2, 0, a) && editor::FindCell(editor::kCellOpen, bx + 8, by + 7, cx, cy) &&
+                editor::CellCentre(cx, cy, b)) {
+                Expect("x move-to %d %d", cx, cy);
+                DragMap(a, b);
+            }
+            next(332);
+        }
+        break;
+    case 332:
+        if (dt > 800) {
+            Expect("x raptor-moved %s", editor::Selected().c_str());
+            g_h.log("autopilot: after the move: %s", editor::Status().c_str());
+            Save("t8-moved");
+            POINT p;
+            if (editor::ThingPoint(1, 0, p)) ClickMap(p);  // the Scout
+            next(333);
+        }
+        break;
+    case 333:
+        if (dt > 600) {
+            ClickItem("Delete");
+            next(334);
+        }
+        break;
+    case 334:
+        if (dt > 600) {
+            Expect("x scout-deleted %d", editor::CountThings(1, 0));
+            CtrlKey('Z');
+            next(335);
+        }
+        break;
+    case 335:
+        if (dt > 600) {
+            Expect("x scout-undone %d", editor::CountThings(1, 0));
+            CtrlKey('Y');
+            next(336);
+        }
+        break;
+    case 336:
+        if (dt > 600) {
+            Expect("x scout-redone %d", editor::CountThings(1, 0));
+            ClickItem("Check");
+            next(337);
+        }
+        break;
+    case 337:
+        if (dt > 800) {
+            Save("t9-check");
+            ExpectFindings();
+            next(9);
+        }
+        break;
+
+    // --- target 4: players and map settings (Stage 2) -----------------------------------
+    case 400:
+        if (dt > 600) {
+            ClickItem(">");
+            next(401);
+        }
+        break;
+    case 401:
+        if (dt > 500) {
+            Expect("x p2-before %s", editor::PlayerInfo(1).c_str());
+            ClickRow(1, 0, "type");  // Computer -> Human
+            next(402);
+        }
+        break;
+    case 402:
+        if (dt > 600) {
+            Expect("x p2-human %s", editor::PlayerInfo(1).c_str());
+            ClickRow(1, 0, "type");  // Human -> Either
+            next(403);
+        }
+        break;
+    case 403:
+        if (dt > 600) {
+            ClickRow(2, 0, "race");
+            next(404);
+        }
+        break;
+    case 404:
+        if (dt > 600) {
+            ClickRow(6, 0, "Tanu CGK");
+            next(405);
+        }
+        break;
+    case 405:
+        if (dt > 500) {
+            int race = atoi(editor::PlayerInfo(1).c_str() + 2);
+            int clan = (race + 1) % 4;
+            Expect("x avail-clan %d", clan);
+            ClickRow(6 + clan, 1, "available");
+            next(406);
+        }
+        break;
+    case 406:
+        if (dt > 500) {
+            int cx, cy;
+            if (ClickFreeCell(editor::kCellOpen, bx, by, 128, cx, cy)) Expect("x p2-start %d %d", cx, cy);
+            next(407);
+        }
+        break;
+    case 407:
+        if (dt > 600) {
+            Expect("x p2-after %s", editor::PlayerInfo(1).c_str());
+            int race = atoi(editor::PlayerInfo(1).c_str() + 2);
+            Expect("x p2-race-shamans %d", editor::CountThings(race * 9, 1));
+            Save("p1-player2");
+            for (int i = 0; i < 4; ++i) ClickItem(">");  // player 6
+            next(408);
+        }
+        break;
+    case 408:
+        if (dt > 600) {
+            Expect("x p6-before %s things %d", editor::PlayerInfo(5).c_str(), editor::CountThings(-1, 5));
+            for (int i = 0; i < 3; ++i) ClickRow(1, 0, "type");  // Computer -> Human -> Either -> None
+            next(409);
+        }
+        break;
+    case 409:
+        if (dt > 800) {
+            Expect("x p6-after %s things %d", editor::PlayerInfo(5).c_str(), editor::CountThings(-1, 5));
+            Save("p2-player6-none");
+            ClickItem("Map");
+            next(410);
+        }
+        break;
+    case 410:
+        if (dt > 500) {
+            ClickRow(0, 0, "name");
+            next(411);
+        }
+        break;
+    case 411:
+        if (dt > 500) {
+            for (int i = 0; i < 12; ++i) {
+                PostKey(WM_KEYDOWN, VK_BACK);
+                PostKey(WM_KEYUP, VK_BACK);
+            }
+            TypeText("HD Test Map");
+            next(412);
+        }
+        break;
+    case 412:
+        if (dt > 600) {
+            ClickRow(2, 0, "fog");
+            next(413);
+        }
+        break;
+    case 413:
+        if (dt > 500) {
+            ClickRow(3, 0, "supported -");
+            next(414);
+        }
+        break;
+    case 414:
+        if (dt > 500) {
+            Expect("x supported-once %s", editor::MapInfoText().c_str());
+            ClickRow(3, 0, "supported -");  // refused: player 5 exists
+            next(415);
+        }
+        break;
+    case 415:
+        if (dt > 500) {
+            Expect("x supported-refused %s", OneWord(editor::Status()).c_str());
+            ClickRow(4, 0, "recommended -");
+            next(416);
+        }
+        break;
+    case 416:
+        if (dt > 500) {
+            Expect("x recommended %s", editor::MapInfoText().c_str());
+            CtrlKey('Z');
+            next(417);
+        }
+        break;
+    case 417:
+        if (dt > 500) {
+            Expect("x recommended-undone %s", editor::MapInfoText().c_str());
+            CtrlKey('Y');
+            next(418);
+        }
+        break;
+    case 418:
+        if (dt > 600) {
+            Expect("x map %s", editor::MapInfoText().c_str());
+            Save("p3-map");
+            int wx, wy;
+            if (editor::ThingWorld(-2, 2, wx, wy)) editor::LookAt(wx, wy);  // player 3's Shaman
+            ClickItem("Units");
+            next(419);
+        }
+        break;
+    case 419:
+        if (dt > 600) {
+            ClickItem("Select");
+            next(420);
+        }
+        break;
+    case 420:
+        if (dt > 600) {
+            POINT p;
+            if (editor::ThingPoint(-2, 2, p)) ClickMap(p);
+            next(421);
+        }
+        break;
+    case 421:
+        if (dt > 600) {
+            Save("p4-shaman-selected");
+            g_h.log("autopilot: selected %s", editor::Selected().c_str());
+            ClickItem("Delete");
+            next(422);
+        }
+        break;
+    case 422:
+        if (dt > 600) {
+            Expect("x p3-things %d", editor::CountThings(-1, 2));
+            ClickItem("Check");
+            next(423);
+        }
+        break;
+    case 423:
+        if (dt > 800) {
+            Save("p5-check");
+            ExpectFindings();
+            next(9);
+        }
+        break;
     case 30:  // Exit with unsaved changes: asks once
         if (dt > 800) {
             ClickWidget("Exit", false);
@@ -672,14 +1385,14 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
         break;
     case 10:
         if (dt > 600) {
-            Save(fresh ? "n3-name-prompt" : "e7-name-prompt");
+            Save(tag("n3-name-prompt", "e7-name-prompt", "20-name-prompt"));
             TypeName(name);
             next(11);
         }
         break;
     case 11:  // processing and saving
         if (editor::SaveCount() > 0 && editor::Idle() && dt > 500) {
-            Save(fresh ? "n4-saved" : "e8-saved");
+            Save(tag("n4-saved", "e8-saved", "21-saved"));
             g_h.log("autopilot: saved: %s", editor::Status().c_str());
             Expect("saved %s", name);
             if (g_expect) fclose(g_expect), g_expect = nullptr;
@@ -708,16 +1421,16 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
             for (int i = 0; i < 3; ++i)
                 if (!shot[i] && dt > 150u + 180u * i) {
                     shot[i] = true;
-                    char tag[32];
-                    snprintf(tag, sizeof tag, "%s-zooming%d", fresh ? "n4a" : "e8a", i);
-                    Save(tag);
+                    char zt[32];
+                    snprintf(zt, sizeof zt, "%s-zooming%d", tag("n4a", "e8a", "22"), i);
+                    Save(zt);
                 }
             if (dt > 2000)
                 g_h.log("autopilot: wheel zoom: panel items re-placed at draw time %d times",
                         editor::LateMoves() - lateBefore);
         }
         if (dt > 2000) {
-            Save(fresh ? "n4b-zoomed-out" : "e8b-zoomed-out");
+            Save(tag("n4b-zoomed-out", "e8b-zoomed-out", "23-zoomed-out"));
             LogView();
             for (int i = 0; i < 4; ++i) g_h.zoomStep(-1);
             next(111);
@@ -731,7 +1444,7 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
         break;
     case 112:
         if (dt > 800) {
-            Save(fresh ? "n4c-test-asks" : "e8c-test-asks");
+            Save(tag("n4c-test-asks", "e8c-test-asks", "24-test-asks"));
             g_h.log("autopilot: after Test Map: %s (test stage %d)", editor::Status().c_str(), editor::TestStage());
             ClickWidget("Test Map", false);  // "Test Map?"
             next(12);
@@ -740,19 +1453,27 @@ void EditorTest(const std::string& scene, int frameW, int frameH, DWORD now) {
     case 12:  // Test Map: the hub, the skirmish setup, then the skirmish
         if (scene == ".?AVSMultiSetup@@" && !strcmp(g_h.topScene(), ".?AVSMultiSetup@@") && now - g_sceneStart > 2600 &&
             !(clicks & 0x100)) {
-            Save(fresh ? "n5-skirmish-setup" : "e9-skirmish-setup");
+            Save(tag("n5-skirmish-setup", "e9-skirmish-setup", "25-skirmish-setup"));
             clicks |= 0x100;
         }
         if (scene == ".?AVSGame@@" && !editor::Active() && ((short (*)())0x46f960)() == 1 && now - g_sceneStart > 5000) {
             render::SetFakeCursor(true, {frameW / 2, frameH / 2});
-            Save(fresh ? "n6-test-skirmish" : "e10-test-skirmish");
+            Save(tag("n6-test-skirmish", "e10-test-skirmish", "26-test-skirmish"));
             LogView();
             char* w = *(char**)0x579278;
-            int things = 0;
-            for (int i = 0; w && i < *(int*)(w + 0x14); ++i) things += (*(char***)(w + 0x10))[i] != nullptr;
+            int count = 0;
+            for (int i = 0; w && i < *(int*)(w + 0x14); ++i) count += (*(char***)(w + 0x10))[i] != nullptr;
             g_h.log("autopilot: Test Map skirmish running: map tiles %dx%d, %d things, turn period %d, paused %d",
-                    game::at<uint8_t>(game::MapTilesW), game::at<uint8_t>(game::MapTilesH), things,
+                    game::at<uint8_t>(game::MapTilesW), game::at<uint8_t>(game::MapTilesH), count,
                     *(int*)(0x567ef8 + 0x188), *(int*)(0x567ef8 + 0x460));
+            std::string types;
+            for (int t = 0; t < 0x4a; ++t) {
+                int n = 0;
+                for (int i = 0; w && i < *(int*)(w + 0x14); ++i)
+                    if (char* th = (*(char***)(w + 0x10))[i]) n += *(int*)(th + 0x18) == t;
+                if (n) types += " " + std::to_string(t) + "=" + std::to_string(n);
+            }
+            g_h.log("autopilot: skirmish things by type:%s", types.c_str());
             next(99);
         } else if (dt > 60000) {
             g_h.log("autopilot: the Test Map skirmish did not start");

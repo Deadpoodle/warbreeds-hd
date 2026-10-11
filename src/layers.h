@@ -25,5 +25,11 @@ void SetMenuCursorSink(void (*sink)(const uint8_t* px, int size, int gameX, int 
 void OnFrameStart();  // call at the start of every compose tick
 // Debug: memory address of the interface port's pixel (x, y), or 0.
 uintptr_t InterfacePixelAddress(int x, int y);
+// Missions: called once a frame when the world-space drawing is done (order
+// markers, placement ghosts), before the interface starts, with the back
+// buffer current. WorldPixelAddress is valid only inside that call: the
+// battlefield port's pixel (x, y) in frame pixels, or 0.
+void SetWorldOverlay(void (*draw)());
+uintptr_t WorldPixelAddress(int x, int y);
 
 }  // namespace layers

@@ -49,7 +49,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 |---|---|
 | ![The Map Editor's map list](docs/screenshots/editor-maps.jpg) | ![The New Map page](docs/screenshots/editor-new-map.jpg) |
 
-![Editing 4 Corners: the tools panel at the bottom left](docs/screenshots/editor.jpg)
+![Editing 4 Corners: the tools panel](docs/screenshots/editor.jpg)
 
 **Smart painting, as the designers had it.** The original editor's Smart Palette picks the right border tile for every cell from the terrain at its four corners, so a stroke of Sand on Crystal comes out with the same ragged, hand-drawn edges as the shipped maps. WarBreeds HD rebuilds that painter from the original editor, using the transition tables in your own game's data:
 - checked against all 54 shipped maps, 99.99% of their tiles are exactly what the painter picks for their corners, and test painting on them leaves no seams;
@@ -60,13 +60,18 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 | ![4 Corners before painting](docs/screenshots/editor-paint-before.jpg) | ![The same area after smart painting](docs/screenshots/editor-paint-after.jpg) |
 
 **Working on a map**
-- Any map opens in the normal game view, frozen and without fog. The camera, smooth zoom and minimap work as in a mission, and the tools panel keeps its size at any zoom.
-- Brushes of 1, 2, 3 or 5 cells; Shift+drag fills a rectangle; right-click picks up the terrain under the cursor; Ctrl+Z and Ctrl+Y undo and redo whole strokes.
+- Any map opens in the normal game view, frozen and without fog. The camera, smooth zoom and minimap work as in a mission. The tools panel sits in the top-right corner, keeps its size at any zoom, and folds to a one-line strip with Tab, so you can paint behind it with the same tool.
+- Brushes of 1, 2, 3 or 5 cells, with an outline at the cursor of the cells a stroke will paint; Shift+drag fills a rectangle; right-click picks up the terrain under the cursor; Ctrl+Z and Ctrl+Y undo and redo every change.
+- **Things**: trees and rocks on their own ground (crushed crystal, roots, hardened tar), Yedda ruins, pods, spores and weeds; Fill Cropland and Clear Crops as in the original.
+- **Units**: creatures and devices for any player, placed by the game's own code (devices complete, powered or not). Select a thing to drag it elsewhere, delete it, or set its hit points, veteran rank and gizmos.
+- **Players**: type (computer, human, either, none), race, CGK level and available clans per player, and start points, shown on the map as numbered rings in the player's colour.
+- **Map**: name, fog mode, players supported and recommended.
+- **Check** lists what may be wrong with a map, which the original never did: missing start points or Shamans, devices without power, start points cut off from each other on foot, and more. Saving runs it too, and only warns.
 - **New Map**: 32 to 96 cells per side, a base terrain, 2 to 8 players, each starting with a Shaman.
 - **Save As** runs the game's own map processing (the pathfinding guide graph the original editor built on save), then writes the map to `DATA\MAPS`, where the skirmish setup lists it. The built-in maps are never overwritten: edit one and it's saved under a new name.
 - **Test Map** saves and starts a skirmish on the map. It asks first, so click it twice.
 
-**Still to come** from the original editor: start points, placing creatures and devices, crops, obstacles, and the event (trigger) editor. The trigger editor's screen is in fact already compiled into the retail game, with no way to open it, which gives the later stages a head start.
+**Still to come** from the original editor: the event (trigger) editor and the Global AI settings. The trigger editor's screen is in fact already compiled into the retail game, with no way to open it, which gives the next stage a head start.
 
 ## What it does
 
@@ -87,7 +92,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - Changes are saved and applied immediately.
 
 **Map editor** (more in [The map editor, inside the game](#the-map-editor-inside-the-game))
-- The official 1998 editor's terrain tools, on the main menu: edit any map's terrain or make a new one, with the original's smart painting.
+- The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points and map settings, undo for all of it, and a map check.
 - Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
 
 **Controls** (the full list is in [docs/controls.html](docs/controls.html))
