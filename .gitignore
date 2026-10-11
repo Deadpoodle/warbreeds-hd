@@ -2,6 +2,7 @@
 __pycache__/
 testgame/
 testrun/
+testrun-*/
 dist/
 build/
 art/
