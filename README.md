@@ -49,7 +49,9 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 |---|---|
 | ![The Map Editor's map list](docs/screenshots/editor-maps.jpg) | ![The New Map page](docs/screenshots/editor-new-map.jpg) |
 
-![Editing 4 Corners: the tools panel](docs/screenshots/editor.jpg)
+| The tools panel, top right (here the Players tab) | Folded away with Tab, with the brush outline |
+|---|---|
+| ![The editor's tools panel on the Players tab, with a start point ring](docs/screenshots/editor.jpg) | ![The panel folded to a strip, with a brush outline at the cursor](docs/screenshots/editor-folded.jpg) |
 
 **Smart painting, as the designers had it.** The original editor's Smart Palette picks the right border tile for every cell from the terrain at its four corners, so a stroke of Sand on Crystal comes out with the same ragged, hand-drawn edges as the shipped maps. WarBreeds HD rebuilds that painter from the original editor, using the transition tables in your own game's data:
 - checked against all 54 shipped maps, 99.99% of their tiles are exactly what the painter picks for their corners, and test painting on them leaves no seams;
@@ -71,7 +73,14 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - **Save As** runs the game's own map processing (the pathfinding guide graph the original editor built on save), then writes the map to `DATA\MAPS`, where the skirmish setup lists it. The built-in maps are never overwritten: edit one and it's saved under a new name.
 - **Test Map** saves and starts a skirmish on the map. It asks first, so click it twice.
 
-**Still to come** from the original editor: the event (trigger) editor and the Global AI settings. The trigger editor's screen is in fact already compiled into the retail game, with no way to open it, which gives the next stage a head start.
+- **Events**: the original's event (trigger) editor, the game's own screen for it, which shipped inside the retail game with no way to open it. Conditions (timers, positions, deaths, devices, and more) start actions (dialogs, messages, reinforcements, victory or defeat, and more); the Events tab opens it, with buttons for adding, removing and stepping through events, conditions and actions.
+- **Global AI**: each computer player's squad, base, scouting and influence settings. A skirmish resets these to the clan's defaults, so they take effect when a map is played without the skirmish setup, or through an AI AGGRESSION event.
+
+| The event editor (the game's own, never reachable until now) | An event firing in a test skirmish |
+|---|---|
+| ![The event editor over the map](docs/screenshots/editor-events.jpg) | ![An OK dialog from a map event, in a skirmish](docs/screenshots/editor-event-fired.jpg) |
+
+**Still to come**: the original's terrain-specific palettes (placing border tiles by hand), palette thumbnails, and campaign maps.
 
 ## What it does
 
@@ -93,7 +102,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 - Changes are saved and applied immediately.
 
 **Map editor** (more in [The map editor, inside the game](#the-map-editor-inside-the-game))
-- The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points and map settings, undo for all of it, and a map check.
+- The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points, map settings, events (triggers) and Global AI, undo for all of it, and a map check.
 - Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
 
 **Controls** (the full list is in [docs/controls.html](docs/controls.html))

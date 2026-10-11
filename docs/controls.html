@@ -354,7 +354,7 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
 
     <div class="part">
       <h3>Map editor</h3>
-      <p class="note">Main menu → Map Editor. The panel sits in the top-right corner, with tabs: Terrain, Things, Units, Players and Map. Painting works like the original editor's smart palette: terrain blends into its neighbours, and a terrain only goes next to the terrains it has transitions for (Lava next to Tar, for example). When a stroke or a placement can't go somewhere, the panel says why. An outline at the cursor shows the cells a brush will paint, the rectangle a fill will cover, or the ground a thing will take.</p>
+      <p class="note">Main menu → Map Editor. The panel sits in the top-right corner, with tabs: Terrain, Things, Units, Players, Map, Events and AI. Painting works like the original editor's smart palette: terrain blends into its neighbours, and a terrain only goes next to the terrains it has transitions for (Lava next to Tar, for example). When a stroke or a placement can't go somewhere, the panel says why. An outline at the cursor shows the cells a brush will paint, the rectangle a fill will cover, or the ground a thing will take.</p>
       <div class="table-scroll"><table>
         <thead><tr><th>Control</th><th>Action</th></tr></thead>
         <tbody>
@@ -370,6 +370,11 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
           <tr><td>Players: the panel</td><td>Type (Computer, Human, Either, None; player 1 is always Human), race, CGK level per clan (click +1, right-click -1) and available clans.</td></tr>
           <tr><td>Players: left-click on the map</td><td>Put the chosen player's start point there (a numbered ring in its colour).</td></tr>
           <tr><td>Map: the panel</td><td>Name (click, type, <kbd>Enter</kbd>), fog (fog and shroud, fog only, none), players supported and recommended. The size is shown only.</td></tr>
+          <tr><td>Events tab</td><td>Opens the event (trigger) editor over the map, the game's own screen for it. Its buttons, or the keys below, step through and edit the map's events.</td></tr>
+          <tr><td>Events: <kbd>Shift</kbd> / <kbd>Ctrl</kbd> / <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Shift</kbd> with <kbd>←</kbd> <kbd>→</kbd> <kbd>Home</kbd> <kbd>End</kbd></td><td>Previous / next / first / last event, condition or action.</td></tr>
+          <tr><td>Events: the same modifier with <kbd>A</kbd> / <kbd>R</kbd></td><td>Add / remove an event, condition or action.</td></tr>
+          <tr><td>Events: <kbd>*</kbd>, <kbd>Esc</kbd></td><td>Make the event persistent (it can fire again); close the event editor.</td></tr>
+          <tr><td>AI tab</td><td>Each computer player's squad, base, scouting and influence settings (1 to 5). A skirmish resets them to the clan's defaults; they apply when the map is played without the skirmish setup, or through an AI AGGRESSION event.</td></tr>
           <tr><td>Check</td><td>List what may be wrong with the map: missing start points or Shamans, devices without power, start points cut off from each other, cropland leaving a narrow gap at the edge and more. Saving runs the same check and only warns.</td></tr>
           <tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Z</kbd> / <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Y</kbd></td><td>Undo / redo: strokes, placements, moves, deletions and settings.</td></tr>
           <tr><td>Arrow keys, mouse wheel, minimap</td><td>Scroll and zoom, as in a mission.</td></tr>
