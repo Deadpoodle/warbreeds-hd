@@ -6,6 +6,24 @@ Everything here is verified on the GOG.com release (Windows 10). The Steam relea
 
 Replace `YOURNAME` in the `{{Refcheck}}` tags with your PCGamingWiki username. Refchecks note who checked a claim, and when.
 
+**You need to be logged in:** the wiki has disabled anonymous edits. Then click **Edit**; the edit box shows the page's wikitext.
+
+**Where each piece goes** (based on the page as of 11 Oct 2026, revision 1702958):
+
+| Section | On the page now | What to do |
+|---|---|---|
+| Essential improvements | missing | **Add** the block below, between the `{{Availability}}` table and `==Game data==` |
+| Configuration file(s) location | Windows row empty | **Fill in** the Windows row with the two paths below |
+| Save game data location | `{{p|game}}\DATA\SAVES\` already there | Leave it; optionally add the "skirmish can't be saved" note |
+| Video | every row "unknown" | **Replace** the field values in the existing `{{Video` template |
+| Input / Audio / Network | partly filled | Leave as is; nothing here has been tested beyond what's already there |
+| Issues fixed | missing | **Add** a new `==Issues fixed==` section after `==Network==` (before `==Other information==`) |
+| API | 32-bit table only | **Add** the DirectDraw fields to the existing `{{API` template |
+| Middleware | "no information" | **Add** the `{{Middleware` block |
+| Stub notice | `{{stub}}` at the top | Remove it once these are in, if the page then looks complete |
+
+Copy only the lines you need from each block below; the existing templates on the page may already have some of the fields.
+
 ---
 
 ## Essential improvements
