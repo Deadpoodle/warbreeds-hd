@@ -542,3 +542,6 @@ The Steam release (app 2464660) has not been checked; its exe may differ.
     - The panel's cancel stopped all three. Repair through the panel and a click on the building sent all three; the Refinery completed.
     - Progress over 5 s: 214 with one Shaman, about 640 with three.
     - Mode 1 (mission), mode 8 (controls) and mode 2 (Settings) still pass.
+- **Capture Mouse** (`[Input] CaptureMouse=0`, Settings > Controls): once the player clicks in the game window, the pointer is confined to its client area (ClipCursor). It is released when the game loses focus, is minimised or the window is being moved/sized, and re-armed by the next click. Confirmed working by the tester in windowed mode.
+- **Scrolling settings tabs:** a tab with more settings than the page's 11 rows scrolls. The mouse wheel moves the list a row per notch while the Settings page is open (it doesn't reach the zoom), and small "More above"/"More below" labels at the right are clickable (a page at a time). `[Debug] SettingsRows=N` shows fewer rows. The headless test (`TARGET=2 tools/autotest.sh 2`, with SettingsRows=6) wheels down and up, checks the indicators, and clicks a scrolled row, which cycles the right setting.
+- **v0.11.0:** small-map view fix and zoom limit, Group Build, Capture Mouse, scrolling settings tabs.

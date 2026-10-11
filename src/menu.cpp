@@ -62,6 +62,8 @@ constexpr short kCmdReset = 0x7d;
 constexpr short kCmdHint = 0x7e;  // text only
 constexpr short kCmdBack = 0x7f;
 constexpr short kCmdFirstSetting = 0x80;
+constexpr short kCmdMoreAbove = 0x77;  // the scroll indicators of a long tab (text, clickable)
+constexpr short kCmdMoreBelow = 0x78;
 
 typedef void(__thiscall* Draw_t)(void* button);
 typedef short(__thiscall* Init_t)(void* scene);
@@ -131,13 +133,44 @@ const std::vector<Setting>& Settings() {
     return s;
 }
 
-// Row of setting i on its tab's page (below the tab headers).
-int SettingRow(size_t i) {
+// Settings rows are 2..12 below the tab headers (Reset and Back are 13 and 14). A tab with
+// more settings than that scrolls: the mouse wheel moves the list a row at a time and
+// "More above"/"More below" (clickable) show there is more. [Debug] SettingsRows=N shows
+// fewer rows (for testing the scrolling).
+constexpr int kFirstSettingRow = 2, kMaxSettingRows = 11;
+int g_scroll[3];  // first shown setting of each tab
+
+int VisibleRows() {
+    static int rows = 0;
+    if (!rows) {
+        rows = GetPrivateProfileIntA("Debug", "SettingsRows", kMaxSettingRows, g_h.ini.c_str());
+        if (rows < 3 || rows > kMaxSettingRows) rows = kMaxSettingRows;
+    }
+    return rows;
+}
+
+// Position of setting i within its tab, and how many settings a tab has.
+int IndexInTab(size_t i) {
     const auto& all = Settings();
-    int row = 2;
+    int n = 0;
     for (size_t k = 0; k < i; ++k)
-        if (all[k].tab == all[i].tab) ++row;
-    return row;
+        if (all[k].tab == all[i].tab) ++n;
+    return n;
+}
+
+int TabSize(int tab) {
+    int n = 0;
+    for (const auto& s : Settings())
+        if (s.tab == tab) ++n;
+    return n;
+}
+
+int MaxScroll(int tab) { return TabSize(tab) > VisibleRows() ? TabSize(tab) - VisibleRows() : 0; }
+
+// Row of setting i on its tab's page, or -1 when it is scrolled out of view.
+int SettingRow(size_t i) {
+    int k = IndexInTab(i) - g_scroll[Settings()[i].tab];
+    return k >= 0 && k < VisibleRows() ? kFirstSettingRow + k : -1;
 }
 
 // Layout (640x480 menu): rows 28 px apart, 19 px tall, from (18, 17).
@@ -274,6 +307,15 @@ void Layout(void* scene) {
         }
         x += w + kTabGap;
     }
+    // The scroll indicators sit right of the setting rows, against the right edge.
+    for (short c : {kCmdMoreAbove, kCmdMoreBelow}) {
+        if (void* b = Find(scene, c)) {
+            const char* text = c == kCmdMoreAbove ? "More above" : "More below";
+            int w = fonts::TextWidth("WBMd14", text);
+            RECT r = RowRect(c == kCmdMoreAbove ? kFirstSettingRow : kFirstSettingRow + VisibleRows() - 1);
+            Place(b, {622 - w, r.top + 3, 640, r.bottom});
+        }
+    }
     if (void* v = Find(scene, kCmdVersion)) {
         int w = fonts::TextWidth("WBMd14", kVersion);
         Place(v, {622 - w, 452, 640, 468});  // 18 px margin, like the menu's left edge
@@ -324,8 +366,14 @@ void MoveHotspots(void* scene, bool away) {
     g_hotspotsAway = away;
 }
 
+bool g_pageOpen;
+void* g_pageScene;
+
 void ShowSettingsPage(void* scene, bool settings) {
     const auto& all = Settings();
+    g_pageOpen = settings;
+    g_pageScene = settings ? scene : nullptr;
+    if (g_scroll[g_tab] > MaxScroll(g_tab)) g_scroll[g_tab] = MaxScroll(g_tab);
     Layout(scene);
     MoveHotspots(scene, settings);
     for (void* b : Buttons(scene)) {
@@ -335,7 +383,13 @@ void ShowSettingsPage(void* scene, bool settings) {
         bool setting = c >= kCmdFirstSetting && c < kCmdFirstSetting + (short)all.size();
         if (mainItem) Show(b, !settings);
         if (page) Show(b, settings);
-        if (setting) Show(b, settings && all[c - kCmdFirstSetting].tab == g_tab);
+        if (setting) {
+            int row = SettingRow(c - kCmdFirstSetting);
+            if (row >= 0) SetHome(b, RowRect(row), 0);
+            Show(b, settings && all[c - kCmdFirstSetting].tab == g_tab && row >= 0);
+        }
+        if (c == kCmdMoreAbove) Show(b, settings && g_scroll[g_tab] > 0);
+        if (c == kCmdMoreBelow) Show(b, settings && g_scroll[g_tab] < MaxScroll(g_tab));
         if (c >= kCmdFirstTab && c < kCmdFirstTab + kTabCount) {
             bool active = c - kCmdFirstTab == g_tab;  // the open tab stays highlighted
             ((SetStyle_t)kSetStyle)(b, active ? kStyleMenuHover : kStyleMenu, kStyleMenuHover);
@@ -373,9 +427,14 @@ short __thiscall HookInit(void* scene) {
     for (int t = 0; t < kTabCount; ++t)  // placed by Layout
         if (void* b = AddButton(scene, kTabNames[t], (short)(kCmdFirstTab + t), 0, RowRect(0))) Show(b, false);
     for (size_t i = 0; i < all.size(); ++i) {
-        void* b = AddButton(scene, Label(all[i]).c_str(), (short)(kCmdFirstSetting + i), 0, RowRect(SettingRow(i)));
+        int row = SettingRow(i);
+        void* b = AddButton(scene, Label(all[i]).c_str(), (short)(kCmdFirstSetting + i), 0,
+                            RowRect(row >= 0 ? row : kFirstSettingRow));
         if (b) Show(b, false);
     }
+    // Scroll indicators, right of the first and last setting rows (placed by Layout).
+    if (void* b = AddButton(scene, "More above", kCmdMoreAbove, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
+    if (void* b = AddButton(scene, "More below", kCmdMoreBelow, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
     if (void* reset = AddButton(scene, kResetText, kCmdReset, 'R', RowRect(13))) Show(reset, false);
     if (void* back = AddButton(scene, "Back", kCmdBack, 'B', RowRect(14))) Show(back, false);
     if (void* hint = AddButton(scene, "Click: next    Right-click: previous    Saved automatically",
@@ -420,6 +479,15 @@ int __thiscall HookCommand(void* scene, void* button) {
         return 0;
     }
     if (c == kCmdHint || c == kCmdVersion) return 0;
+    if (c == kCmdMoreAbove || c == kCmdMoreBelow) {  // a page up or down
+        PlaySelect();
+        int page = VisibleRows() - 1;
+        g_scroll[g_tab] += c == kCmdMoreBelow ? page : -page;
+        if (g_scroll[g_tab] < 0) g_scroll[g_tab] = 0;
+        if (g_scroll[g_tab] > MaxScroll(g_tab)) g_scroll[g_tab] = MaxScroll(g_tab);
+        ShowSettingsPage(scene, true);
+        return 0;
+    }
     if (c >= kCmdFirstTab && c < kCmdFirstTab + kTabCount) {
         PlaySelect();
         g_tab = c - kCmdFirstTab;
@@ -578,6 +646,17 @@ void HideAllWidgets() {
 void HideAllText() {
     if (void* scene = TopScene())
         for (void* b : Buttons(scene)) Show(b, false);
+}
+
+// The mouse wheel scrolls a long settings tab, a row per notch (notches > 0: up).
+bool OnWheel(int notches) {
+    if (!g_installed || !g_pageOpen || !g_pageScene || TopScene() != g_pageScene) return false;
+    int before = g_scroll[g_tab];
+    g_scroll[g_tab] -= notches;
+    if (g_scroll[g_tab] < 0) g_scroll[g_tab] = 0;
+    if (g_scroll[g_tab] > MaxScroll(g_tab)) g_scroll[g_tab] = MaxScroll(g_tab);
+    if (g_scroll[g_tab] != before) ShowSettingsPage(g_pageScene, true);
+    return true;  // the wheel never zooms on the settings page
 }
 
 bool OnRightClick() {

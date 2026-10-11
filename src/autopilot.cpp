@@ -611,7 +611,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
     } else if (scene == ".?AVSHeadquarters@@" && g_h.mode == 2) {
         // Settings page: open it, change two settings, go back.
-        enum Kind { SaveShot, LeftClick, Hover, RightClick, Quit };
+        enum Kind { SaveShot, LeftClick, Hover, RightClick, Quit, WheelDown, WheelUp };
         struct MenuStep {
             DWORD at;
             Kind kind;
@@ -633,8 +633,24 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             {10700, SaveShot, {}, "m7-reset"},   {11000, LeftClick, {60, 418}, nullptr},  // Back
             {12000, SaveShot, {}, "m8-back"},    {12300, Quit, {}, nullptr},
         };
-        if (g_step < (int)(sizeof kMenu / sizeof kMenu[0]) && t > kMenu[g_step].at) {
-            const MenuStep& m = kMenu[g_step++];
+        // AutopilotTarget=2: a long tab scrolling (run with [Debug] SettingsRows=6).
+        static const MenuStep kScroll[] = {
+            {2500, LeftClick, {60, 222}, nullptr},                                        // Settings
+            {3300, LeftClick, {200, 26}, nullptr},                                        // Controls tab
+            {4000, SaveShot, {}, "s0-controls-top"},  {4200, Hover, {150, 150}, nullptr},
+            {4400, WheelDown, {150, 150}, nullptr},   {4600, WheelDown, {150, 150}, nullptr},
+            {5200, SaveShot, {}, "s1-wheel-down2"},   {5400, WheelDown, {150, 150}, nullptr},
+            {5500, WheelDown, {150, 150}, nullptr},   {5600, WheelDown, {150, 150}, nullptr},
+            {5700, WheelDown, {150, 150}, nullptr},   {5800, WheelDown, {150, 150}, nullptr},
+            {6400, SaveShot, {}, "s2-wheel-bottom"},  {6600, WheelUp, {150, 150}, nullptr},
+            {7200, SaveShot, {}, "s3-wheel-up1"},     {7400, LeftClick, {60, 222}, nullptr},  // a setting row
+            {8000, SaveShot, {}, "s4-row-clicked"},   {8200, RightClick, {60, 222}, nullptr},
+            {8800, Quit, {}, nullptr},
+        };
+        const MenuStep* script = g_h.target == 2 ? kScroll : kMenu;
+        int steps = g_h.target == 2 ? (int)(sizeof kScroll / sizeof kScroll[0]) : (int)(sizeof kMenu / sizeof kMenu[0]);
+        if (g_step < steps && t > script[g_step].at) {
+            const MenuStep& m = script[g_step++];
             switch (m.kind) {
             case SaveShot: Save(m.tag); break;
             case LeftClick: Click(m.p); break;
@@ -645,6 +661,11 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 g_h.log("autopilot: right-click %ld,%ld", m.p.x, m.p.y);
                 break;
             case Quit: g_h.log("autopilot: done, quitting"); PostQuitMessage(0); break;
+            case WheelDown:
+            case WheelUp:
+                Post(WM_MOUSEWHEEL, MAKEWPARAM(0, m.kind == WheelUp ? WHEEL_DELTA : -WHEEL_DELTA), m.p);
+                g_h.log("autopilot: wheel %s", m.kind == WheelUp ? "up" : "down");
+                break;
             }
         }
     } else if (scene == ".?AVSHeadquarters@@") {

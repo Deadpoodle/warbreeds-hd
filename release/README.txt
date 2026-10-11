@@ -1,4 +1,4 @@
-WarBreeds HD 0.10.0
+WarBreeds HD 0.11.0
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -34,7 +34,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
    WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.10.0" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.11.0" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -51,8 +51,9 @@ take effect immediately.
   Video      Display mode (fullscreen / windowed), resolution, scaling,
              VSync, FPS counter, movie scaling and size.
   Controls   Smooth arrow-key scrolling, WASD, scroll speed, zoom limits,
-             Alt+F4, mouse scheme (Classic / Modern), builder click,
-             quick-build keys, group build.
+             Alt+F4, capture mouse, mouse scheme (Classic / Modern),
+             builder click, quick-build keys, group build. Long tabs
+             scroll with the mouse wheel ("More above/below").
   Interface  Menu art (widescreen / original), font (original / Orbitron),
              interface size.
 

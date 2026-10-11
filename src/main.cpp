@@ -729,6 +729,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     switch (msg) {
     case WM_MOUSEWHEEL:
+        {  // the settings page scrolls with the wheel (whole notches)
+            static int menuAccum;
+            if (menu::OnWheel(0)) {
+                menuAccum += GET_WHEEL_DELTA_WPARAM(wp);
+                int notches = menuAccum / WHEEL_DELTA;
+                menuAccum -= notches * WHEEL_DELTA;
+                if (notches) menu::OnWheel(notches);
+                return 0;
+            }
+        }
         if (g_cfg.mouseWheel) {
             // One step per notch (WHEEL_DELTA); high-resolution wheels send smaller deltas.
             g_wheelAccum += GET_WHEEL_DELTA_WPARAM(wp);

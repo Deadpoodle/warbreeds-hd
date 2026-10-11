@@ -17,6 +17,8 @@ void Tick();
 // Right mouse button pressed: steps the setting under the mouse backwards.
 // True if handled (swallow the click).
 bool OnRightClick();
+// Mouse wheel over the settings page: scrolls a long tab. True if the page is open.
+bool OnWheel(int notches);
 // Debug (autopilot): hide every text item on the top scene, to capture the
 // bare menu background.
 void HideAllText();
