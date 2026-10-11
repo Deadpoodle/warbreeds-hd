@@ -5,6 +5,7 @@
 
 #include <windows.h>
 #include <math.h>
+#include <string.h>
 
 #include <initializer_list>
 
@@ -39,7 +40,50 @@ BOOL WINAPI h_GetKeyboardState(PBYTE keys) {
     return TRUE;
 }
 
+// SGame::SetViewSize (0x47b520, run by the resize handler) sets the view (+0x4c/+0x4e) to
+// the frame size, doubled with the half-scale view, and then, if the view is as wide or as
+// tall as the map (tiles * 32), calls SGame::SetZoomedOut(0) (0x47d430, call at 0x47b581).
+// That was meant to leave the 2x zoom-out on a map too small for it, but SetZoomedOut(0)
+// halves the view whether or not the zoom-out is on. At 640x480-1280x1024 a plain frame
+// never reached a map's size, so the halving only ever undid a zoom-out. At HD sizes the
+// frame alone can cover a small map (the Base Building tutorial is 96x76 tiles,
+// 3072x2432 px): the view became half the frame, so the terrain (drawn only for the view,
+// 0x42deb0) filled only the top-left part of the frame, and clicks outside it selected
+// nothing (World::Click 0x44a860 picks among objects in camera..camera+view). Units were
+// still drawn in the black part, so it looked like a terrain problem.
+//
+// Replacement for that call: undo an active zoom-out as before, then limit the view to the
+// scroll bounds. ClampCamera keeps camera + view below MaxX/MaxY, so a view larger than
+// that would push the camera negative, which the terrain drawing doesn't handle.
+void __thiscall FitViewToMap(char* g, int /*zero*/) {
+    if (*(short*)(g + game::SGameZoomedOut) == 1) ((void(__thiscall*)(void*, int))game::SGameSetZoomedOut)(g, 0);
+    short& viewW = *(short*)(g + game::SGameViewW);
+    short& viewH = *(short*)(g + game::SGameViewH);
+    int maxW = *(short*)(g + game::SGameScrollMaxX) - *(short*)(g + game::SGameScrollMinX);
+    int maxH = *(short*)(g + game::SGameScrollMaxY) - *(short*)(g + game::SGameScrollMinY);
+    short w = viewW, h = viewH;
+    if (maxW > 0 && viewW > maxW) viewW = (short)maxW;
+    if (maxH > 0 && viewH > maxH) viewH = (short)maxH;
+    static int logged;
+    if (logged++ < 8)
+        g_log("camera: view %dx%d reaches the map (%dx%d tiles): view %dx%d", w, h, *(BYTE*)game::MapTilesW,
+              *(BYTE*)game::MapTilesH, viewW, viewH);
+}
+
 }  // namespace
+
+bool InstallViewFix() {
+    const uint8_t expect[] = {0xe8, 0xaa, 0x1e, 0x00, 0x00};  // call 0x47d430
+    if (memcmp((void*)game::SetViewSizeFitCall, expect, sizeof expect) != 0) return false;
+    uint8_t call[5] = {0xe8};
+    *(int32_t*)(call + 1) = (int32_t)((uintptr_t)&FitViewToMap - (game::SetViewSizeFitCall + 5));
+    DWORD old;
+    if (!VirtualProtect((void*)game::SetViewSizeFitCall, 5, PAGE_EXECUTE_READWRITE, &old)) return false;
+    memcpy((void*)game::SetViewSizeFitCall, call, 5);
+    VirtualProtect((void*)game::SetViewSizeFitCall, 5, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)game::SetViewSizeFitCall, 5);
+    return true;
+}
 
 void Init(const Settings& s, void (*log)(const char*, ...)) {
     g_s = s;

@@ -27,9 +27,13 @@ namespace {
 Settings g_s;
 void (*g_log)(const char*, ...);
 int g_screenW, g_screenH;
+
+void UpdateMinEffective();
 double g_target, g_cur;
 int g_resW, g_resH;      // resolution missions run at right now
-double g_minEffective;   // raised if the map is too small for half-scale view
+double g_minEffective;   // the zoom-out limit in force: the largest of the three below
+double g_halfLimit;      // set if the map is too small for half-scale view (pixel budget)
+double g_mapLimit;       // the view may not be wider or taller than the map
 bool g_halfUnavailable;  // this mission's map is too small for half-scale view
 void* g_mission;         // SGame the above applies to
 // While animating: the shown world area's top-left (world pixels) and the
@@ -61,6 +65,22 @@ Plan PlanFor(double m, int currentFactor) {
     return p;
 }
 
+void UpdateMinEffective() {
+    g_minEffective = std::max({g_s.minMag, g_halfUnavailable ? g_halfLimit : 0.0, g_mapLimit});
+}
+
+// The smallest magnification that shows no more than the map: zooming out stops once the
+// map's whole width or whole height is on screen (small maps on large monitors). A larger
+// frame would only add black beyond the map edge (camera::InstallViewFix keeps the game's
+// view inside the map). The extent is Max - Min, not + 1: SGame::ClampCamera keeps
+// camera + view below Max, so a view of Max - Min + 1 would put the camera at -1.
+double MapLimit(char* g) {
+    int w = *(short*)(g + game::SGameScrollMaxX) - *(short*)(g + game::SGameScrollMinX);
+    int h = *(short*)(g + game::SGameScrollMaxY) - *(short*)(g + game::SGameScrollMinY);
+    if (w <= 0 || h <= 0) return 0.0;  // not set up yet
+    return std::max((double)g_screenW / w, (double)g_screenH / h);
+}
+
 }  // namespace
 
 void Init(const Settings& s, int screenW, int screenH, void (*log)(const char*, ...)) {
@@ -87,7 +107,7 @@ void MissionResolution(int& w, int& h) {
 
 void Wheel(int notches, bool atCursor) {
     g_atCursor = atCursor;
-    g_target = std::clamp(g_target * pow(g_s.step, notches), g_minEffective, g_s.maxMag);
+    g_target = std::clamp(g_target * pow(g_s.step, notches), g_minEffective, std::max(g_minEffective, g_s.maxMag));
 }
 
 void Tick(void* sgame) {
@@ -103,9 +123,21 @@ void Tick(void* sgame) {
     if (sgame != g_mission) {  // new mission: forget the previous map's limits
         g_mission = sgame;
         g_halfUnavailable = false;
-        g_minEffective = g_s.minMag;
+        g_mapLimit = 0;
+        UpdateMinEffective();
         g_cropping = false;
         render::SetWorldCrop(false);
+    }
+    // Keep the zoom-out limit in step with the map (its bounds are set once the map loads).
+    double mapLimit = MapLimit((char*)sgame);
+    if (mapLimit != g_mapLimit) {
+        g_mapLimit = mapLimit;
+        UpdateMinEffective();
+        char* g = (char*)sgame;
+        g_log("zoom: map %dx%d tiles, scroll bounds %d,%d-%d,%d: zoom-out limit %.3fx", *(BYTE*)game::MapTilesW,
+              *(BYTE*)game::MapTilesH, *(short*)(g + game::SGameScrollMinX), *(short*)(g + game::SGameScrollMinY),
+              *(short*)(g + game::SGameScrollMaxX), *(short*)(g + game::SGameScrollMaxY), g_mapLimit);
+        g_target = std::max(g_target, g_minEffective);
     }
     if (!g_cropping && fabs(g_cur - g_target) < 1e-4) return;
 
@@ -156,7 +188,8 @@ void Tick(void* sgame) {
             if (zoomedOut != 1) {
                 // Map too small: stay at full scale, limited by the pixel budget.
                 g_halfUnavailable = true;
-                g_minEffective = std::max(g_s.minMag, sqrt((double)g_screenW * g_screenH / g_s.maxPixels));
+                g_halfLimit = sqrt((double)g_screenW * g_screenH / g_s.maxPixels);
+                UpdateMinEffective();
                 g_target = std::max(g_target, g_minEffective);
                 g_cur = std::max(g_cur, g_minEffective);
                 g_log("zoom: map too small for half-scale view; zoom-out limited to %.2fx", g_minEffective);
@@ -215,8 +248,8 @@ double Current() { return g_cur; }
 void SetRange(double minMag, double maxMag) {
     g_s.minMag = minMag;
     g_s.maxMag = maxMag;
-    g_minEffective = g_halfUnavailable ? std::max(minMag, g_minEffective) : minMag;
-    g_target = std::clamp(g_target, g_minEffective, g_s.maxMag);
+    UpdateMinEffective();
+    g_target = std::clamp(g_target, g_minEffective, std::max(g_minEffective, g_s.maxMag));
 }
 
 }  // namespace zoom

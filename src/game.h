@@ -45,9 +45,25 @@ constexpr uintptr_t SGameToggleZoom = 0x4802a0;
 constexpr uintptr_t SGameClampCamera = 0x47d340;
 constexpr uintptr_t SGameCameraX = 0x38;    // short, world pixels
 constexpr uintptr_t SGameCameraY = 0x3a;    // short
+// The camera's scroll bounds (world pixels), what SGame::ClampCamera clamps against:
+// camera x in [MinX, MaxX - ViewW], y in [MinY, MaxY - ViewH].
+constexpr uintptr_t SGameScrollMinX = 0x44;  // short
+constexpr uintptr_t SGameScrollMinY = 0x46;  // short
+constexpr uintptr_t SGameScrollMaxX = 0x48;  // short
+constexpr uintptr_t SGameScrollMaxY = 0x4a;  // short
 constexpr uintptr_t SGameViewW = 0x4c;      // short, world pixels visible
 constexpr uintptr_t SGameViewH = 0x4e;      // short
 constexpr uintptr_t SGameZoomedOut = 0x5e;  // short, 1 = 2x zoom-out active
+// void __thiscall SGame::SetZoomedOut(short on) - on: doubles the view if twice it fits the
+// map; off: clears +0x5e and halves the view (unconditionally), re-centring the camera.
+constexpr uintptr_t SGameSetZoomedOut = 0x47d430;
+// SGame::SetViewSize 0x47b520 (from the resize handler 0x47b2f0): view = frame size (x2 if
+// zoomed out); then "call SGameSetZoomedOut(0)" here if the view is >= the map in either
+// dimension, which halves a plain view too. See camera.cpp (FitViewToMap).
+constexpr uintptr_t SetViewSizeFitCall = 0x47b581;
+// Map size in 32 px tiles (bytes).
+constexpr uintptr_t MapTilesW = 0x566db4;
+constexpr uintptr_t MapTilesH = 0x566db5;
 
 // void __thiscall Scene::UpdateCursor(int) - erases, saves-under and draws the
 // software mouse cursor (menus; SGame overrides it with an empty function).

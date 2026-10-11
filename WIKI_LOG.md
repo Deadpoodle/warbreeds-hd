@@ -497,3 +497,18 @@ The Steam release (app 2464660) has not been checked; its exe may differ.
   - Need to find out which feature uses it (on-screen selection? unit auto-acquire? AI?). If it affects balance, pin it to the original 640x480 size.
   - Update: the shift amount is the Z-zoom flag, so this rectangle is "the world area visible on screen". A bigger screen means more visible area, which is an inherent widescreen trade-off rather than a hidden balance change. Still to confirm which feature uses it.
 - **Loader choice:** `WSOCK32.dll` is statically imported by the exe and is not a KnownDLL. A proxy `wsock32.dll` in the game folder is therefore loaded at process start, so the patch needs no edits to `WARBREED.EXE` and doesn't collide with GOG's `ddraw.dll` (DDrawCompat), `WARBREED.DLL` or `_inmm.dll`. Under Wine/Proton this will need `WINEDLLOVERRIDES="wsock32=n,b"`.
+
+### 2026-10-11
+- **Small maps: terrain only in the top-left of the frame, and clicks there ignored (fixed; `re/tutorial-terrain.md`).**
+  - Seen by the tester in the Base Building tutorial (96x76 tiles, 3072x2432 px) when zoomed out. Units still showed in the black part; skirmish maps were fine.
+  - Cause: SGame::SetViewSize `0x47b520` calls SetZoomedOut(0) `0x47d430` (at `0x47b581`) whenever the view is at least as wide or tall as the map. That function halves the view even when the 2x zoom-out is off.
+    - A 1998 screen never reached a map's size, so this only ever undid a zoom-out.
+    - An HD frame can reach the map's size: at 0.5x on 1920x1080 the view became 1920x1080 inside a 3840x2160 frame.
+  - Terrain cells (`0x42deb0`) are drawn only for camera..camera+view, and `World::Click 0x44a860` picks only inside that rectangle. The drag box (`World::BoxSelect`) was not affected in the headless test.
+  - Fix (`camera::InstallViewFix`): that call now leaves an active zoom-out as before, then limits the view to the scroll extent so the camera can't go negative. It applies in every zoom mode.
+  - Smooth zoom also stops zooming out once the frame covers the map's width or height (extent `Max - Min`).
+  - Verified headless (`Autopilot=11`, `AutopilotTarget=1`):
+    - zoomed out, black 64 px blocks went from 74% to 0%, and a click on a unit in the formerly black part now selects it (0 before, 1 after);
+    - a resolution-zoom frame of 3200x1800 (wider than the map) shows the whole map, black only beyond its edge;
+    - the skirmish mission test is unchanged.
+  - Wiki note: on small maps with a large render size, the original engine shows only part of the battlefield.

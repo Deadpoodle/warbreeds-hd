@@ -809,6 +809,8 @@ void Init(HMODULE self) {
         Log("frame tick hook: %s", InstallFrameTickHook() ? "ok" : "FAILED (zoom disabled)");
     diag::Init(g_dir, Log);
     camera::Init(g_cfg.cam, Log);
+    // Needed whatever the zoom mode: any frame as large as a small map halved the view.
+    Log("view fix: %s", camera::InstallViewFix() ? "installed" : "FAILED (unexpected code)");
     // [Debug] NoMenu=1: the stock main menu (no Settings item), e.g. for before/after shots.
     if (!IniInt("Debug", "NoMenu", 0)) menu::Install({Log, IniPath(), ApplyLiveSettings});
     controls::Install(Log);

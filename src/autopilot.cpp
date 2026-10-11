@@ -76,6 +76,41 @@ void LogView() {
     }
 }
 
+int SelectedCount() {
+    char* w = *(char**)0x579278;
+    return w ? *(int*)(w + 0x84) : 0;
+}
+
+// Mode 11: the own unit (creature types 0..0x2b, as World::BoxSelect selects) whose frame
+// position is furthest right/down, as a frame point; x = -1 if none is in view.
+POINT g_target, g_dragTo;
+POINT FarOwnUnit(int frameW, int frameH) {
+    POINT best{-1, -1};
+    uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+    char* w = *(char**)0x579278;
+    void* me = ((void* (*)())0x46f8e0)();
+    if (!g || !w || !me) return best;
+    int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+    int camX = *(short*)(g + game::SGameCameraX), camY = *(short*)(g + game::SGameCameraY);
+    char** things = *(char***)(w + 0x10);
+    int count = *(int*)(w + 0x14);
+    double bestScore = -1;
+    for (int i = 0; i < count; ++i) {
+        char* t = things[i];
+        if (!t || *(void**)(t + 0x20) != me || *(int*)(t + 0x18) < 0 || *(int*)(t + 0x18) >= 0x2c) continue;
+        int x = (*(short*)(t + 0x14) - camX) / f, y = (*(short*)(t + 0x16) - camY) / f;
+        g_h.log("autopilot:   own unit id %d type %#x at world %d,%d, frame %d,%d", *(short*)(t + 0x1c),
+                *(int*)(t + 0x18), *(short*)(t + 0x14), *(short*)(t + 0x16), x, y);
+        if (x < 100 || y < 100 || x > frameW - 100 || y > frameH - 100) continue;
+        double score = std::max((double)x / frameW, (double)y / frameH);
+        if (score > bestScore) {
+            bestScore = score;
+            best = {x, y};
+        }
+    }
+    return best;
+}
+
 void Click(POINT game) {
     render::SetFakeCursor(true, game);
     Post(WM_MOUSEMOVE, 0, game);
@@ -357,6 +392,96 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             g_h.log("autopilot: done, quitting");
             PostQuitMessage(0);
             stage = -1000000;
+        }
+        return;
+    }
+    if (g_h.mode == 11) {
+        // Small-map zoom test: Campaign -> Basic Training -> mission AutopilotTarget (0 Combat,
+        // 1 Base Building, 2 Gene Collecting), accept, then zoom all the way out and capture.
+        // Then selection far from the frame's top-left (where the halved view used to end, see
+        // camera::InstallViewFix): click an own unit there, right-click to deselect, drag a box
+        // round it; the selection count is logged after each.
+        static int stage;
+        static DWORD at;
+        if (stage == 0 && scene == ".?AVSHeadquarters@@" && t > 2500) {
+            Click({60, 54});  // Campaign
+            stage = 1;
+            at = now;
+        } else if (stage == 1 && now - at > 3000) {
+            Click({60, 26});  // Basic Training
+            stage = 2;
+            at = now;
+        } else if (stage == 2 && now - at > 3000) {
+            Click({75, (LONG)(24 + 28 * g_h.target)});  // the training mission
+            stage = 3;
+            at = now;
+        } else if (stage == 3 && now - at > 1500) {
+            Click({55, 438});  // Accept
+            stage = 4;
+            at = now;
+        } else if (stage == 4 && scene == ".?AVSGame@@") {
+            stage = 5;
+            at = now;
+        } else if (stage == 5 && now - at > 8000) {
+            Save("bb-start");
+            for (int i = 0; i < 12; ++i) g_h.zoomStep(+1);  // all the way out
+            stage = 6;
+            at = now;
+        } else if (stage == 6 && now - at > 3000) {
+            Save("bb-zoomed-out");
+            LogView();
+            // Selection in the far part of the frame (the area that used to be black): the own
+            // unit furthest right/down in the frame, clicked, deselected, then drag-boxed.
+            g_target = FarOwnUnit(frameW, frameH);
+            if (g_target.x < 0) {
+                g_h.log("autopilot: no own unit in view; skipping the selection test");
+                stage = 20;
+            } else {
+                g_glideFrom = {game::at<short>(game::CursorX), game::at<short>(game::CursorY)};
+                g_glideTo = g_target;
+                g_glideStart = now;
+                g_gliding = true;
+                stage = 7;
+            }
+            at = now;
+        } else if (stage == 7 && now - at > 1300) {
+            Click(g_target);
+            stage = 8;
+            at = now;
+        } else if (stage == 8 && now - at > 800) {
+            g_h.log("autopilot: after the click on %ld,%ld: selected %d", g_target.x, g_target.y, SelectedCount());
+            Save("bb-click");
+            Post(WM_RBUTTONDOWN, MK_RBUTTON, g_target);  // classic scheme: right-up deselects
+            Post(WM_RBUTTONUP, 0, g_target);
+            stage = 9;
+            at = now;
+        } else if (stage == 9 && now - at > 800) {
+            g_h.log("autopilot: after the right-click: selected %d", SelectedCount());
+            POINT a{g_target.x - 90, g_target.y - 90}, b{g_target.x + 90, g_target.y + 90};
+            render::SetFakeCursor(true, a);
+            Post(WM_MOUSEMOVE, 0, a);
+            Post(WM_LBUTTONDOWN, MK_LBUTTON, a);
+            for (int i = 1; i <= 8; ++i)
+                Post(WM_MOUSEMOVE, MK_LBUTTON, {a.x + (b.x - a.x) * i / 8, a.y + (b.y - a.y) * i / 8});
+            render::SetFakeCursor(true, b);
+            g_dragTo = b;
+            g_h.log("autopilot: drag %ld,%ld -> %ld,%ld", a.x, a.y, b.x, b.y);
+            stage = 10;
+            at = now;
+        } else if (stage == 10 && now - at > 300) {
+            Save("bb-drag-box");
+            Post(WM_LBUTTONUP, 0, g_dragTo);
+            stage = 11;
+            at = now;
+        } else if (stage == 11 && now - at > 800) {
+            g_h.log("autopilot: after the drag box: selected %d", SelectedCount());
+            Save("bb-drag");
+            stage = 20;
+            at = now;
+        } else if (stage == 20 && now - at > 500) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            stage = 21;
         }
         return;
     }
