@@ -11,6 +11,7 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - the official map editor, built into the game;
 - allied teams and colour choice in skirmish;
 - campaign progress that survives quitting;
+- the game in French and German, or any language someone adds;
 - the game's own multiplayer, working again.
 
 It needs your own copy of the game, and has been tested with the GOG.com release.
@@ -101,6 +102,19 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
+## Languages
+
+WarBreeds HD can show the whole game in another language: menus, unit and device names, briefings, the result screens, the credits' titles, and WarBreeds HD's own Settings page and map editor. Pick it on the main menu's **Settings > Interface > Language**; it changes at once.
+
+| French main menu | A German briefing |
+|---|---|
+| ![The main menu in French](docs/screenshots/lang-fr-menu.jpg) | ![A Tanu mission briefing in German](docs/screenshots/lang-de-briefing.jpg) |
+
+- **French and German come with the patch.** They were drafted by machine (an AI model) from the game's English, so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
+- **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and a debug option writes a ready-to-fill template from your own copy of the game.
+- The game's own letters are used: its bitmap fonts already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. With the Orbitron font option they come from Orbitron instead.
+- Spoken voices and the movies stay English, and so does the text players type (the game only accepts plain letters there).
+
 ## What it does
 
 **Display**
@@ -131,13 +145,16 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 **Campaign**
 - Progress is kept between sessions: a campaign you've started offers Continue or Start Over.
 
+**Languages** (more in [Languages](#languages))
+- French and German, switched live on the Settings page; more by adding a text file to the `Lang` folder.
+
 **Multiplayer**
 - The main menu's Multiplayer works again: the game's own LAN and Internet play over TCP/IP, for up to four players. On the GOG release it only showed an error. GOG's DirectPlay workaround couldn't load DirectPlay, and earlier versions of WarBreeds HD also left Windows COM set up in a way the game's network start-up rejected. Both are fixed.
 - Every player needs WarBreeds HD (all on the same version) and Windows' DirectPlay feature.
 - One player picks Internet TCP/IP, then Create. The others pick Join and type the host's IP address. The host may need to allow WARBREED.EXE through Windows Firewall. IPX, the other 1998 option, doesn't exist on modern Windows.
 - Tested with two copies on one PC. Reports from games between PCs are welcome.
 
-**Controls** (the full list is in [docs/controls.html](docs/controls.html))
+**Controls** (the full list is in [docs/controls.md](docs/controls.md))
 - Arrow keys scroll smoothly. Optional WASD.
 - Unit groups: double-tap a number to centre on the group; Shift+number adds the group to the selection.
 - Shift+drag adds a box of units to the selection.
@@ -159,10 +176,10 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 ## Install
 
 1. Download the zip from [Releases](https://github.com/Deadpoodle/warbreeds-hd/releases/latest).
-2. Copy `wsock32.dll`, `Fonts\` and `Menus\` into your WarBreeds folder, next to `WARBREED.EXE`.
+2. Copy `wsock32.dll`, `Fonts\`, `Menus\` and `Lang\` into your WarBreeds folder, next to `WARBREED.EXE`.
 3. Start the game. The main menu shows the version at the bottom right and a new Settings item.
 
-To uninstall, delete those files plus `WarBreedsHD.ini` and `WarBreedsHD.log`. The zip's README.txt has the details, including notes for Steam and Linux, neither of which has been tested yet.
+To uninstall, delete those files plus `WarBreedsHD.ini`, `WarBreedsHD-progress.ini` and `WarBreedsHD.log`. The zip's README.txt has the details, including notes for Steam and Linux, neither of which has been tested yet.
 
 ## Building from source
 

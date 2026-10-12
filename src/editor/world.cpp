@@ -8,6 +8,7 @@
 #include <algorithm>
 
 #include "../game.h"
+#include "../lang.h"
 #include "mapfile.h"
 
 namespace editor {
@@ -117,13 +118,13 @@ bool ObstacleSiteOk(int type, int x, int y, std::string& why) {
         for (int tx = x >> 5; tx <= (x + fp - 1) >> 5; ++tx) {
             if (type == kRuins) {
                 if (TerrainType(tx, ty) != 0) {
-                    why = "Ruins go on open ground";
+                    why = lang::tr("Ruins go on open ground");
                     return false;
                 }
             } else if (need >= 0 && g_corner) {
                 int c = g_corner(tx, ty);
                 if (c >= 0 && c != need) {
-                    why = Name(type) + " only goes on " + where;
+                    why = lang::trf("{1} only goes on {2}", {Name(type), lang::tr(where)});
                     return false;
                 }
             }
@@ -215,22 +216,22 @@ int Put(int type, int owner, int wx, int wy, const ThingRec* attrs, std::string&
     PlacementRect(type, wx, wy, x, y, x1, y1);
     if (IsCrop(type)) x = wx - fp / 2, y = wy - fp / 2;  // CreateAt snaps them itself
     if (!InMap(x, y, x + fp, y + fp)) {
-        why = "Too close to the edge of the map";
+        why = lang::tr("Too close to the edge of the map");
         return kNoThing;
     }
     unsigned short id = kNoThing;
     if (IsCrop(type)) {
         id = CreateAt(kNeutral, type, x, y, 0, 1);
         if (id == kNoThing)
-            why = TerrainType((x + 16) >> 5, (y + 16) >> 5) != 2 ? "Crops only grow on cropland"
-                                                                  : "Something is already there";
+            why = lang::tr(TerrainType((x + 16) >> 5, (y + 16) >> 5) != 2 ? "Crops only grow on cropland"
+                                                                            : "Something is already there");
     } else if (IsObstacle(type)) {
         if (!ObstacleSiteOk(type, x, y, why)) return kNoThing;
         id = CreateAt(kNeutral, type, x, y, 0, 1);
-        if (id == kNoThing) why = "Something is in the way";
+        if (id == kNoThing) why = lang::tr("Something is in the way");
     } else if (IsDevice(type)) {
         if (!Player(owner)) {
-            why = "Player " + std::to_string(owner + 1) + " doesn't exist (Players tab: set a type)";
+            why = lang::trf("Player {1} doesn't exist (Players tab: set a type)", {std::to_string(owner + 1)});
             return kNoThing;
         }
         // CanPlace: 0 fits, 1 blocked, 2 fits but has no power (or a Refinery without
@@ -238,20 +239,20 @@ int Put(int type, int owner, int wx, int wy, const ThingRec* attrs, std::string&
         int fit = ((int(__thiscall*)(uintptr_t, int, int, int, int, int, int, int))kCanPlace)(
             World(), owner, x + fp / 2, y + fp / 2, type, 0, 0, 0);
         if (fit == 1) {
-            why = "No room for a " + Name(type) + " there";
+            why = lang::trf("No room for a {1} there", {Name(type)});
             return kNoThing;
         }
         id = CreateAt(owner, type, x, y, 1, 1);
         if (id == kNoThing) {
-            why = "Something is in the way";
+            why = lang::tr("Something is in the way");
         } else {
             Complete(id);
             if (attrs && attrs->hp > 0) SetHp(Thing(id), attrs->hp);
-            if (fit == 2) why = type == kRefinery ? "no crops in reach" : "no power here";  // a note, not a refusal
+            if (fit == 2) why = lang::tr(type == kRefinery ? "no crops in reach" : "no power here");  // a note, not a refusal
         }
     } else if (IsCreature(type)) {
         if (!Player(owner)) {
-            why = "Player " + std::to_string(owner + 1) + " doesn't exist (Players tab: set a type)";
+            why = lang::trf("Player {1} doesn't exist (Players tab: set a type)", {std::to_string(owner + 1)});
             return kNoThing;
         }
         int g[4] = {kNoGizmo, kNoGizmo, kNoGizmo, kNoGizmo};
@@ -260,11 +261,11 @@ int Put(int type, int owner, int wx, int wy, const ThingRec* attrs, std::string&
         id = ((unsigned short(__thiscall*)(uintptr_t, int, int, int, int, int, int, int, int))kPlaceCreature)(
             World(), owner, type, x, y, g[0], g[1], g[2], g[3]);
         if (id == kNoThing)
-            why = "No room for a " + Name(type) + " there";
+            why = lang::trf("No room for a {1} there", {Name(type)});
         else if (attrs)
             ApplyCreature(Thing(id), *attrs, false);
     } else {
-        why = "Can't place that";
+        why = lang::tr("Can't place that");
     }
     return id == kNoThing ? (int)kNoThing : id;
 }

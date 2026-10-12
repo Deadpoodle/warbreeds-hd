@@ -27,6 +27,7 @@
 
 #include "version.h"
 #include "fonts.h"
+#include "lang.h"
 #include "editor/editor.h"
 #include "editor/raw_paint.h"
 
@@ -109,8 +110,8 @@ struct Setting {
     int tab;
 };
 
-const std::vector<Setting>& Settings() {
-    static const std::vector<Setting> s = {
+std::vector<Setting>& Settings() {
+    static std::vector<Setting> s = {
         // Video
         {"Display Mode", "Display", "DisplayMode", "fullscreen", {{"Fullscreen", "fullscreen"}, {"Windowed", "windowed"}},
          kVideo},
@@ -147,8 +148,20 @@ const std::vector<Setting>& Settings() {
         {"Font", "Display", "Font", "original", {{"Original", "original"}, {"Orbitron", "orbitron"}}, kInterface},
         {"Interface Size", "HUD", "Scale", "auto",
          {{"Auto", "auto"}, {"1x", "1.0"}, {"1.5x", "1.5"}, {"2x", "2.0"}, {"2.5x", "2.5"}, {"3x", "3.0"}}, kInterface},
+        // Choices: English and every language file in Lang\ (RefreshLanguages).
+        {"Language", "Display", "Language", "en", {{"English", "en"}}, kInterface},
     };
     return s;
+}
+
+// The Language setting's choices: re-read from Lang\ when the Settings page opens,
+// so a newly added file shows up without a restart. Names stay in their own language.
+void RefreshLanguages() {
+    for (Setting& s : Settings()) {
+        if (strcmp(s.key, "Language") != 0) continue;
+        s.choices.clear();
+        for (const lang::Language& l : lang::Available(true)) s.choices.push_back({l.name.c_str(), l.code.c_str()});
+    }
 }
 
 // Settings rows are 2..12 below the tab headers (Reset and Back are 13 and 14). A tab with
@@ -315,8 +328,8 @@ int CurrentChoice(const Setting& s) {
 
 std::string Label(const Setting& s) {
     int c = CurrentChoice(s);
-    std::string v = c >= 0 ? s.choices[c].shown : "Custom (" + IniGet(s) + ")";
-    return std::string(s.label) + ": " + v;
+    std::string v = c >= 0 ? lang::tr(s.choices[c].shown) : lang::trf("Custom ({1})", {IniGet(s)});
+    return lang::trf("{1}: {2}", {lang::tr(s.label), v});
 }
 
 // Positions that depend on text widths, measured in the font being shown (the
@@ -325,7 +338,7 @@ std::string Label(const Setting& s) {
 void Layout(void* scene) {
     int x = kLeft;
     for (int t = 0; t < kTabCount; ++t) {
-        int w = fonts::TextWidth("WBLg24", kTabNames[t]);
+        int w = fonts::TextWidth("WBLg24", lang::tr(kTabNames[t]));
         if (void* b = Find(scene, (short)(kCmdFirstTab + t))) {
             RECT r = RowRect(0);
             r.left = x;
@@ -337,7 +350,7 @@ void Layout(void* scene) {
     // The scroll indicators sit right of the setting rows, against the right edge.
     for (short c : {kCmdMoreAbove, kCmdMoreBelow}) {
         if (void* b = Find(scene, c)) {
-            const char* text = c == kCmdMoreAbove ? "More above" : "More below";
+            const char* text = lang::tr(c == kCmdMoreAbove ? "More above" : "More below");
             int w = fonts::TextWidth("WBMd14", text);
             RECT r = RowRect(c == kCmdMoreAbove ? kFirstSettingRow : kFirstSettingRow + VisibleRows() - 1);
             Place(b, {622 - w, r.top + 3, 640, r.bottom});
@@ -362,11 +375,13 @@ bool g_resetArmed;
 void ArmReset(void* scene, bool armed) {
     g_resetArmed = armed;
     if (void* b = Find(scene, kCmdReset))
-        ((SetText_t)kSetText)(b, armed ? "Click again to reset all settings" : kResetText);
+        ((SetText_t)kSetText)(b, lang::tr(armed ? "Click again to reset all settings" : kResetText));
 }
 
+// Reset leaves the language alone: a player who reads French keeps reading French.
 void ResetToDefaults(void* scene) {
-    for (const Setting& s : Settings()) WritePrivateProfileStringA(s.section, s.key, s.fallback, g_h.ini.c_str());
+    for (const Setting& s : Settings())
+        if (strcmp(s.key, "Language") != 0) WritePrivateProfileStringA(s.section, s.key, s.fallback, g_h.ini.c_str());
     g_h.log("menu: settings reset to defaults");
     if (g_h.applySettings) g_h.applySettings();
     Refresh(scene);
@@ -409,7 +424,7 @@ int MapItems() { return 1 + (int)g_maps.size(); }
 int MaxMapScroll() { return MapItems() > kMapRows ? MapItems() - kMapRows : 0; }
 
 std::string MapItemText(int i) {
-    if (i == 0) return "New Map";
+    if (i == 0) return lang::tr("New Map");
     const editor::MapEntry& m = g_maps[i - 1];
     return m.name + "  (" + m.file.substr(0, m.file.find_last_of('.')) + ")";
 }
@@ -428,18 +443,51 @@ int PresetIndex() {
 std::string NewRowText(int r) {
     char buf[64];
     switch (r) {
-    case 0: snprintf(buf, sizeof buf, "Size: %d x %d%s", g_new.width, g_new.height, PresetIndex() < 0 ? " (custom)" : ""); break;
-    case 1: snprintf(buf, sizeof buf, "Width: %d cells", g_new.width); break;
-    case 2: snprintf(buf, sizeof buf, "Height: %d cells", g_new.height); break;
-    case 3: snprintf(buf, sizeof buf, "Terrain: %s", editor::RawPainter::BaseName(g_new.terrain)); break;
-    default: snprintf(buf, sizeof buf, "Players: %d", g_new.players); break;
+    case 0:
+        return lang::trf(PresetIndex() < 0 ? "Size: {1} x {2} (custom)" : "Size: {1} x {2}",
+                         {std::to_string(g_new.width), std::to_string(g_new.height)});
+    case 1: return lang::trf("Width: {1} cells", {std::to_string(g_new.width)});
+    case 2: return lang::trf("Height: {1} cells", {std::to_string(g_new.height)});
+    case 3: return lang::trf("Terrain: {1}", {lang::tr(editor::RawPainter::BaseName(g_new.terrain))});
+    default: snprintf(buf, sizeof buf, "%d", g_new.players); return lang::trf("Players: {1}", {buf});
     }
-    return buf;
 }
 
 int Wrap(int v, int lo, int hi) { return v < lo ? hi : v > hi ? lo : v; }
 
+// Our buttons' fixed texts, in the current language (on creation and on a language change).
+void Relabel(void* scene) {
+    auto set = [&](short c, const char* english) {
+        if (void* b = Find(scene, c)) ((SetText_t)kSetText)(b, lang::tr(english));
+    };
+    set(kCmdSettings, "Settings");
+    set(kCmdEditor, "Map Editor");
+    for (int t = 0; t < kTabCount; ++t) set((short)(kCmdFirstTab + t), kTabNames[t]);
+    set(kCmdMoreAbove, "More above");
+    set(kCmdMoreBelow, "More below");
+    set(kCmdBack, "Back");
+    set(kCmdHint, "Click: next    Right-click: previous    Saved automatically");
+    set(kCmdMapTitle, "Map Editor");
+    set(kCmdMapAbove, "More above");
+    set(kCmdMapBelow, "More below");
+    set(kCmdMapBack, "Back");
+    set(kCmdMapHint, "Built-in maps are always saved under a new name");
+    set(kCmdNewTitle, "New Map");
+    set(kCmdNewCreate, "Create Map");
+    set(kCmdNewBack, "Back");
+    ArmReset(scene, g_resetArmed);
+    for (short c : {kCmdMapAbove, kCmdMapBelow}) {  // right-aligned: re-place for the new width
+        if (void* b = Find(scene, c)) {
+            int w = fonts::TextWidth("WBMd14", lang::tr(c == kCmdMapAbove ? "More above" : "More below"));
+            RECT r = RowRect(c == kCmdMapAbove ? 2 : 2 + kMapRows - 1);
+            Place(b, {622 - w, r.top + 3, 640, r.bottom});
+        }
+    }
+}
+
 void ShowPage(void* scene, Page page) {
+    if (page == kPageSettings && g_page != kPageSettings) RefreshLanguages();
+    Relabel(scene);
     const auto& all = Settings();
     bool settings = page == kPageSettings, maps = page == kPageMaps, fresh = page == kPageNew;
     g_page = page;
@@ -591,6 +639,7 @@ short __thiscall HookInit(void* scene) {
     AddEditorPages(scene);
     // Bottom right: shows the mod is running (placed by Layout).
     AddButton(scene, kVersion, kCmdVersion, 0, {0, 452, 640, 468}, kStyleSmall, kStyleSmall);
+    Relabel(scene);
     Layout(scene);
     g_h.log("menu: Settings and Map Editor added to the main menu");
     if (editor::TakeReturnToMapList()) OpenMapList(scene);
@@ -612,6 +661,10 @@ bool Cycle(void* button, int dir) {
     g_h.log("menu: %s = %s", s.label, s.choices[next].value);
     if (g_h.applySettings) g_h.applySettings();
     PlaySelect();
+    if (strcmp(s.key, "Language") == 0 && g_pageScene) {  // every label changes
+        ShowPage(g_pageScene, kPageSettings);
+        return true;
+    }
     ((SetText_t)kSetText)(button, Label(s).c_str());
     return true;
 }

@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "../game.h"
+#include "../lang.h"
 #include "../layers.h"
 #include "../render/render.h"
 #include "editor.h"
@@ -208,9 +209,12 @@ const Button kButtons[] = {
 };
 constexpr int kBarRows = 9;
 
+// A button's label as shown (Close: the event editor's own word, it has little room).
+const char* Label(const Button& b) { return b.cmd == kClose ? lang::tr("events", b.label) : lang::tr(b.label); }
+
 RECT ButtonRect(const Button& b) {
     int x = kBarX + b.x, y = kBarY + b.row * kRowH;
-    return {x - 3, y - 11, x + (int)strlen(b.label) * kCharW + 3, y + 3};  // text at y is its baseline
+    return {x - 3, y - 11, x + (int)strlen(Label(b)) * kCharW + 3, y + 3};  // text at y is its baseline
 }
 
 bool In(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
@@ -223,22 +227,7 @@ const Button* ButtonAt(int x, int y) {
     return nullptr;
 }
 
-std::vector<std::string> Wrap(const std::string& s, size_t width) {
-    std::vector<std::string> out;
-    size_t at = 0;
-    while (at < s.size()) {
-        size_t n = std::min(width, s.size() - at);
-        if (at + n < s.size()) {
-            size_t cut = s.rfind(' ', at + n);
-            if (cut != std::string::npos && cut > at) n = cut - at;
-        }
-        out.push_back(s.substr(at, n));
-        at += n;
-        while (at < s.size() && s[at] == ' ') ++at;
-    }
-    return out;
-}
-
+// The hint in English (the tests read it); drawn translated.
 std::string MakeHint() {
     if (Count() == 0) return "No events yet: Add makes one (a timed condition and an action).";
     switch (F<uint8_t>(kSEvent, kColumn)) {
@@ -256,22 +245,24 @@ void DrawBar() {
     FillRect(kBarX, 0, kBarX + kBarW, y1, g_tan);
     FillRect(kBarX, y1 - 1, kBarX + kBarW, y1, g_dark);
     FillRect(kBarX + kBarW - 1, 0, kBarX + kBarW, y1, g_dark);
-    Text("EVENTS", kBarX + 6, kBarY, kStyle);
-    Text("Event", kBarX + 6, kBarY + kRowH, kStyle);
-    Text("Condition", kBarX + 6, kBarY + 3 * kRowH, kStyle);
-    Text("Action", kBarX + 6, kBarY + 4 * kRowH, kStyle);
+    Text(lang::tr("EVENTS"), kBarX + 6, kBarY, kStyle);
+    Text(lang::tr("Event"), kBarX + 6, kBarY + kRowH, kStyle);
+    Text(lang::tr("Condition"), kBarX + 6, kBarY + 3 * kRowH, kStyle);
+    Text(lang::tr("Action"), kBarX + 6, kBarY + 4 * kRowH, kStyle);
     uintptr_t e = EventAt(F<short>(kSEvent, kEventIndex));
     bool persistent = e && F<short>(e, 0x20) == 1;
     short cx = game::at<short>(game::CursorX), cy = game::at<short>(game::CursorY);
+    const char *pOn = lang::tr("Persistent: on"), *pOff = lang::tr("Persistent: off");
+    int pChars = (int)std::max(strlen(pOn), strlen(pOff));
     for (const Button& b : kButtons) {
         RECT r = ButtonRect(b);
         bool on = b.cmd == kPersistent && persistent;
-        if (on) FillRect(r.left, r.top, r.left + 15 * kCharW + 6, r.bottom, g_dark);
-        Text(b.cmd == kPersistent ? (persistent ? "Persistent: on" : "Persistent: off") : b.label, r.left + 3, r.bottom - 3,
+        if (on) FillRect(r.left, r.top, r.left + pChars * kCharW + 6, r.bottom, g_dark);
+        Text(b.cmd == kPersistent ? (persistent ? pOn : pOff) : Label(b), r.left + 3, r.bottom - 3,
              on ? kStyleHint : In(r, cx, cy) ? kStyleHover : kStyle);
     }
     g_hint = MakeHint();
-    std::vector<std::string> lines = Wrap(g_hint, 30);
+    std::vector<std::string> lines = Wrap(lang::tr(g_hint.c_str()), 30);
     for (size_t i = 0; i < lines.size() && i < 4; ++i)
         Text(lines[i].c_str(), kBarX + 6, kBarY + (5 + (int)i) * kRowH + 2, kStyleHint);
 }
@@ -364,8 +355,9 @@ void __thiscall HookDraw(void* s, int full) {
         o_Draw(s, full);
     } else {
         DrawPanelBackground();
-        Text("This event has no condition or no action.", 20, 40, kStyle);
-        Text("Remove it (Shift+R) or add one.", 20, 56, kStyle);
+        std::vector<std::string> lines =
+            Wrap(lang::tr("This event has no condition or no action. Remove it (Shift+R) or add one."), 41);
+        for (size_t i = 0; i < lines.size() && i < 3; ++i) Text(lines[i].c_str(), 20, 40 + 16 * (int)i, kStyle);
     }
     DrawBar();
     RecolourScreen();
@@ -569,6 +561,22 @@ void DrawPanelBackground() {
 }
 
 void DrawText(const char* s, int x, int y, int style) { Text(s, x, y, style); }
+
+std::vector<std::string> Wrap(const std::string& s, size_t width) {
+    std::vector<std::string> out;
+    size_t at = 0;
+    while (at < s.size()) {
+        size_t n = std::min(width, s.size() - at);
+        if (at + n < s.size()) {
+            size_t cut = s.rfind(' ', at + n);
+            if (cut != std::string::npos && cut > at) n = cut - at;
+        }
+        out.push_back(s.substr(at, n));
+        at += n;
+        while (at < s.size() && s[at] == ' ') ++at;
+    }
+    return out;
+}
 
 void Highlight(int x0, int y0, int x1, int y1) {
     if (g_dark < 0) FindColours();

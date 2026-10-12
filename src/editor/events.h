@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <string>
+#include <vector>
 
 namespace editor {
 namespace events {
@@ -57,6 +58,8 @@ void DrawPanelBackground();                       // the game's tan event panel
 void DrawText(const char* s, int x, int y, int style);
 bool Hover(int x0, int y0, int x1, int y1);       // the game cursor is inside
 void Highlight(int x0, int y0, int x1, int y1);   // a dark box behind the current choice
+// Text word-wrapped onto lines of at most `width` characters.
+std::vector<std::string> Wrap(const std::string& s, size_t width);
 
 // For the tests (autopilot): the event registry, one line per event:
 // "E<i>[ P] C<type>{field ...} ... -> A<type>{delay field ...} ..."

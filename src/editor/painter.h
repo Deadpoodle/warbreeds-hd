@@ -71,6 +71,10 @@ public:
 
     // Why the last Paint/Fill was refused (empty if it wasn't).
     virtual std::string Message() const { return std::string(); }
+    // Message() for translating it (the shell does; painters stay English): a
+    // pattern with {1}, {2}, ... and the terrain names that fill it, or just
+    // Message() when it is plain text.
+    virtual std::vector<std::string> MessageParts() const { return {Message()}; }
 };
 
 }  // namespace editor

@@ -21,6 +21,7 @@
 //     campaign to the recorded chapter and set before the briefing opens; Start
 //     Over is the stock start.
 #include "campaign.h"
+#include "lang.h"
 
 #include <windows.h>
 #include <stdint.h>
@@ -223,8 +224,8 @@ short __thiscall HookSingleInit(void* scene) {
     g_pending = nullptr;
     AddItem(scene, "", kCmdTitle, 0, 0, true);
     AddItem(scene, "", kCmdContinue, 'C', 1, false);
-    AddItem(scene, "Start Over", kCmdStartOver, 'S', 2, false);
-    AddItem(scene, "Back", kCmdBack, 'B', 3, false);
+    AddItem(scene, lang::tr("Start Over"), kCmdStartOver, 'S', 2, false);
+    AddItem(scene, lang::tr("Back"), kCmdBack, 'B', 3, false);
     return r;
 }
 
@@ -252,13 +253,12 @@ int __thiscall HookSingleCommand(void* scene, void* button) {
         void* title = Find(scene, kCmdTitle);
         void* cont = Find(scene, kCmdContinue);
         if (r.mission > 1 && r.chapter >= 0 && r.set >= 0 && title && cont) {
-            char buf[64];
-            g_texts[0] = info->name;
+            g_texts[0] = lang::tr(info->name);
             if (r.missions >= r.mission)
-                snprintf(buf, sizeof buf, "Continue: mission %d of %d", r.mission, r.missions);
+                g_texts[1] = lang::trf("Continue: mission {1} of {2}",
+                                       {std::to_string(r.mission), std::to_string(r.missions)});
             else
-                snprintf(buf, sizeof buf, "Continue: mission %d", r.mission);
-            g_texts[1] = buf;
+                g_texts[1] = lang::trf("Continue: mission {1}", {std::to_string(r.mission)});
             ((void(__thiscall*)(void*, const char*))kSetText)(title, g_texts[0].c_str());
             ((void(__thiscall*)(void*, const char*))kSetText)(cont, g_texts[1].c_str());
             g_pending = button;

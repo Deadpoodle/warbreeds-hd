@@ -1331,6 +1331,7 @@ std::string SmartPainter::TypeName(int type) const {
 bool SmartPainter::Finish(const TerrainPainter::Result& r, Changes& changed) {
     changed.insert(changed.end(), r.changes.begin(), r.changes.end());
     message_ = r.refused ? r.message : std::string();
+    parts_ = {message_};
     return r.refused == 0;
 }
 
@@ -1352,7 +1353,8 @@ void SmartPainter::Explain(const Grid& grid, Terrain t, int x0, int y0, int x1, 
                         break;
                     }
                 }
-            message_ = std::string(TerrainPainter::TerrainName(t)) + " can't go next to " + what;
+            parts_ = {"{1} can't go next to {2}", TerrainPainter::TerrainName(t), what};
+            message_ = parts_[1] + " can't go next to " + what;
             return;
         }
 }
@@ -1360,6 +1362,7 @@ void SmartPainter::Explain(const Grid& grid, Terrain t, int x0, int y0, int x1, 
 bool SmartPainter::Paint(Grid& grid, int type, int size, int x, int y, Changes& changed) {
     if (type < 0 || type >= TypeCount()) {
         message_ = "No terrain chosen";
+        parts_ = {message_};
         return false;
     }
     Terrain t = tp_.SmartTerrains()[type];
@@ -1371,6 +1374,7 @@ bool SmartPainter::Paint(Grid& grid, int type, int size, int x, int y, Changes& 
 bool SmartPainter::Fill(Grid& grid, int type, int x0, int y0, int x1, int y1, Changes& changed) {
     if (type < 0 || type >= TypeCount()) {
         message_ = "No terrain chosen";
+        parts_ = {message_};
         return false;
     }
     Terrain t = tp_.SmartTerrains()[type];

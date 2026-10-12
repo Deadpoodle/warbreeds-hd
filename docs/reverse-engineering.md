@@ -280,6 +280,19 @@ One entry per investigation, oldest first. Each says what the question was, how 
   - The start shuffle moves each row's clan and human flag to another slot but leaves its team behind.
 - **Detail:** [`re/players-ai.md`](../re/players-ai.md) §2–3 and 7, [`re/save-load.md`](../re/save-load.md), [`src/skirmish_teams.cpp`](../src/skirmish_teams.cpp), [`src/campaign.cpp`](../src/campaign.cpp).
 
+### 2026-10-12: Translations
+
+- **Question:** where does the game's text come from, and can it be replaced from language files?
+- **Found:**
+  - Almost all of it is one Win32 STRINGTABLE in the exe (ids 1–652, 580 used, English). `IGlobalData`'s constructor `0x464d70`, a static initialiser run before WinMain, copies it with `LoadStringA` into a list (data `[0x55dd54]`, count `[0x55dd58]`, index = id − 1, each entry an `IWinString` holding a `char*`). The Gene Lab, Device Lab, SDialog, SOpenDialog, SReward and `MessageBoxRes` call `LoadStringA` themselves.
+  - Hooking the `LoadStringA` import (slot `0x595a3c`) from our DllMain, before those initialisers run, replaces every use. A live language change rebuilds the cached list with the game's own allocator (`0x4eba50` / free `0x4eb770`, so its exit-time free still works) and relabels the text buttons on screen.
+  - Some ids are keys, not text: 82 "WarBreeds" is the window class and the single-instance check; 80–91, 590, 591 and 606 are config and Red Orb Zone keys.
+  - Mission titles are the maps' header names, read by `0x489f00` (three call sites). Chat lines in campaign maps go out through `AAction_Message`'s call to `APlayerRegistry::SendMessage` at `0x419419`. Three `.data` literals (the TCP/IP prompts, "Error No Missions!") are pushed by single instructions.
+  - **The game's bitmap fonts hold their accented letters in Mac Roman order** (é is byte 0x8E, not Windows-1252's 0xE9), and GDI silently drops the bytes Windows-1252 leaves undefined (ç 0x8D, è 0x8F, ê 0x90, ù 0x9D) through an ANSI font. A private in-memory copy of each `.FON` with its FNT `dfCharSet` set to `SYMBOL_CHARSET` passes every byte to its glyph, in `TextOutA`, `DrawTextA` and the measuring calls alike. `ExtTextOutW` with `ETO_GLYPH_INDEX` also draws them, but `DrawTextA`'s word-wrapping would have needed rewriting.
+  - Hard limits: `WText::SetText 0x499da0` copies unbounded into 1024 bytes (briefings); text buttons hold 59 bytes; the info panel 39; the "Squad" word 8; `PostMessage` 81.
+- **Dead end:** fitting every translation into its English's width. Most text has room to spare ("Quitter" against "Quit" on a full menu row), so squeezing is opt-in per string (`~`) for the tight spots the screenshots show.
+- **Detail:** [`src/lang.cpp`](../src/lang.cpp), [`src/fonts.cpp`](../src/fonts.cpp), [`lang/README.txt`](../lang/README.txt), [`tools/lang_check.py`](../tools/lang_check.py).
+
 ## What isn't published, and why
 
 The repository publishes **addresses, names, struct layouts, notes and our own code**. These stay on the developer's machine:

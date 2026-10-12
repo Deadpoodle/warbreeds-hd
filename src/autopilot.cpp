@@ -2542,6 +2542,188 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
         return;
     }
+    if (g_h.mode == 23) {
+        // Languages (tools/langtest.sh sets [Display] Language and Font first).
+        // Everything is clicked by command id or position, never by English text.
+        // Target 0: main menu, the three Settings tabs, the campaign screen and a
+        //   Tanu briefing (and its second page), the mission, the Esc menu.
+        // 1: skirmish setup, a skirmish (Shamans selected, the build list), then
+        //   the Gene Lab and Device Lab screens.
+        // 2: on Settings > Interface, Language cycled through every language (live),
+        //   back to the first.
+        // 3: the map editor's panel on a map.
+        static int acted, shots, cycles;
+        static DWORD at;
+        static std::string last;
+        std::string top = g_h.topScene ? g_h.topScene() : "";
+        std::string key = scene + " / " + top;
+        if (key != last) {
+            last = key;
+            at = now;
+            acted = 0;
+            g_h.log("autopilot: now %s; widgets: %s", key.c_str(), menu::WidgetTexts().c_str());
+        }
+        DWORD in = now - at;
+        void* topScene = nullptr;
+        {
+            short ti = *(short*)0x51bee8;
+            if (ti >= 0 && ti <= 16) topScene = ((void**)0x55aea8)[ti];
+        }
+        auto clickCmd = [&](short cmd) {
+            if (!topScene) return false;
+            void** list = *(void***)((char*)topScene + 0xc);
+            int count = *(int*)((char*)topScene + 0x10);
+            for (int i = 0; list && i < count && i < 256; ++i) {
+                char* w = (char*)list[i];
+                if (!w || *(uintptr_t*)w != 0x50925c || *(short*)(w + 0x20) != cmd) continue;
+                short* r = (short*)(w + 0xc);
+                Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
+                g_h.log("autopilot: click command %#x", cmd);
+                return true;
+            }
+            g_h.log("autopilot: command %#x not found", cmd);
+            return false;
+        };
+        auto shot = [&](const char* what) {
+            char tag[64];
+            snprintf(tag, sizeof tag, "lang%d-%02d-%s", g_h.target, ++shots, what);
+            Save(tag);
+        };
+        // Quit a moment after the last screenshot: the full-screen copy is written a frame later.
+        static DWORD quitAt;
+        static int stage;
+        auto quit = [&]() {
+            if (!quitAt) quitAt = now + 1500;
+            acted = 99;
+            stage = 99;  // nothing more to do (or shoot) while waiting
+        };
+        if (quitAt && now >= quitAt) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            quitAt = 0xffffffff;
+            return;
+        }
+        bool mainMenu = scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos;
+        if (g_h.target == 0) {
+            if (mainMenu && stage == 0 && in > 2500) {
+                shot("menu");
+                clickCmd(0x6c);  // Settings
+                stage = 1;
+                at = now;
+            } else if (mainMenu && stage >= 1 && stage <= 3 && in > 1200) {
+                shot(stage == 1 ? "settings-video" : stage == 2 ? "settings-controls" : "settings-interface");
+                clickCmd(stage < 3 ? (short)(0x79 + stage) : (short)0x7f);  // next tab, then Back
+                ++stage;
+                at = now;
+            } else if (mainMenu && stage == 4 && in > 1200) {
+                DeleteFileA((g_h.dir + "WarBreedsHD-progress.ini").c_str());
+                clickCmd(0x66);  // Campaign
+                stage = 5;
+            } else if (top.find("SSinglePlayer") != std::string::npos && stage == 5 && in > 1500) {
+                shot("campaigns");
+                clickCmd(100);  // Tanu Ascendancy
+                stage = 6;
+            } else if (top.find("SMissionBrief") != std::string::npos && stage == 6 && in > 3000) {
+                shot("briefing");
+                Click({182, 392});  // NEXT page
+                stage = 7;
+                at = now;
+            } else if (top.find("SMissionBrief") != std::string::npos && stage == 7 && in > 1200) {
+                shot("briefing-p2");
+                Click({57, 441});  // ACCEPT
+                stage = 8;
+            } else if (scene == ".?AVSGame@@" && stage == 8 && in > 6000) {
+                render::SetFakeCursor(true, {frameW / 2, frameH / 2});
+                shot("mission");
+                PostKey(WM_KEYDOWN, VK_ESCAPE);
+                PostKey(WM_KEYUP, VK_ESCAPE);
+                stage = 9;
+                at = now;
+            } else if (scene == ".?AVSGame@@" && stage == 9 && in > 1500) {
+                shot("esc-menu");
+                quit();
+                stage = 10;
+            }
+        } else if (g_h.target == 1) {
+            if (mainMenu && stage == 0 && in > 2500) {
+                Click({87, 77});  // Skirmish
+                stage = 1;
+            } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && stage == 1 && in > 2600) {
+                shot("skirmish-setup");
+                Click({437, 457});  // Start
+                stage = 2;
+            } else if (scene == ".?AVSGame@@" && stage == 2 && in > 6000) {
+                shot("skirmish");
+                PostKey(WM_KEYDOWN, 'E');  // select the builders
+                PostKey(WM_KEYUP, 'E');
+                stage = 3;
+                at = now;
+            } else if (scene == ".?AVSGame@@" && stage == 3 && in > 1200) {
+                shot("panel");
+                PostKey(WM_KEYDOWN, 'B');  // the build list
+                PostKey(WM_KEYUP, 'B');
+                stage = 4;
+                at = now;
+            } else if (scene == ".?AVSGame@@" && stage == 4 && in > 1200) {
+                shot("build-list");
+                quit();
+            }
+        } else if (g_h.target == 2) {
+            if (mainMenu && stage == 0 && in > 2500) {
+                clickCmd(0x6c);  // Settings
+                stage = 1;
+                at = now;
+            } else if (mainMenu && stage == 1 && in > 1200) {
+                clickCmd(0x7b);  // Interface
+                stage = 2;
+                at = now;
+            } else if (mainMenu && stage == 2 && in > 1200) {
+                // The Language row: its command is the last setting's (first setting 0x80).
+                short languageCmd = -1;
+                void** list = topScene ? *(void***)((char*)topScene + 0xc) : nullptr;
+                int count = topScene ? *(int*)((char*)topScene + 0x10) : 0;
+                for (int i = 0; list && i < count && i < 256; ++i) {
+                    char* w = (char*)list[i];
+                    if (w && *(uintptr_t*)w == 0x50925c && *(short*)(w + 0x20) >= 0x80 && *(short*)(w + 0x20) < 0xa0)
+                        languageCmd = std::max(languageCmd, *(short*)(w + 0x20));
+                }
+                char tag[32];
+                snprintf(tag, sizeof tag, "language-%d", cycles);
+                shot(tag);
+                g_h.log("autopilot: settings now: %s", menu::WidgetTexts().c_str());
+                if (cycles < 4 && languageCmd > 0) {
+                    clickCmd(languageCmd);
+                    ++cycles;
+                    at = now;
+                } else {
+                    clickCmd(0x7f);  // Back
+                    stage = 3;
+                    at = now;
+                }
+            } else if (mainMenu && stage == 3 && in > 1200) {
+                shot("menu-after");
+                quit();
+            }
+        } else if (g_h.target == 3) {
+            if (mainMenu && stage == 0 && in > 2500) {
+                clickCmd(0x6d);  // Map Editor
+                stage = 1;
+                at = now;
+            } else if (mainMenu && stage == 1 && in > 1200) {
+                shot("map-list");
+                clickCmd(0xa1);  // the first map
+                stage = 2;
+            } else if (scene == ".?AVSGame@@" && stage == 2 && in > 5000) {
+                shot("editor");
+                quit();
+            }
+        }
+        if (in > 60000 && acted != 99) {
+            g_h.log("autopilot: stuck in %s; quitting", key.c_str());
+            quit();
+        }
+        return;
+    }
     if (g_h.mode == 20) {
         // Multiplayer. Target 0: open the connection screen. Target 1 hosts a
         // TCP/IP game as "HOST"; target 2 joins it at 127.0.0.1 as "JOIN"

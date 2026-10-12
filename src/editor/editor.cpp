@@ -48,6 +48,7 @@
 #include <vector>
 
 #include "../game.h"
+#include "../lang.h"
 #include "../layers.h"
 #include "../render/render.h"
 #include "raw_paint.h"
@@ -275,9 +276,12 @@ TabPage* g_pages[kTabCount];  // modules' tabs (Events, AI)
 uintptr_t Game() { return kGame; }
 uintptr_t World() { return *(uintptr_t*)kWorld; }
 
+// Shown translated: a whole-string lookup, so plain text is covered here and
+// text built from pieces comes in already translated (lang::trf). Logged as given.
 void SetStatus(const std::string& s, bool log = true) {
-    if (s != g.status && log) g_h.log("editor: %s", s.c_str());
-    g.status = s;
+    std::string shown = lang::tr(s.c_str());
+    if (shown != g.status && log) g_h.log("editor: %s", s.c_str());
+    g.status = shown;
 }
 
 bool Dirty() { return g.dirtySinceSave || g.undo.size() != g.savedAt || events::Dirty() || ai::Dirty(); }
@@ -319,7 +323,7 @@ void Unbind(int handle) {
 
 // --- applying records --------------------------------------------------------------
 
-std::string MapNameShown() { return g.mapName.empty() ? std::string("(the file name)") : g.mapName; }
+std::string MapNameShown() { return g.mapName.empty() ? std::string(lang::tr("(the file name)")) : g.mapName; }
 
 MapRec CaptureMap() {
     MapRec m;
@@ -420,7 +424,7 @@ void Undo() {
     Apply(g.undo.back(), false);
     g.redo.push_back(std::move(g.undo.back()));
     g.undo.pop_back();
-    SetStatus("Undone: " + g.redo.back().what);
+    SetStatus(lang::trf("Undone: {1}", {g.redo.back().what}));
 }
 
 void Redo() {
@@ -428,7 +432,7 @@ void Redo() {
     Apply(g.redo.back(), true);
     g.undo.push_back(std::move(g.redo.back()));
     g.redo.pop_back();
-    SetStatus("Redone: " + g.undo.back().what);
+    SetStatus(lang::trf("Redone: {1}", {g.undo.back().what}));
 }
 
 // Thing operations that go into a record.
@@ -485,6 +489,7 @@ constexpr int kStripW = 200;  // the collapsed panel: one row
 constexpr int kPoolSize = 80;
 constexpr int kCommonRow = kPageFirstRow + kPageRows;  // Undo/Redo/Check; then Save As..., then 2 status rows
 constexpr int kStatusChars = 32;  // per status row (the panel is about 35 of the game's capitals wide)
+constexpr int kHelpChars = 31;    // per row of a page's help text
 constexpr int kStyle = 25, kStyleLit = 0x1b;  // WBMd14 white / yellow
 
 // Item ids of the built-in rows: action * 100 + argument.
@@ -637,17 +642,17 @@ void BuildPanel() {
     g_h.log("editor: panel built (%zu buttons)", g_pool.size());
 }
 
-// Status text word-wrapped onto rows of kStatusChars.
-std::vector<std::string> Wrap(const std::string& s, int rows) {
+// Status text word-wrapped onto rows of kStatusChars (or `width`).
+std::vector<std::string> Wrap(const std::string& s, int rows, int width = kStatusChars) {
     std::vector<std::string> out;
     size_t at = 0;
     while (at < s.size() && (int)out.size() < rows) {
-        if (s.size() - at <= (size_t)kStatusChars) {
+        if (s.size() - at <= (size_t)width) {
             out.push_back(s.substr(at));
             break;
         }
-        size_t cut = s.rfind(' ', at + kStatusChars);
-        if (cut == std::string::npos || cut <= at) cut = at + kStatusChars;
+        size_t cut = s.rfind(' ', at + width);
+        if (cut == std::string::npos || cut <= at) cut = at + width;
         out.push_back(s.substr(at, cut - at));
         at = s[cut] == ' ' ? cut + 1 : cut;
     }
@@ -659,7 +664,7 @@ void Add(std::vector<PanelItem>& v, int row, int x, const std::string& text, int
     PanelItem it;
     it.row = row;
     it.x = x;
-    it.text = text;
+    it.text = lang::tr(text.c_str());  // plain text; built text comes translated (lang::trf)
     it.id = id;
     it.lit = lit;
     it.swatch = swatch;
@@ -667,6 +672,19 @@ void Add(std::vector<PanelItem>& v, int row, int x, const std::string& text, int
 }
 
 std::string Num(int n) { return std::to_string(n); }
+std::string Tr(const std::string& s) { return lang::tr(s.c_str()); }
+
+// A module tab's help from page row 2: each paragraph translated and word-wrapped.
+void Help(std::vector<PanelItem>& v, std::initializer_list<const char*> paragraphs) {
+    int row = 2;
+    for (const char* p : paragraphs)
+        for (const std::string& line : Wrap(lang::tr(p), kPageRows - row, kHelpChars)) {
+            PanelItem t;
+            t.row = row++;
+            t.text = line;
+            v.push_back(t);
+        }
+}
 
 // --- pages -------------------------------------------------------------------------
 
@@ -718,22 +736,28 @@ int PlayerSwatch(int i) {
 
 void PlayerSelector(std::vector<PanelItem>& v, int row) {
     PlayerRec r = world::CapturePlayer(g.player);
-    std::string s = "Player " + Num(g.player + 1) + ": " +
-                    (r.type == world::kNone ? std::string("None") : std::string(world::RaceName(r.race)));
+    std::string s = lang::trf("Player {1}: {2}",
+                              {Num(g.player + 1), lang::tr(r.type == world::kNone ? "None" : world::RaceName(r.race))});
     Add(v, row, 0, "<", Id(kActPlayerPrev));
     Add(v, row, 22, s, -1, false, PlayerSwatch(g.player));
     Add(v, row, 236, ">", Id(kActPlayerNext));
 }
 
+// A palette entry as shown (the raw painter names a picked odd tile "Tile <id>").
+std::string TypeShown(int t) {
+    std::string s = g.painter->TypeName(t);
+    return s.compare(0, 5, "Tile ") == 0 ? lang::trf("Tile {1}", {s.substr(5)}) : Tr(s);
+}
+
 void TerrainPage(std::vector<PanelItem>& v) {
     int pages = std::max(1, (g.painter->TypeCount() + kPalRows - 1) / kPalRows);
     g.page = std::clamp(g.page, 0, pages - 1);
-    Add(v, 0, 0, pages > 1 ? "Terrain " + Num(g.page + 1) + "/" + Num(pages) : "Terrain");
+    Add(v, 0, 0, pages > 1 ? lang::trf("Terrain {1}/{2}", {Num(g.page + 1), Num(pages)}) : "Terrain");
     if (g.page > 0) Add(v, 0, 150, "< Prev", Id(kActPrev));
     if (g.page + 1 < pages) Add(v, 0, 205, "Next >", Id(kActNext));
     for (int i = 0; i < kPalRows; ++i) {
         int t = g.page * kPalRows + i;
-        if (t < g.painter->TypeCount()) Add(v, 1 + i, 12, g.painter->TypeName(t), Id(kActPal, i), t == g.type);
+        if (t < g.painter->TypeCount()) Add(v, 1 + i, 12, TypeShown(t), Id(kActPal, i), t == g.type);
     }
     Add(v, 1 + kPalRows, 0, "Brush");
     static const int kSizes[] = {1, 2, 3, 5};
@@ -766,7 +790,7 @@ void UnitsPage(std::vector<PanelItem>& v) {
         int pages = std::max(1, ((int)list.size() + kUnitRows - 1) / kUnitRows);
         g.unitPage = std::clamp(g.unitPage, 0, pages - 1);
         if (pages > 1) {
-            Add(v, 2, 0, "Page " + Num(g.unitPage + 1) + "/" + Num(pages));
+            Add(v, 2, 0, lang::trf("Page {1}/{2}", {Num(g.unitPage + 1), Num(pages)}));
             if (g.unitPage > 0) Add(v, 2, 150, "< Prev", Id(kActUnitPrev));
             if (g.unitPage + 1 < pages) Add(v, 2, 205, "Next >", Id(kActUnitNext));
         }
@@ -780,25 +804,26 @@ void UnitsPage(std::vector<PanelItem>& v) {
     int id = g.selHandle ? IdOf(g.selHandle) : kNoThing;
     ThingRec r;
     if (id == kNoThing || !world::Capture(id, r)) {
-        Add(v, 3, 0, "Click a thing to select it,");
-        Add(v, 4, 0, "drag it to move it");
+        int row = 3;
+        for (const std::string& line : Wrap(lang::tr("Click a thing to select it, drag it to move it"), 8, kHelpChars))
+            Add(v, row++, 0, line);
         return;
     }
-    std::string owner = r.owner < 8 ? " (P" + Num(r.owner + 1) + ")" : "";
-    Add(v, 2, 0, world::Name(r.type) + owner, -1, false, r.owner < 8 ? PlayerSwatch(r.owner) : -1);
+    Add(v, 2, 0, r.owner < 8 ? lang::trf("{1} (P{2})", {world::Name(r.type), Num(r.owner + 1)}) : world::Name(r.type), -1,
+        false, r.owner < 8 ? PlayerSwatch(r.owner) : -1);
     if (world::IsCreature(r.type) || world::IsDevice(r.type)) {
-        Add(v, 3, 0, "Hit points " + Num(r.hp) + "/" + Num(world::MaxHp(id)));
+        Add(v, 3, 0, lang::trf("Hit points {1}/{2}", {Num(r.hp), Num(world::MaxHp(id))}));
         Add(v, 3, 190, "-", Id(kActHpDown));
         Add(v, 3, 215, "+", Id(kActHpUp));
     }
     if (world::IsCreature(r.type)) {
-        Add(v, 4, 0, "Rank: " + Rank(r.vet), Id(kActRank));
+        Add(v, 4, 0, lang::trf("Rank: {1}", {Tr(Rank(r.vet))}), Id(kActRank));
         int row = 5;
         static const char* const kSlot[] = {"Arm 1", "Head", "Arm 2", "Slot 4"};
         for (int s = 0; s < 4; ++s)
             if (world::SlotUsed(r.type, s)) {
                 std::string name = s == 1 && world::SlotGroup(r.type, s) == 0 ? "Arm 3" : kSlot[s];
-                Add(v, row++, 0, name + ": " + world::GizmoName(r.gizmo[s]), Id(kActGizmo, s));
+                Add(v, row++, 0, lang::trf("{1}: {2}", {Tr(name), Tr(world::GizmoName(r.gizmo[s]))}), Id(kActGizmo, s));
             }
     }
     Add(v, 11, 0, "Delete", Id(kActDelete));
@@ -809,14 +834,14 @@ void PlayersPage(std::vector<PanelItem>& v) {
     PlayerSelector(v, 0);
     PlayerRec r = world::CapturePlayer(g.player);
     bool fixed = g.player == 0 || g.player == world::LocalPlayerIndex();
-    Add(v, 1, 0, std::string("Type: ") + world::TypeName(r.type), fixed ? -1 : Id(kActType));
+    Add(v, 1, 0, lang::trf("Type: {1}", {lang::tr(world::TypeName(r.type))}), fixed ? -1 : Id(kActType));
     if (r.type == world::kNone) {
         Add(v, 3, 0, "Set a type to add this player");
         if (g.player >= world::Supported()) Add(v, 4, 0, "(beyond Players supported)");
         return;
     }
-    Add(v, 2, 0, std::string("Race: ") + world::RaceName(r.race), Id(kActRace));
-    Add(v, 3, 0, "Start: " + Num(r.startX) + "," + Num(r.startY));
+    Add(v, 2, 0, lang::trf("Race: {1}", {lang::tr(world::RaceName(r.race))}), Id(kActRace));
+    Add(v, 3, 0, lang::trf("Start: {1},{2}", {Num(r.startX), Num(r.startY)}));
     Add(v, 5, 0, "Clan");
     Add(v, 5, 110, "CGK");
     Add(v, 5, 165, "Available");
@@ -831,15 +856,15 @@ void PlayersPage(std::vector<PanelItem>& v) {
 
 void MapPage(std::vector<PanelItem>& v) {
     if (g.phase == kMapNaming)
-        Add(v, 0, 0, "Name: " + g.mapNameEdit + "_", Id(kActName), true);
+        Add(v, 0, 0, lang::trf("Name: {1}", {g.mapNameEdit + "_"}), Id(kActName), true);
     else
-        Add(v, 0, 0, "Name: " + MapNameShown(), Id(kActName));
-    Add(v, 1, 0, "Size: " + Num(g_grid.Width()) + " x " + Num(g_grid.Height()) + " cells");
-    Add(v, 2, 0, std::string("Fog: ") + world::FogName(g.fogMode), Id(kActFog));
-    Add(v, 3, 0, "Players supported: " + Num(world::Supported()));
+        Add(v, 0, 0, lang::trf("Name: {1}", {MapNameShown()}), Id(kActName));
+    Add(v, 1, 0, lang::trf("Size: {1} x {2} cells", {Num(g_grid.Width()), Num(g_grid.Height())}));
+    Add(v, 2, 0, lang::trf("Fog: {1}", {lang::tr(world::FogName(g.fogMode))}), Id(kActFog));
+    Add(v, 3, 0, lang::trf("Players supported: {1}", {Num(world::Supported())}));
     Add(v, 3, 190, "-", Id(kActSupDown));
     Add(v, 3, 215, "+", Id(kActSupUp));
-    Add(v, 4, 0, "Recommended: " + Num(world::Recommended()));
+    Add(v, 4, 0, lang::trf("Recommended: {1}", {Num(world::Recommended())}));
     Add(v, 4, 190, "-", Id(kActRecDown));
     Add(v, 4, 215, "+", Id(kActRecUp));
     Add(v, 6, 0, "Name: click, type, Enter");
@@ -847,9 +872,9 @@ void MapPage(std::vector<PanelItem>& v) {
 }
 
 void FindingsPage(std::vector<PanelItem>& v) {
-    Add(v, 0, 0, g.findings.empty() ? "Map check: no problems found"
-                                     : "Map check: " + Num((int)g.findings.size()) + " warning" +
-                                           (g.findings.size() == 1 ? "" : "s"));
+    Add(v, 0, 0, g.findings.empty()       ? std::string("Map check: no problems found")
+                 : g.findings.size() == 1 ? lang::trf("Map check: {1} warning", {Num(1)})
+                                          : lang::trf("Map check: {1} warnings", {Num((int)g.findings.size())}));
     int row = 1;
     for (size_t i = 0; i < g.findings.size() && row < kPageRows - 1; ++i)
         for (const std::string& line : Wrap(g.findings[i].text, 2))
@@ -860,14 +885,14 @@ void FindingsPage(std::vector<PanelItem>& v) {
 // The current tool, for the folded panel ("Sand 3").
 std::string ToolText() {
     switch (g.tab) {
-    case kTabTerrain: return g.painter->TypeName(g.type) + " " + Num(g.brush);
+    case kTabTerrain: return lang::trf("{1} {2}", {TypeShown(g.type), Num(g.brush)});
     case kTabThings:
         return g_thingList.empty() ? "" : g_thingList[std::clamp(g.thingItem, 0, (int)g_thingList.size() - 1)].name;
     case kTabUnits:
-        if (g.unitMode == kModeSelect || UnitList().empty()) return "Select";
+        if (g.unitMode == kModeSelect || UnitList().empty()) return lang::tr("Select");
         return UnitList()[std::clamp(g.unitItem, 0, (int)UnitList().size() - 1)].name;
-    case kTabPlayers: return "P" + Num(g.player + 1) + " start";
-    default: return g_pages[g.tab] ? g_pages[g.tab]->Label() : kTabLabels[g.tab];
+    case kTabPlayers: return lang::trf("P{1} start", {Num(g.player + 1)});
+    default: return lang::tr(g_pages[g.tab] ? g_pages[g.tab]->Label() : kTabLabels[g.tab]);
     }
 }
 
@@ -879,7 +904,7 @@ void UpdatePanel() {
         Add(common, 0, 0, "Show (Tab)", Id(kActCollapse));
         Add(common, 0, 96, ToolText().substr(0, 13));
     } else {
-        std::string title = "Map Editor: " + g.title;
+        std::string title = lang::trf("Map Editor: {1}", {g.title});
         if (title.size() > 22) title = title.substr(0, 21) + ".";
         Add(common, 0, 0, title + (Dirty() ? " *" : ""));
         Add(common, 0, 212, "Hide", Id(kActCollapse));
@@ -956,9 +981,16 @@ bool WorldAt(int sx, int sy, int& wx, int& wy) {
     return g_grid.Inside(wx >> 6, wy >> 6);
 }
 
+// Why the painter refused, translated (painters speak English, for the log and tests).
+std::string PainterMessage() {
+    std::vector<std::string> p = g.painter->MessageParts();
+    if (p.size() == 3) return lang::trf(p[0].c_str(), {Tr(p[1]), Tr(p[2])});
+    return p.empty() ? std::string() : Tr(p[0]);
+}
+
 void PaintAt(int cx, int cy) {
     Changes ch;
-    if (!g.painter->Paint(g_grid, g.type, g.brush, cx, cy, ch)) SetStatus(g.painter->Message());
+    if (!g.painter->Paint(g_grid, g.type, g.brush, cx, cy, ch)) SetStatus(PainterMessage());
     if (!ch.empty()) Redraw();
 }
 
@@ -983,12 +1015,12 @@ void BeginStroke(bool fill, int cx, int cy) {
     g.fillY = cy;
 }
 
-void EndStroke(const char* what) {
+void EndStroke(const char* pattern) {  // "Painted: {1} cells"
     g.drag = kNoDrag;
     Changes net = Diff(g.strokeBefore);
     if (net.empty()) return;
     Edit e;
-    e.what = std::string(what) + ": " + Num((int)net.size()) + " cells";
+    e.what = lang::trf(pattern, {Num((int)net.size())});
     Op op;
     op.kind = Op::kCells;
     op.cells = std::move(net);
@@ -1027,8 +1059,8 @@ void EndThingsDrag() {
     g.drag = kNoDrag;
     std::string name = g_thingList.empty() ? std::string() : g_thingList[g.thingItem].name;
     if (g.dragCount) {
-        g.building.what = "Placed " + Num(g.dragCount) + " " + name;
-        SetStatus(g.building.what + (g.dragNote.empty() ? "" : "; " + g.dragNote));
+        g.building.what = lang::trf("Placed {1} {2}", {Num(g.dragCount), name});
+        SetStatus(g.dragNote.empty() ? g.building.what : lang::trf("{1}; {2}", {g.building.what, g.dragNote}));
         Push(std::move(g.building));
     } else {
         SetStatus(g.dragNote.empty() ? "Nothing placed" : g.dragNote);
@@ -1047,7 +1079,7 @@ void RemoveThingAt(int wx, int wy) {
     Edit e;
     std::string name = world::Name(world::TypeOf(t));
     RemoveRecorded(e, id);
-    e.what = "Removed a " + name;
+    e.what = lang::trf("Removed a {1}", {name});
     SetStatus(e.what);
     Push(std::move(e));
 }
@@ -1062,7 +1094,7 @@ void FillCrops(int type) {
         for (int tx = 0; tx < world::TilesW(); ++tx)
             if (world::TerrainType(tx, ty) == 2 && PutRecorded(e, type, world::kNeutral, tx * 32 + 16, ty * 32 + 16, nullptr, why) != kNoThing)
                 ++n;
-    e.what = n ? "Filled cropland: " + Num(n) + " " + world::Name(type) : "No empty cropland";
+    e.what = n ? lang::trf("Filled cropland: {1} {2}", {Num(n), world::Name(type)}) : lang::tr("No empty cropland");
     SetStatus(e.what);
     Push(std::move(e));
 }
@@ -1073,7 +1105,7 @@ void ClearCrops() {
     for (int id = 0; id < world::ThingCount(); ++id)
         if (uintptr_t t = world::Thing(id))
             if (world::IsCrop(world::TypeOf(t)) && RemoveRecorded(e, id)) ++n;
-    e.what = "Cleared " + Num(n) + " crops";
+    e.what = lang::trf("Cleared {1} crops", {Num(n)});
     SetStatus(e.what);
     Push(std::move(e));
 }
@@ -1090,8 +1122,8 @@ void PlaceUnitAt(int wx, int wy) {
         SetStatus(why);
         return;
     }
-    e.what = "Placed a " + en.name + " for player " + Num(g.player + 1);
-    SetStatus(e.what + (why.empty() ? "" : " (" + why + ")"));
+    e.what = lang::trf("Placed a {1} for player {2}", {en.name, Num(g.player + 1)});
+    SetStatus(why.empty() ? e.what : lang::trf("{1} ({2})", {e.what, why}));
     Push(std::move(e));
 }
 
@@ -1101,7 +1133,8 @@ void SelectThing(int id) {
     if (id != kNoThing) {
         ThingRec r;
         world::Capture(id, r);
-        SetStatus("Selected " + world::Name(r.type) + " at " + Num((r.x + 16) / 64) + "," + Num((r.y + 16) / 64), false);
+        SetStatus(lang::trf("Selected {1} at {2},{3}", {world::Name(r.type), Num((r.x + 16) / 64), Num((r.y + 16) / 64)}),
+                  false);
     }
 }
 
@@ -1116,7 +1149,7 @@ void MoveSelected(int wx, int wy) {
     if (nid == kNoThing) {
         Bind(g.selHandle, world::Restore(old));
         ShowSelection();
-        SetStatus("Can't move it there: " + why);
+        SetStatus(lang::trf("Can't move it there: {1}", {why}));
         return;
     }
     if (world::IsCrop(old.type) && old.extra > 0) F<int>(world::Thing(nid), 0x28) = old.extra;
@@ -1129,7 +1162,7 @@ void MoveSelected(int wx, int wy) {
     op.tb = old;
     world::Capture(nid, op.ta);
     e.ops.push_back(op);
-    e.what = "Moved the " + world::Name(old.type);
+    e.what = lang::trf("Moved the {1}", {world::Name(old.type)});
     SetStatus(e.what);
     Push(std::move(e));
     ShowSelection();
@@ -1144,7 +1177,7 @@ void DeleteSelected() {
     Edit e;
     std::string name = world::Name(world::TypeOf(world::Thing(id)));
     RemoveRecorded(e, id);
-    e.what = "Deleted the " + name;
+    e.what = lang::trf("Deleted the {1}", {name});
     g.selHandle = 0;
     ShowSelection();
     SetStatus(e.what);
@@ -1178,7 +1211,7 @@ void ChangeSelected(const std::function<void(ThingRec&)>& change, const std::str
     e.what = what;
     e.merge = merge;
     ShowSelection();
-    SetStatus(what + " (" + world::Name(r.type) + ")");
+    SetStatus(lang::trf("{1} ({2})", {what, world::Name(r.type)}));
     Push(std::move(e));
 }
 
@@ -1245,11 +1278,11 @@ void ChangeMap(const std::function<void(MapRec&)>& change, const std::string& wh
 
 void SetStartPoint(int cx, int cy) {
     if (!world::Player(g.player)) {
-        SetStatus("Player " + Num(g.player + 1) + " is None: set its type first");
+        SetStatus(lang::trf("Player {1} is None: set its type first", {Num(g.player + 1)}));
         return;
     }
     ChangePlayer([&](PlayerRec& r) { r.startX = cx, r.startY = cy; },
-                 "Player " + Num(g.player + 1) + "'s start: " + Num(cx) + "," + Num(cy));
+                 lang::trf("Player {1}'s start: {2},{3}", {Num(g.player + 1), Num(cx), Num(cy)}));
 }
 
 // --- checking ---------------------------------------------------------------------
@@ -1260,8 +1293,8 @@ void RunCheck(bool show) {
     for (const Finding& f : g.findings) g_h.log("editor:   %s", f.text.c_str());
     if (show) {
         g.showFindings = true;
-        SetStatus(g.findings.empty() ? "Map check: no problems found"
-                                     : "Map check: " + Num((int)g.findings.size()) + " warning(s)");
+        SetStatus(g.findings.empty() ? std::string("Map check: no problems found")
+                                     : lang::trf("Map check: {1} warning(s)", {Num((int)g.findings.size())}));
     }
 }
 
@@ -1286,7 +1319,8 @@ std::string SuggestName() {
 }
 
 void ShowNaming() {
-    SetStatus("Name: " + g.name + "_   Enter saves" + (g.testAfter ? ", then starts a test skirmish" : ""));
+    SetStatus(g.testAfter ? lang::trf("Name: {1}_   Enter saves, then starts a test skirmish", {g.name})
+                          : lang::trf("Name: {1}_   Enter saves", {g.name}));
 }
 
 void StartNaming(bool test) {
@@ -1322,7 +1356,7 @@ void StepProcessing() {
     while (F<uint16_t>(guide, 0x24) < n && GetTickCount() - t0 < 40)
         ((void(__thiscall*)(uintptr_t))kGuideConnect)(guide);
     if (F<uint16_t>(guide, 0x24) < n) {
-        SetStatus("Processing map " + std::to_string(F<uint16_t>(guide, 0x24) * 100 / n) + "%", false);
+        SetStatus(lang::trf("Processing map {1}%", {std::to_string(F<uint16_t>(guide, 0x24) * 100 / n)}), false);
         return;
     }
     // ConnectStep finishes (prune, per-tile lookup) on the call after the last pair, unless
@@ -1390,8 +1424,9 @@ void FinishSave() {
     g.dirtySinceSave = false;
     g.title = BaseName(g.savePath);
     g_h.log("editor: saved %s (%lu bytes)", g.savePath.c_str(), fa.nFileSizeLow);
-    std::string warn = g.findings.empty() ? "" : "; " + Num((int)g.findings.size()) + " warning(s): Check";
-    SetStatus("Saved " + BaseName(g.savePath) + ".WBM" + warn);
+    SetStatus(g.findings.empty()
+                  ? lang::trf("Saved {1}.WBM", {BaseName(g.savePath)})
+                  : lang::trf("Saved {1}.WBM; {2} warning(s): Check", {BaseName(g.savePath), Num((int)g.findings.size())}));
     if (g_h.debug) WriteDebugDiff();
     if (g.testAfter) StartTest(g.savePath);
 }
@@ -1401,7 +1436,7 @@ void ConfirmName() {
     std::string n = g.name;
     if (n.empty()) return;
     if (IsShippedMapName(n)) {
-        SetStatus(n + " is a built-in map; pick another name");
+        SetStatus(lang::trf("{1} is a built-in map; pick another name", {n}));
         return;
     }
     std::string path = g_h.dir + "DATA\\MAPS\\" + n + ".WBM";
@@ -1409,7 +1444,7 @@ void ConfirmName() {
                                     : !g.isNew && !g.map.shipped && _stricmp(path.c_str(), g.map.path.c_str()) == 0;
     if (FileExists(path) && !own && !g.replaceArmed) {
         g.replaceArmed = true;
-        SetStatus(n + " exists: Enter replaces it");
+        SetStatus(lang::trf("{1} exists: Enter replaces it", {n}));
         return;
     }
     g.savePath = path;
@@ -1424,7 +1459,7 @@ void ConfirmMapName() {
         SetStatus("Name unchanged");
         return;
     }
-    ChangeMap([&](MapRec& m) { m.name = n; }, "Map name: " + n);
+    ChangeMap([&](MapRec& m) { m.name = n; }, lang::trf("Map name: {1}", {n}));
 }
 
 // --- the editor's lifetime ---------------------------------------------------------
@@ -1658,7 +1693,7 @@ void CycleGizmo(int slot, bool back) {
                 t.gizmo[base + 2] = 0x15;
             }
         },
-        "Gizmo: " + world::GizmoName(next), "");
+        lang::trf("Gizmo: {1}", {Tr(world::GizmoName(next))}), "");
 }
 
 // Fold the panel to its strip, or open it again; the tool stays as it was.
@@ -1680,10 +1715,10 @@ void DoAction(int id, bool right) {
         // A module's tab opens its editor on every click, so it reopens after Esc.
         if (g_pages[arg]) g_pages[arg]->OnShow();
         break;
-    case kActPal: g.type = g.page * kPalRows + arg; SetStatus("Terrain: " + g.painter->TypeName(g.type)); break;
+    case kActPal: g.type = g.page * kPalRows + arg; SetStatus(lang::trf("Terrain: {1}", {TypeShown(g.type)})); break;
     case kActPrev: --g.page; break;
     case kActNext: ++g.page; break;
-    case kActBrush: g.brush = arg; SetStatus("Brush " + std::to_string(arg)); break;
+    case kActBrush: g.brush = arg; SetStatus(lang::trf("Brush {1}", {std::to_string(arg)})); break;
     case kActUndo: Undo(); break;
     case kActRedo: Redo(); break;
     case kActCheck: RunCheck(true); break;
@@ -1691,7 +1726,7 @@ void DoAction(int id, bool right) {
     case kActCollapse: ToggleCollapsed(); break;
     case kActThing:
         g.thingItem = arg;
-        SetStatus(g_thingList[arg].name + ": click the map to place");
+        SetStatus(lang::trf("{1}: click the map to place", {g_thingList[arg].name}));
         break;
     case kActFill: FillCrops(arg); break;
     case kActClearCrops: ClearCrops(); break;
@@ -1706,7 +1741,7 @@ void DoAction(int id, bool right) {
         break;
     case kActUnit:
         g.unitItem = g.unitPage * kUnitRows + arg;
-        SetStatus(UnitList()[g.unitItem].name + " for player " + Num(g.player + 1) + ": click the map");
+        SetStatus(lang::trf("{1} for player {2}: click the map", {UnitList()[g.unitItem].name, Num(g.player + 1)}));
         break;
     case kActUnitPrev: --g.unitPage; break;
     case kActUnitNext: ++g.unitPage; break;
@@ -1717,11 +1752,11 @@ void DoAction(int id, bool right) {
         int maxHp = world::MaxHp(IdOf(g.selHandle));
         int step = right ? 1 : std::max(1, maxHp / 10);
         ChangeSelected([&](ThingRec& r) { r.hp = std::clamp(r.hp + (act == kActHpUp ? step : -step), 1, std::max(1, maxHp)); },
-                       "Hit points", "hp" + Num(g.selHandle));
+                       lang::tr("Hit points"), "hp" + Num(g.selHandle));
         break;
     }
     case kActRank:
-        ChangeSelected([&](ThingRec& r) { r.vet = (r.vet + (right ? 3 : 1)) % 4; }, "Rank changed", "");
+        ChangeSelected([&](ThingRec& r) { r.vet = (r.vet + (right ? 3 : 1)) % 4; }, lang::tr("Rank changed"), "");
         break;
     case kActGizmo: CycleGizmo(arg, right); break;
     case kActDelete: DeleteSelected(); break;
@@ -1729,19 +1764,19 @@ void DoAction(int id, bool right) {
         int cur = world::CapturePlayer(g.player).type;
         int next = (cur + (right ? 3 : 1)) % 4;
         ChangePlayer([&](PlayerRec& r) { r.type = next; },
-                     "Player " + Num(g.player + 1) + ": " + world::TypeName(next));
+                     lang::trf("Player {1}: {2}", {Num(g.player + 1), lang::tr(world::TypeName(next))}));
         break;
     }
     case kActRace: {
         int next = (world::CapturePlayer(g.player).race + (right ? 3 : 1)) % 4;
         ChangePlayer([&](PlayerRec& r) { r.race = next; },
-                     "Player " + Num(g.player + 1) + ": " + world::RaceName(next));
+                     lang::trf("Player {1}: {2}", {Num(g.player + 1), lang::tr(world::RaceName(next))}));
         break;
     }
     case kActCgk:
         ChangePlayer([&](PlayerRec& r) { r.cgk[arg] = (r.cgk[arg] + (right ? 5 : 1)) % 6; },
-                     std::string("CGK ") + world::RaceName(arg) + ": " +
-                         Num((world::CapturePlayer(g.player).cgk[arg] + (right ? 5 : 1)) % 6));
+                     lang::trf("CGK {1}: {2}", {lang::tr(world::RaceName(arg)),
+                                                Num((world::CapturePlayer(g.player).cgk[arg] + (right ? 5 : 1)) % 6)}));
         break;
     case kActAvail:
         if (world::CapturePlayer(g.player).race == arg) {
@@ -1749,7 +1784,8 @@ void DoAction(int id, bool right) {
             break;
         }
         ChangePlayer([&](PlayerRec& r) { r.avail[arg] = !r.avail[arg]; },
-                     std::string(world::RaceName(arg)) + (world::CapturePlayer(g.player).avail[arg] ? " not available" : " available"));
+                     lang::trf(world::CapturePlayer(g.player).avail[arg] ? "{1} not available" : "{1} available",
+                               {lang::tr(world::RaceName(arg))}));
         break;
     case kActName:
         if (g.phase == kMapNaming) {
@@ -1762,24 +1798,24 @@ void DoAction(int id, bool right) {
         break;
     case kActFog: {
         int next = (g.fogMode + (right ? 2 : 1)) % 3;
-        ChangeMap([&](MapRec& m) { m.fog = next; }, std::string("Fog: ") + world::FogName(next));
+        ChangeMap([&](MapRec& m) { m.fog = next; }, lang::trf("Fog: {1}", {lang::tr(world::FogName(next))}));
         break;
     }
     case kActSupDown:
     case kActSupUp: {
         int n = std::clamp(world::Supported() + (act == kActSupUp ? 1 : -1), 2, 8);
         if (n < world::Supported() && world::Player(n)) {
-            SetStatus("Set player " + Num(n + 1) + " to None first");
+            SetStatus(lang::trf("Set player {1} to None first", {Num(n + 1)}));
             break;
         }
         ChangeMap([&](MapRec& m) { m.supported = n, m.recommended = std::min(m.recommended, n); },
-                  "Players supported: " + Num(n));
+                  lang::trf("Players supported: {1}", {Num(n)}));
         break;
     }
     case kActRecDown:
     case kActRecUp: {
         int n = std::clamp(world::Recommended() + (act == kActRecUp ? 1 : -1), 2, world::Supported());
-        ChangeMap([&](MapRec& m) { m.recommended = n; }, "Players recommended: " + Num(n));
+        ChangeMap([&](MapRec& m) { m.recommended = n; }, lang::trf("Players recommended: {1}", {Num(n)}));
         break;
     }
     default: break;
@@ -2072,12 +2108,12 @@ short __thiscall HookLUp(void* sg, int x, int y) {
     case kDragFill: {
         int cx = std::clamp(wx >> 6, 0, g_grid.Width() - 1), cy = std::clamp(wy >> 6, 0, g_grid.Height() - 1);
         Changes ch;
-        if (!g.painter->Fill(g_grid, g.type, g.fillX, g.fillY, cx, cy, ch)) SetStatus(g.painter->Message());
+        if (!g.painter->Fill(g_grid, g.type, g.fillX, g.fillY, cx, cy, ch)) SetStatus(PainterMessage());
         if (!ch.empty()) Redraw();
-        EndStroke("Filled");
+        EndStroke("Filled: {1} cells");
         return 1;
     }
-    case kDragStroke: EndStroke("Painted"); return 1;
+    case kDragStroke: EndStroke("Painted: {1} cells"); return 1;
     case kDragThings: EndThingsDrag(); return 1;
     case kDragMove:
         g.drag = kNoDrag;
@@ -2111,7 +2147,7 @@ short __thiscall HookRDown(void* sg, int x, int y) {
         if (t >= 0) {
             g.type = t;
             g.page = t / kPalRows;
-            SetStatus("Picked " + g.painter->TypeName(t) + " (tile " + std::to_string(g_grid.Get(cx, cy)) + ")");
+            SetStatus(lang::trf("Picked {1} (tile {2})", {TypeShown(t), std::to_string(g_grid.Get(cx, cy))}));
         }
         break;
     }
@@ -2265,19 +2301,13 @@ void Install(const Hooks& h) {
             bool on = events::Showing();
             PanelItem open;
             open.row = 0;
-            open.text = on ? "Close event editor" : "Open event editor";
+            open.text = lang::tr(on ? "Close event editor" : "Open event editor");
             open.id = 0;
             open.lit = on;
             v.push_back(open);
-            const char* help[] = {"The map's triggers: conditions", "and the actions they start.",
-                                  "Shift: event, Ctrl: condition,", "Ctrl+Shift: action; with Left /",
-                                  "Right, A add, R remove.", "* persistent, Esc closes."};
-            for (int i = 0; i < 6; ++i) {
-                PanelItem t;
-                t.row = 2 + i;
-                t.text = help[i];
-                v.push_back(t);
-            }
+            Help(v, {"The map's triggers: conditions and the actions they start. Shift: event, Ctrl: condition, "
+                     "Ctrl+Shift: action; with Left / Right, A add, R remove.",
+                     "* persistent, Esc closes."});
         }
         void OnClick(int id, bool) override {
             if (id != 0) return;
@@ -2298,20 +2328,13 @@ void Install(const Hooks& h) {
             bool on = ai::Active();
             PanelItem open;
             open.row = 0;
-            open.text = on ? "Close Global AI" : "Open Global AI";
+            open.text = lang::tr(on ? "Close Global AI" : "Open Global AI");
             open.id = 0;
             open.lit = on;
             v.push_back(open);
-            const char* help[] = {"Each computer player's squad,", "base, scouting and influence.",
-                                  "Your maps keep them in a", "skirmish. (The game's own maps",
-                                  "use the clan defaults, as they", "always have.) An AI AGGRESSION",
-                                  "event changes them in play."};
-            for (int i = 0; i < 7; ++i) {
-                PanelItem t;
-                t.row = 2 + i;
-                t.text = help[i];
-                v.push_back(t);
-            }
+            Help(v, {"Each computer player's squad, base, scouting and influence. Your maps keep them in a skirmish. "
+                     "(The game's own maps use the clan defaults, as they always have.) An AI AGGRESSION event changes "
+                     "them in play."});
         }
         void OnClick(int id, bool) override {
             if (id != 0) return;
@@ -2345,7 +2368,7 @@ void NewMap(const NewMapSpec& spec) {
         g_h.log("editor: cannot write %s", path.c_str());
         return;
     }
-    g.title = "New " + std::to_string(spec.width) + "x" + std::to_string(spec.height);
+    g.title = lang::trf("New {1}x{2}", {std::to_string(spec.width), std::to_string(spec.height)});
     g_h.log("editor: new map %dx%d, %d players, %s", spec.width, spec.height, spec.players,
             RawPainter::BaseName(spec.terrain));
     Open(path);
@@ -2489,7 +2512,7 @@ bool WorldPoint(int wx, int wy, POINT& out) {
 
 bool FindItem(const char* text, long& x, long& y) {
     for (const Slot& s : g_pool)
-        if (s.used && s.it.text == text) {
+        if (s.used && (s.it.text == text || s.it.text == lang::tr(text))) {
             short* r = Rect(s.b);
             x = (r[0] + r[2]) / 2;
             y = (r[1] + r[3]) / 2;

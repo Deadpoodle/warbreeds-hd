@@ -19,6 +19,7 @@
 #include <string>
 
 #include "../game.h"
+#include "../lang.h"
 #include "editor.h"
 #include "events.h"
 
@@ -100,11 +101,9 @@ void Step(int dir) {
 
 std::string PlayerName(int slot) {
     uintptr_t p = Player(slot);
-    if (!p) return "No computer players";
+    if (!p) return lang::tr("No computer players");
     uint16_t race = *(uint16_t*)(p + kRace);
-    char buf[64];
-    snprintf(buf, sizeof buf, "Player %d: %s", slot + 1, race < 4 ? kRaces[race] : "?");
-    return buf;
+    return lang::trf("Player {1}: {2}", {std::to_string(slot + 1), lang::tr(race < 4 ? kRaces[race] : "?")});
 }
 
 class AIPanel : public events::Panel {
@@ -114,7 +113,7 @@ public:
     void Draw() override {
         if (!Computer(g_slot)) Step(1);
         uintptr_t p = Computer(g_slot);
-        events::DrawText("GLOBAL AI", 60, 40, kStyle);
+        events::DrawText(lang::tr("GLOBAL AI"), 60, 40, kStyle);
         RECT prev = PlayerRect(0), next = PlayerRect(1);
         if (p) {
             events::DrawText("<", prev.left + 4, prev.bottom - 3, Hover(prev) ? kStyleLit : kStyle);
@@ -123,9 +122,9 @@ public:
         events::DrawText(PlayerName(p ? g_slot : -1).c_str(), kLeftX + 18, 63, kStyle);
         for (int s = 0; p && s < kSettingCount; ++s) {
             int y = kTop + kRowGap * s;
-            events::DrawText(kLabels[s], kLeftX, y, kStyle);
-            events::DrawText(kLow[s], kLeftX, y + 16, kStyleSmall);
-            events::DrawText(kHigh[s], kRightX, y + 16, kStyleSmall);
+            events::DrawText(lang::tr(kLabels[s]), kLeftX, y, kStyle);
+            events::DrawText(lang::tr(kLow[s]), kLeftX, y + 16, kStyleSmall);
+            events::DrawText(lang::tr(kHigh[s]), kRightX, y + 16, kStyleSmall);
             int level = LevelOf(Value(p, (Setting)s));
             for (int l = 0; l < 5; ++l) {
                 RECT r = StepRect((Setting)s, l);
@@ -135,10 +134,14 @@ public:
             }
         }
         RECT c = CloseRect();
-        events::DrawText("Close", c.left + 4, c.bottom - 3, Hover(c) ? kStyleLit : kStyle);
-        static const char* const kHint[] = {"Saved with the map, and kept in a", "skirmish on it (the game's own",
-                                            "maps use the clan defaults). An AI", "AGGRESSION event changes them", "during play."};
-        for (int i = 0; i < 5; ++i) events::DrawText(kHint[i], kLeftX, 318 + 14 * i, kStyleSmall);
+        events::DrawText(lang::tr("Close"), c.left + 4, c.bottom - 3, Hover(c) ? kStyleLit : kStyle);
+        // Up to six lines of 34 characters (the panel's bottom edge).
+        std::vector<std::string> hint = events::Wrap(
+            lang::tr("Saved with the map, and kept in a skirmish on it (the game's own maps use the clan defaults). "
+                     "An AI AGGRESSION event changes them during play."),
+            34);
+        for (size_t i = 0; i < hint.size() && i < 6; ++i)
+            events::DrawText(hint[i].c_str(), kLeftX, 318 + 14 * (int)i, kStyleSmall);
     }
 
     bool Click(int x, int y) override {

@@ -1,4 +1,4 @@
-WarBreeds HD 0.14.0
+WarBreeds HD 0.15.0
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -18,6 +18,7 @@ WHAT'S IN THIS FOLDER
   wsock32.dll      The patch itself (loaded automatically by the game).
   Fonts\           Orbitron, an optional modern font (SIL Open Font License).
   Menus\           Widescreen artwork for the 4:3 menu screens.
+  Lang\            Languages: French and German, and how to add more.
   Controls.html    Every keyboard and mouse control, original and new.
   README.txt       This file.
   LICENSE.txt      Licences and credits.
@@ -32,10 +33,10 @@ INSTALL (WINDOWS)
      Usual places:  C:\Program Files (x86)\GOG Galaxy\Games\Warbreeds
                     C:\GOG Games\Warbreeds
 
-2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
-   WARBREED.EXE. (If Windows asks for permission, allow it.)
+2. Copy wsock32.dll and the Fonts, Menus and Lang folders into that folder,
+   next to WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.14.0" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.15.0" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -56,7 +57,7 @@ take effect immediately.
              builder click, quick-build keys, group build. Long tabs
              scroll with the mouse wheel ("More above/below").
   Interface  Menu art (widescreen / original), font (original / Orbitron),
-             interface size.
+             interface size, language.
 
 Every option is also in WarBreedsHD.ini, with an explanation.
 
@@ -148,6 +149,21 @@ Fixes
     is narrowed to fit, so titles stay inside their bars.
 
 
+LANGUAGES
+---------
+
+Settings > Interface > Language shows the game in another language, at
+once: menus, units, briefings, result screens, and WarBreeds HD's own pages
+and map editor. French and German are included. They were drafted by
+machine (an AI model), so corrections are welcome:
+https://github.com/Deadpoodle/warbreeds-hd
+
+Each language is a text file in the Lang folder (WarBreedsHD_fr.txt, ...);
+the Settings page lists every file it finds. Lang\README.txt explains how to
+fix a translation or add a new language. Voices, movies and the text you
+type stay English.
+
+
 SKIRMISH TEAMS AND COLOURS
 --------------------------
 
@@ -202,7 +218,7 @@ UNINSTALL
 ---------
 
 Delete these from the game folder:
-  wsock32.dll, Fonts\, Menus\, WarBreedsHD.ini, WarBreedsHD.log,
+  wsock32.dll, Fonts\, Menus\, Lang\, WarBreedsHD.ini, WarBreedsHD.log,
   WarBreedsHD-progress.ini,
   and DDrawCompat.ini if it's there.
 

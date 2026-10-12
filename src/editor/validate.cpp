@@ -1,13 +1,12 @@
 // Map editor, Stage 2: the map checker (validate.h, re/editor-stage2.md §7).
 #include "validate.h"
 
-#include <stdarg.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include <algorithm>
 #include <vector>
 
+#include "../lang.h"
 #include "world.h"
 
 namespace editor {
@@ -22,15 +21,7 @@ constexpr uintptr_t kPodNearby = 0x4518c0;   // AThingRegistry short(u8 tx, u8 t
 constexpr uintptr_t kDevicePower = 0x54d010;  // short[19]: power a device draws (type - 0x2c)
 constexpr uintptr_t kPowerRange = 0x54de68;   // short[type]: a provider's power radius, px (FindPowerProvider 0x44eb00)
 
-std::string Fmt(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-std::string Fmt(const char* fmt, ...) {
-    char buf[200];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof buf, fmt, ap);
-    va_end(ap);
-    return buf;
-}
+std::string Num(int n) { return std::to_string(n); }
 
 int Cells(int px) { return px / 64; }
 
@@ -129,8 +120,8 @@ void CheckPower(std::vector<Finding>& out) {
             ok = std::any_of(provs.begin(), provs.end(), [&](const Prov& p) { return p.t == t && p.on; });
             if (!ok) {
                 if (++unpowered <= 4)
-                    out.push_back({Fmt("P%d's Refinery at %d,%d has no crops in reach", owner + 1, Cells(CentreX(t)),
-                                       Cells(CentreY(t)))});
+                    out.push_back({lang::trf("P{1}'s Refinery at {2},{3} has no crops in reach",
+                                             {Num(owner + 1), Num(Cells(CentreX(t))), Num(Cells(CentreY(t)))})});
                 continue;
             }
         } else {
@@ -139,11 +130,11 @@ void CheckPower(std::vector<Finding>& out) {
             ok = relay ? std::any_of(provs.begin(), provs.end(), [&](const Prov& p) { return p.t == t && p.on; })
                        : inField(owner, CentreX(t), CentreY(t), t);
             if (!ok && ++unpowered <= 4)
-                out.push_back({Fmt("P%d's %s at %d,%d has no power", owner + 1, Name(type).c_str(), Cells(CentreX(t)),
-                                   Cells(CentreY(t)))});
+                out.push_back({lang::trf("P{1}'s {2} at {3},{4} has no power",
+                                         {Num(owner + 1), Name(type), Num(Cells(CentreX(t))), Num(Cells(CentreY(t)))})});
         }
     }
-    if (unpowered > 4) out.push_back({Fmt("... and %d more devices without power", unpowered - 4)});
+    if (unpowered > 4) out.push_back({lang::trf("... and {1} more devices without power", {Num(unpowered - 4)})});
 }
 
 void CheckCroplandEdges(std::vector<Finding>& out) {
@@ -174,7 +165,8 @@ void CheckCroplandEdges(std::vector<Finding>& out) {
                 }
         }
         if (gaps)
-            out.push_back({Fmt("Cropland leaves a narrow gap at the %s edge (%d places)", kEdge[e], gaps)});
+            out.push_back({lang::trf("Cropland leaves a narrow gap at the {1} edge ({2} places)",
+                                     {lang::tr(kEdge[e]), Num(gaps)})});
     }
 }
 
@@ -183,23 +175,25 @@ void CheckCroplandEdges(std::vector<Finding>& out) {
 std::vector<Finding> Validate() {
     std::vector<Finding> out;
     int sup = Supported(), rec = Recommended();
-    if (rec > sup) out.push_back({Fmt("Recommended players (%d) is more than supported (%d)", rec, sup)});
+    if (rec > sup)
+        out.push_back({lang::trf("Recommended players ({1}) is more than supported ({2})", {Num(rec), Num(sup)})});
 
     // Players, start points, Shamans.
     std::vector<int> present;
     int w = TilesW() / 2, h = TilesH() / 2;
     for (int i = 0; i < 8; ++i) {
         if (!Player(i)) {
-            if (i < sup) out.push_back({Fmt("Player %d is None, but the map supports %d", i + 1, sup)});
+            if (i < sup) out.push_back({lang::trf("Player {1} is None, but the map supports {2}", {Num(i + 1), Num(sup)})});
             continue;
         }
         present.push_back(i);
-        if (i >= sup) out.push_back({Fmt("Player %d exists, but the map supports only %d", i + 1, sup)});
+        if (i >= sup)
+            out.push_back({lang::trf("Player {1} exists, but the map supports only {2}", {Num(i + 1), Num(sup)})});
         PlayerRec r = CapturePlayer(i);
         if (r.startX < 0 || r.startY < 0 || r.startX >= w || r.startY >= h)
-            out.push_back({Fmt("Player %d has no start point on the map", i + 1)});
+            out.push_back({lang::trf("Player {1} has no start point on the map", {Num(i + 1)})});
         else if (r.startX == 0 && r.startY == 0)
-            out.push_back({Fmt("Player %d's start point is still the top-left corner", i + 1)});
+            out.push_back({lang::trf("Player {1}'s start point is still the top-left corner", {Num(i + 1)})});
     }
     std::vector<int> shamans(10), labs(10), psi(10);
     int ownerless = 0, cropsOff = 0;
@@ -215,9 +209,9 @@ std::vector<Finding> Validate() {
     }
     for (int i : present)
         if (!shamans[i] && !(labs[i] && psi[i]))
-            out.push_back({Fmt("Player %d has no Shaman (or Gene Lab and Psi Tower)", i + 1)});
-    if (ownerless) out.push_back({Fmt("%d units or devices belong to no player", ownerless)});
-    if (cropsOff) out.push_back({Fmt("%d crops sit off cropland (the game drops them)", cropsOff)});
+            out.push_back({lang::trf("Player {1} has no Shaman (or Gene Lab and Psi Tower)", {Num(i + 1)})});
+    if (ownerless) out.push_back({lang::trf("{1} units or devices belong to no player", {Num(ownerless)})});
+    if (cropsOff) out.push_back({lang::trf("{1} crops sit off cropland (the game drops them)", {Num(cropsOff)})});
 
     CheckPower(out);
 
@@ -231,7 +225,7 @@ std::vector<Finding> Validate() {
             if (r.startX < 0 || r.startY < 0 || r.startX >= w || r.startY >= h) continue;
             int x, y;
             if (!g.Seed(r.startX, r.startY, x, y)) {
-                out.push_back({Fmt("Player %d's start point is on blocked ground", i + 1)});
+                out.push_back({lang::trf("Player {1}'s start point is on blocked ground", {Num(i + 1)})});
                 continue;
             }
             if (ref < 0) {
@@ -240,7 +234,7 @@ std::vector<Finding> Validate() {
                 ry = y;
                 reach = g.Fill(rx, ry);
             } else if (!reach[y * g.w + x]) {
-                out.push_back({Fmt("Player %d can't reach player %d's start on foot", i + 1, ref + 1)});
+                out.push_back({lang::trf("Player {1} can't reach player {2}'s start on foot", {Num(i + 1), Num(ref + 1)})});
             }
         }
     }

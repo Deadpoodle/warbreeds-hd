@@ -245,10 +245,12 @@ public:
     bool Fill(Grid& grid, int type, int x0, int y0, int x1, int y1, Changes& changed) override;
     int Pick(const Grid& grid, int x, int y) override;
     std::string Message() const override { return message_; }
+    std::vector<std::string> MessageParts() const override { return parts_; }
 
 private:
     TerrainPainter& tp_;
     std::string message_;
+    std::vector<std::string> parts_;  // message_ as a pattern and its terrain names
     bool Finish(const TerrainPainter::Result& r, Changes& changed);
     void Explain(const Grid& grid, Terrain t, int x0, int y0, int x1, int y1);
 };

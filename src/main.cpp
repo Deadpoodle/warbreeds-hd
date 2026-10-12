@@ -31,6 +31,7 @@
 #include "skirmish.h"
 #include "skirmish_teams.h"
 #include "campaign.h"
+#include "lang.h"
 
 #include "version.h"
 
@@ -192,6 +193,8 @@ void WriteDefaultIni() {
         "; Text font: original (the game's own) or orbitron (Orbitron, a modern sci-fi font\n"
         "; from Fonts\\Orbitron[wght].ttf, SIL Open Font License). Changes live.\n"
         "Font=original\n"
+        "; Language: en (built in), or the code of a file in Lang\\ (WarBreedsHD_<code>.txt, e.g. fr, de)\n"
+        "Language=en\n"
         "\n"
         "[Zoom]\n"
         "; Zoom is a magnification: screen pixels per game pixel. 1.0 shows the most detail\n"
@@ -395,6 +398,8 @@ void ApplyLiveSettings() {
     ApplyMovieOptions();
     ApplyFontOption();
     ApplyControlOptions();
+    std::string language = IniGet("Display", "Language", "en");
+    if (_stricmp(language.c_str(), lang::Current().c_str()) != 0) lang::Set(language);
 }
 
 void LoadConfig() {
@@ -916,6 +921,9 @@ void Init(HMODULE self) {
     if (!g_cfg.enabled) { Log("disabled in WarBreedsHD.ini"); return; }
 
     if (IniInt("Debug", "Headless", 0)) headless::Install(Log);
+    // Before the game's static initialisers load its string table (this is DllMain).
+    lang::Install(g_dir, IniGet("Display", "Language", "en"), Log);
+    if (IniInt("Debug", "WriteLangTemplate", 0)) lang::WriteTemplate();
 
     // The engine's timer/audio threads (timeSetEvent callbacks, SuspendThread)
     // race and can deadlock on multi-core CPUs; GOG's DDrawCompat pins the game
@@ -1056,6 +1064,7 @@ void Init(HMODULE self) {
     }
     // After the renderer: its SelectObject/DeleteObject hooks are chained.
     fonts::Install(g_dir.c_str(), Log);
+    fonts::SetTextTrace(IniInt("Debug", "TextTrace", 0) != 0);
     ApplyFontOption();
     // Multiplayer start-up: DirectPlay through COM again (see h_CoInitialize).
     render::HookImport(0x595b34, &h_CoInitialize, &o_CoInitialize);
