@@ -14,7 +14,7 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - the game in French and German, or any language someone adds;
 - the game's own multiplayer, working again.
 
-It needs your own copy of the game, and has been tested with the GOG.com release.
+It needs your own copy of the game, and has been tested with the GOG.com and Steam releases (they have the same game files).
 
 The patch changes none of the game's files. It is a DLL that sits next to the game, so removing it puts everything back.
 
@@ -176,10 +176,10 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 ## Install
 
 1. Download the zip from [Releases](https://github.com/Deadpoodle/warbreeds-hd/releases/latest).
-2. Copy `wsock32.dll`, `Fonts\`, `Menus\` and `Lang\` into your WarBreeds folder, next to `WARBREED.EXE`.
+2. Copy `wsock32.dll`, `Fonts\`, `Menus\` and `Lang\` into your WarBreeds folder, next to `WARBREED.EXE`. On Steam, right-click WarBreeds in your library, then Manage > Browse local files.
 3. Start the game. The main menu shows the version at the bottom right and a new Settings item.
 
-To uninstall, delete those files plus `WarBreedsHD.ini`, `WarBreedsHD-progress.ini` and `WarBreedsHD.log`. The zip's README.txt has the details, including notes for Steam and Linux, neither of which has been tested yet.
+To uninstall, delete those files plus `WarBreedsHD.ini`, `WarBreedsHD-progress.ini` and `WarBreedsHD.log`. The zip's README.txt has the details, including notes for Linux, which hasn't been tested yet.
 
 ## Building from source
 

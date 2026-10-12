@@ -5,8 +5,8 @@ An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
 run well on modern Windows: native widescreen resolutions, smooth zoom, sharp
 scaling, windowed mode, working cutscenes, a Settings page on the main menu,
 modern controls, a map editor, and the game's own multiplayer working
-again. You need your own copy of the game (tested
-with the GOG.com release).
+again. You need your own copy of the game (tested with the GOG.com and
+Steam releases, which have the same game files).
 
 Nothing in the game's own files is changed. The patch is a set of extra files
 next to the game, and removing them puts everything back as it was.
@@ -30,8 +30,11 @@ INSTALL (WINDOWS)
 1. Find your WarBreeds folder, the one that contains WARBREED.EXE.
      GOG Galaxy: select WarBreeds in your library, click the settings icon
      next to Play, then Manage installation > Show folder.
+     Steam: right-click WarBreeds in your library, then Manage > Browse
+     local files.
      Usual places:  C:\Program Files (x86)\GOG Galaxy\Games\Warbreeds
                     C:\GOG Games\Warbreeds
+                    C:\Program Files (x86)\Steam\steamapps\common\WarBreeds
 
 2. Copy wsock32.dll and the Fonts, Menus and Lang folders into that folder,
    next to WARBREED.EXE. (If Windows asks for permission, allow it.)
@@ -228,9 +231,7 @@ The game is then exactly as before.
 OTHER VERSIONS AND SYSTEMS
 --------------------------
 
-  Steam version:  not tested yet. If the patch doesn't recognise the game it
-                  shows a message, changes nothing, and the game runs as
-                  normal.
+  Steam version:  works the same as GOG's: Steam sells the same game files.
 
   Linux / Steam Deck (Proton or Wine): not tested yet. Install the same way,
                   then make Wine load the patch: in Steam, set the game's
