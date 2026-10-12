@@ -4,10 +4,9 @@ Ideas that were considered for WarBreeds HD and left out of the current plan. Th
 
 **Current plan:**
 1. Done in v0.14.0: allied teams and colour choice in skirmish, and campaign progress kept between sessions.
-2. A campaign mission-select screen: each campaign's missions listed by name, locked ones greyed out until beaten, any beaten mission replayable.
-3. Saving and loading skirmishes.
-4. Pathfinding overhaul.
-5. Last, the remaining bug reports: the long-skirmish crash involving the Blue Leviathan or Yellow Ophidian, gene gathering freezing input, and several Tab rally points on one Gene Pool.
+2. Saving and loading skirmishes.
+3. Pathfinding overhaul.
+4. Last, the remaining bug reports: the long-skirmish crash involving the Blue Leviathan or Yellow Ophidian, gene gathering freezing input, and several Tab rally points on one Gene Pool.
 
 ## For a future version
 
