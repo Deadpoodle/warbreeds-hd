@@ -186,14 +186,14 @@ To make a release zip, run `python tools/package.py`. It needs Pillow, and takes
 
 ## How it works
 
-The game imports `WSOCK32.dll`, so a proxy `wsock32.dll` in the game folder is loaded at start-up. It forwards the real Winsock calls and patches the game in memory, with no edits to `WARBREED.EXE`. Everything was found by reverse engineering the 1998 executable.
+The game imports `WSOCK32.dll`, so a proxy `wsock32.dll` in the game folder is loaded at start-up. It forwards the real Winsock calls and patches the game in memory, with no edits to `WARBREED.EXE`. Everything was found by reverse engineering the 1998 executable: [docs/reverse-engineering.md](docs/reverse-engineering.md) is the guide to that work (tools, methods, conventions) and a log of what was found, for anyone working on WarBreeds or a similar game.
 
 | Path | What's there |
 |---|---|
-| `src/` | The patch: renderer (`render/`), zoom, interface layers, menu and Settings page, controls, fonts, cutscene player (`movie/`) |
-| `tools/` | The headless test harness (`autotest.sh`, `smoke.ps1`), the disassembly helper (`wbre.py`), Mohawk `.MHK` image extraction (`mhkimg.py`), the menu-art pipeline, packaging |
-| `re/` | Reverse-engineering reports: every hotkey, every mouse action, building in fog |
-| `docs/` | The controls reference and screenshots |
+| `src/` | The patch: renderer (`render/`), zoom, interface layers, menu and Settings page, controls, fonts, cutscene player (`movie/`), map editor (`editor/`), skirmish teams and AI settings, campaign progress, the multiplayer fix |
+| `tools/` | The headless test harness (`autotest.sh`, `mptest.sh`, `smoke.ps1` and the `*_check.py` checkers), the Ghidra scripts (`ghidra/`), the disassembly helper (`wbre.py`), Mohawk `.MHK` image extraction (`mhkimg.py`), the map file reader (`wbm.py`), the menu-art pipeline, packaging |
+| `re/` | Reverse-engineering reports, indexed by [re/subsystems.md](re/subsystems.md), and the name and type databases (`names.tsv`, `types.tsv`) |
+| `docs/` | The [reverse-engineering guide and log](docs/reverse-engineering.md), the controls reference, the [nice-to-have list](docs/nice-to-have.md) and screenshots |
 
 The patch includes a debug autopilot and a headless mode, so most testing ran hidden, with scripted input and screenshots, while the game was played normally on the same PC.
 

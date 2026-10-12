@@ -1,5 +1,7 @@
 # WarBreeds subsystem map
 
+> New here? Start with [docs/reverse-engineering.md](../docs/reverse-engineering.md): the tools, methods and conventions, and a dated log of the investigations.
+
 The index future work starts from: for each subsystem, the entry points and main functions of
 `WARBREED.EXE` (GOG build, image base 0x400000), with a pointer to the detailed report.
 Everything is from static analysis; nothing was run. Confidence: **H** read from the code (decompiler
