@@ -128,8 +128,18 @@ void Play(Movie* m, long rate) {
 
 // One step: show the current frame; at the end, stop the way QuickTime does
 // (the filter hears mcActionPlay with rate 0 and clears the game's status).
+// One tick at a time: presenting a frame can let Windows deliver the next 5 ms
+// movie timer, and the game answers that with another tick, from inside this
+// one. Unguarded, that nesting could run the stack out (an intermittent crash
+// as the intro movie started).
+int g_tickDepth;
+
 void Tick(Movie* m) {
-    if (!m) return;
+    if (!m || g_tickDepth) return;
+    struct Depth {
+        Depth() { ++g_tickDepth; }
+        ~Depth() { --g_tickDepth; }
+    } depth;
     Present(m);
     if (g_h.tick && m->playing) g_h.tick(m->Now());
     if (m->playing && m->Now() >= m->mov.duration()) {

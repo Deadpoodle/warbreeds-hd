@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "lang.h"
 #include "render/render.h"
@@ -111,12 +112,19 @@ bool g_symbolCopies;
 // [Debug] TextTrace=1: every distinct string the game draws, with the code that
 // drew it (finds text that doesn't come from the string table).
 bool g_textTrace;
-void Trace(const char* text, int n, void* from) {
+void Trace(HDC dc, const char* text, int n, void* from) {
     if (!g_textTrace || !text) return;
     static std::map<std::string, bool> seen;
     std::string t = n < 0 ? std::string(text) : std::string(text, n);
     if (seen.size() > 5000 || !seen.emplace(t, true).second) return;
-    g_log("text: \"%s\" from %p", t.c_str(), from);
+    char face[64] = "";
+    GetTextFaceA(dc, sizeof face, face);
+    TEXTMETRICA tm{};
+    GetTextMetricsA(dc, &tm);
+    LOGFONTA lf{};
+    GetObjectA(GetCurrentObject(dc, OBJ_FONT), sizeof lf, &lf);
+    g_log("text: \"%s\" from %p: %s h%ld ave%ld lfWidth %ld extra %d", t.c_str(), from, face, tm.tmHeight,
+          tm.tmAveCharWidth, lf.lfWidth, GetTextCharacterExtra(dc));
 }
 
 void LoadSymbolCopies(const char* dir) {
@@ -225,6 +233,37 @@ int Width(HFONT f, int extra, const char* text, int n) {
     return sz.cx;
 }
 
+bool HasBracket(const char* text, int n) {
+    for (int k = 0; k < n; ++k)
+        if (strchr("()[]", text[k]) && text[k]) return true;
+    return false;
+}
+
+// Spec i's stand-in at this average character width.
+HFONT Narrow(int i, int ave) {
+    HFONT& f = g_narrow[{i, ave}];
+    if (!f) {
+        LOGFONTA m{};
+        m.lfHeight = kSpecs[i].height;
+        m.lfWidth = ave;
+        m.lfWeight = kSpecs[i].weight;
+        m.lfCharSet = DEFAULT_CHARSET;
+        m.lfQuality = NONANTIALIASED_QUALITY;
+        strncpy(m.lfFaceName, kSpecs[i].sub, LF_FACESIZE - 1);
+        f = o_CreateFontIndirectA(&m);
+        if (f) g_trueType[f] = true;
+    }
+    return f;
+}
+
+int AveWidth(HFONT f) {
+    TEXTMETRICA tm{};
+    HGDIOBJ old = o_SelectObject(g_scratch, f);
+    GetTextMetricsA(g_scratch, &tm);
+    o_SelectObject(g_scratch, old);
+    return tm.tmAveCharWidth;
+}
+
 // The font to measure and draw this string with in a DC holding a stand-in:
 // the stand-in itself, or a narrowed one if the stand-in runs wider than the
 // original face. nullptr: not a stand-in, nothing to do.
@@ -243,29 +282,14 @@ HFONT FitFont(HDC dc, const char* text, int n) {
     if (const char* en = lang::EnglishOf(text, n))
         want = std::min(want, (int)(kFitSlack * Width(g_original[i], 0, en, -1)));
     HFONT use = g_standIn[i];
+    int natural = AveWidth(use);
     if (have > want && want > 0) {
-        TEXTMETRICA tm{};
-        HGDIOBJ old = o_SelectObject(g_scratch, g_standIn[i]);
-        GetTextMetricsA(g_scratch, &tm);
-        o_SelectObject(g_scratch, old);
         // A translation squeezed into its English's room narrows at most kMaxNarrow past
         // the original face's width; the plain fit to the original has no floor.
-        int least = want < original && have > 0
-                        ? std::max(1, (int)(tm.tmAveCharWidth * (double)original / have * kMaxNarrow + 0.5))
-                        : 1;
-        for (int ave = std::max(least, (int)(tm.tmAveCharWidth * (double)want / have)); ave >= least; --ave) {
-            HFONT& f = g_narrow[{i, ave}];
-            if (!f) {
-                LOGFONTA m{};
-                m.lfHeight = kSpecs[i].height;
-                m.lfWidth = ave;
-                m.lfWeight = kSpecs[i].weight;
-                m.lfCharSet = DEFAULT_CHARSET;
-                m.lfQuality = NONANTIALIASED_QUALITY;
-                strncpy(m.lfFaceName, kSpecs[i].sub, LF_FACESIZE - 1);
-                f = o_CreateFontIndirectA(&m);
-                if (f) g_trueType[f] = true;
-            }
+        int least = want < original && have > 0 ? std::max(1, (int)(natural * (double)original / have * kMaxNarrow + 0.5))
+                                                : 1;
+        for (int ave = std::max(least, (int)(natural * (double)want / have)); ave >= least; --ave) {
+            HFONT f = Narrow(i, ave);
             if (!f) break;
             use = f;
             if (Width(f, extra, text, n) <= want) break;
@@ -348,6 +372,90 @@ bool SqueezeFor(HDC dc, const char* text, int n, Squeeze& out) {
     return sq.font != nullptr;
 }
 
+// Orbitron's brackets are tall bars with hooks under half a pixel long at the
+// small sizes, and the rasteriser keeps or drops the hooks by the width:
+// "(AI)" drew as "|AI|", or as "(AI]" with the two ends unlike. Up to this
+// height the stand-in's brackets are clipped out and drawn here as a matched
+// pixel pair instead: ( ) with rounded ends, [ ] square.
+constexpr int kOwnBracketsUpTo = 15;
+
+bool OwnBrackets(HDC dc, const char* text, int n) {
+    if (!TrueTypeIn(dc) || !HasBracket(text, n)) return false;
+    TEXTMETRICA tm{};
+    GetTextMetricsA(dc, &tm);
+    return tm.tmHeight <= kOwnBracketsUpTo;
+}
+
+BOOL TextOutOwnBrackets(HDC dc, int x, int y, const char* text, int n) {
+    std::wstring w = lang::Wide(text, n);
+    int len = (int)w.size();
+    UINT align = GetTextAlign(dc);
+    POINT ref{x, y};
+    if (align & TA_UPDATECP) GetCurrentPositionEx(dc, &ref);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    SIZE all{};
+    GetTextExtentPoint32W(dc, w.c_str(), len, &all);
+    int left = ref.x;
+    if ((align & TA_CENTER) == TA_CENTER) left -= all.cx / 2;
+    else if (align & TA_RIGHT) left -= all.cx;
+    int base = ref.y;
+    if ((align & TA_BASELINE) == TA_BASELINE) {
+    } else if (align & TA_BOTTOM) {
+        base -= tm.tmDescent;
+    } else {
+        base += tm.tmAscent;
+    }
+
+    struct Mark {
+        wchar_t ch;
+        int l, r, top, h;  // our pair's columns l..r; the font's glyph box
+        RECT box;          // all it covers, ours and the font's
+    };
+    std::vector<Mark> marks;
+    const MAT2 identity{{0, 1}, {0, 0}, {0, 0}, {0, 1}};
+    for (int k = 0; k < len; ++k) {
+        wchar_t c = w[k];
+        if (c != L'(' && c != L')' && c != L'[' && c != L']') continue;
+        SIZE before{};
+        GetTextExtentPoint32W(dc, w.c_str(), k, &before);
+        GLYPHMETRICS gm{};
+        if (GetGlyphOutlineW(dc, c, GGO_METRICS, &gm, 0, nullptr, &identity) == GDI_ERROR) continue;
+        int bx = left + before.cx + gm.gmptGlyphOrigin.x, bw = std::max(1, (int)gm.gmBlackBoxX);
+        Mark m{c, 0, 0, base - gm.gmptGlyphOrigin.y, (int)gm.gmBlackBoxY, {}};
+        if (c == L'(' || c == L'[') m.l = bx, m.r = bx + std::max(bw, 2) - 1;
+        else m.r = bx + bw - 1, m.l = m.r - std::max(bw, 2) + 1;
+        m.box = {std::min(m.l, bx), m.top, std::max(m.r, bx + bw - 1) + 1, m.top + m.h};
+        marks.push_back(m);
+    }
+
+    HRGN saved = CreateRectRgn(0, 0, 0, 0);
+    int had = GetClipRgn(dc, saved);
+    for (const Mark& m : marks) ExcludeClipRect(dc, m.box.left, m.box.top, m.box.right, m.box.bottom);
+    BOOL ok = TextOutW(dc, x, y, w.c_str(), len);
+    SelectClipRgn(dc, had == 1 ? saved : nullptr);
+    DeleteObject(saved);
+
+    HBRUSH ink = CreateSolidBrush(GetTextColor(dc));
+    HBRUSH paper = GetBkMode(dc) == OPAQUE ? CreateSolidBrush(GetBkColor(dc)) : nullptr;
+    auto fill = [&](int l, int t, int r, int b) {
+        RECT rc{l, t, r, b};
+        if (r > l && b > t) FillRect(dc, &rc, ink);
+    };
+    for (const Mark& m : marks) {
+        if (paper) FillRect(dc, &m.box, paper);
+        bool round = m.ch == L'(' || m.ch == L')', opens = m.ch == L'(' || m.ch == L'[';
+        int bar = opens ? m.l : m.r, bottom = m.top + m.h;
+        fill(bar, m.top + round, bar + 1, bottom - round);  // the upright
+        int hl = opens ? m.l + 1 : m.l, hr = opens ? m.r + 1 : m.r;
+        fill(hl, m.top, hr, m.top + 1);  // the ends
+        fill(hl, bottom - 1, hr, bottom);
+    }
+    DeleteObject(ink);
+    if (paper) DeleteObject(paper);
+    return ok;
+}
+
 // Measure or draw with the fitted font selected, then put the stand-in back.
 template <class F>
 auto WithFit(HDC dc, const char* text, int n, F call) {
@@ -381,7 +489,7 @@ BOOL WINAPI h_GetTextExtentPointA(HDC dc, LPCSTR text, int n, LPSIZE size) {
 }
 
 BOOL WINAPI h_TextOutA(HDC dc, int x, int y, LPCSTR text, int n) {
-    Trace(text, n, __builtin_return_address(0));
+    Trace(dc, text, n, __builtin_return_address(0));
     if (const char* t = lang::DrawnTranslation(text, n)) text = t, n = (int)strlen(t);
     Squeeze sq;
     if (SqueezeFor(dc, text, n, sq)) {
@@ -393,6 +501,7 @@ BOOL WINAPI h_TextOutA(HDC dc, int x, int y, LPCSTR text, int n) {
         return r;
     }
     return WithFit(dc, text, n, [&] {
+        if (OwnBrackets(dc, text, n)) return TextOutOwnBrackets(dc, x, y, text, n);
         if (lang::HasHigh(text, n) && TrueTypeIn(dc)) {
             std::wstring w = lang::Wide(text, n);
             return TextOutW(dc, x, y, w.c_str(), (int)w.size());
@@ -402,7 +511,7 @@ BOOL WINAPI h_TextOutA(HDC dc, int x, int y, LPCSTR text, int n) {
 }
 
 int WINAPI h_DrawTextA(HDC dc, LPCSTR text, int n, LPRECT r, UINT format) {
-    Trace(text, n, __builtin_return_address(0));
+    Trace(dc, text, n, __builtin_return_address(0));
     if (const char* t = lang::DrawnTranslation(text, n)) text = t, n = (int)strlen(t);
     return WithFit(dc, text, n, [&] {
         // Word-wrapping doesn't count the stand-in's extra letter spacing, so wrapped
