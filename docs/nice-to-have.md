@@ -46,6 +46,12 @@ Multiplayer works again as of v0.13.2 (LAN and Internet over TCP/IP, up to four 
     - execute the three AI moves that go through the network command path directly;
     - add a desync check that hashes every random draw (the call at `0x47137d`).
   - Agreed design: computer players are all on one team, humans pick teams in the lobby, and the stock 4-human limit stays.
+- **Custom maps in multiplayer.** Maps made in the editor are saved to `DATA\MAPS\`.
+  - Untested: it may already work if every player copies the same `.WBM` file into that folder. The lobby tracks whether each player has the map (a has-map flag per slot, checked at Start by `0x45d650`) and compares a map checksum (session `+0x230`).
+  - To check:
+    - whether the multiplayer map list shows custom maps;
+    - what a player without the map sees.
+  - The full feature would send the host's map to joining players automatically.
 - **A lobby browser** for Internet games, so players don't have to swap IP addresses: a small registry service, peer-to-peer or through a relay.
 - **More than four human players:** the DirectPlay session limit is set at `0x4c6ff5`. The 1998 network code never ran with more than four.
 
