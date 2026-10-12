@@ -1,4 +1,4 @@
-WarBreeds HD 0.13.2
+WarBreeds HD 0.14.0
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -35,7 +35,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts and Menus folders into that folder, next to
    WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.13.2" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.14.0" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with
@@ -148,6 +148,31 @@ Fixes
     is narrowed to fit, so titles stay inside their bars.
 
 
+SKIRMISH TEAMS AND COLOURS
+--------------------------
+
+The skirmish setup has Team and Color columns, like the multiplayer lobby.
+
+  - Click a row's team badge to cycle it: none, 1, 2, 3, 4. Players on the
+    same team are allied (computer players too) and win together. With
+    every team on none, the skirmish is the original: all computer players
+    allied against you.
+  - With Random placement, teammates start near each other.
+  - Wiped out while a teammate still fights? You watch the rest of the
+    battle; if your team wins, the result is Victory.
+  - Click a row's colour to choose it, right-click for automatic. Each
+    colour can be used once; a Random clan gets its colour at the start.
+
+
+CAMPAIGN PROGRESS
+-----------------
+
+Each campaign (Tanu Ascendancy, Magha Uprising) remembers where you are
+every time a mission briefing opens (in WarBreedsHD-progress.ini next to the
+game). Click that campaign again to Continue from that mission, or Start
+Over. Finishing a campaign clears its record. Saved games work as before.
+
+
 MULTIPLAYER
 -----------
 
@@ -178,6 +203,7 @@ UNINSTALL
 
 Delete these from the game folder:
   wsock32.dll, Fonts\, Menus\, WarBreedsHD.ini, WarBreedsHD.log,
+  WarBreedsHD-progress.ini,
   and DDrawCompat.ini if it's there.
 
 The game is then exactly as before.

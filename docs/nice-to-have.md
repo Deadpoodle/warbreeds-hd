@@ -3,10 +3,10 @@
 Ideas that were considered for WarBreeds HD and left out of the current plan. They are kept here so they aren't lost, with what was found about each.
 
 **Current plan:**
-1. Pathfinding overhaul.
-2. Allied teams in skirmish.
+1. Done in v0.14.0: allied teams and colour choice in skirmish, and campaign progress kept between sessions.
+2. A campaign mission-select screen: each campaign's missions listed by name, locked ones greyed out until beaten, any beaten mission replayable.
 3. Saving and loading skirmishes.
-4. Campaign progress kept between sessions.
+4. Pathfinding overhaul.
 5. Last, the remaining bug reports: the long-skirmish crash involving the Blue Leviathan or Yellow Ophidian, gene gathering freezing input, and several Tab rally points on one Gene Pool.
 
 ## For a future version
@@ -52,6 +52,7 @@ Multiplayer works again as of v0.13.2 (LAN and Internet over TCP/IP, up to four 
     - whether the multiplayer map list shows custom maps;
     - what a player without the map sees.
   - The full feature would send the host's map to joining players automatically.
+- **A countdown while a multiplayer game starts.** After Start, the game spends about 36 seconds timing every player's connection before play begins. It already shows a "Please wait ..." box then, so it doesn't look frozen, but it doesn't say why or for how long. The start time is known (the comms engine's start sync sets it to now + 36,000 ms), so a "Starting in N seconds" line is possible.
 - **A lobby browser** for Internet games, so players don't have to swap IP addresses: a small registry service, peer-to-peer or through a relay.
 - **More than four human players:** the DirectPlay session limit is set at `0x4c6ff5`. The 1998 network code never ran with more than four.
 

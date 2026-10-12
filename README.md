@@ -9,6 +9,8 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - a Settings page;
 - modern controls;
 - the official map editor, built into the game;
+- allied teams and colour choice in skirmish;
+- campaign progress that survives quitting;
 - the game's own multiplayer, working again.
 
 It needs your own copy of the game, and has been tested with the GOG.com release.
@@ -38,7 +40,7 @@ The patch changes none of the game's files. It is a DLL that sits next to the ga
 
 ![The opening cutscene, playing again](docs/screenshots/movie.jpg)
 
-*The GIF and the zoomed shots are from a real skirmish (recorded in a 1920×1080 window). The before/after gameplay pair and the map editor shots come from the automated test harness at 2560×1440; the gameplay pair has fog of war switched off (a debug option) so the terrain shows.*
+*The GIF and the zoomed shots are from a real skirmish (recorded in a 1920×1080 window). The before/after gameplay pair, the map editor, skirmish and campaign shots come from the automated test harness at 2560×1440; the gameplay pair has fog of war switched off (a debug option) so the terrain shows.*
 
 ## The map editor, inside the game
 
@@ -81,7 +83,23 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 |---|---|
 | ![The event editor over the map](docs/screenshots/editor-events.jpg) | ![An OK dialog from a map event, in a skirmish](docs/screenshots/editor-event-fired.jpg) |
 
-**Still to come**: the original's terrain-specific palettes (placing border tiles by hand), palette thumbnails, and campaign maps.
+**Still to come**: the original's terrain-specific palettes (placing border tiles by hand), palette thumbnails, and campaign maps (see [docs/nice-to-have.md](docs/nice-to-have.md)).
+
+## Skirmish teams and campaign progress
+
+| Skirmish setup with teams and colours | Picking a campaign back up |
+|---|---|
+| ![The skirmish setup with Team and Color columns: Tanu and Magha on team 1, Kelika and Sen Soth on team 2](docs/screenshots/skirmish-teams.jpg) | ![The campaign screen offering Continue: mission 5 of 12, Start Over or Back](docs/screenshots/campaign-continue.jpg) |
+| Click a row's team or colour to change it | Clicking a campaign you've started offers to continue |
+
+**Teams in skirmish.** The skirmish setup gets the Team and Color columns the multiplayer lobby has always had. Click a row's team badge to cycle it through none, 1, 2, 3 and 4. Players on the same team are allied: they don't attack each other, they help each other in fights, and the team wins together. The computer players follow the alliances too. Leave every team at none and the skirmish is the original: all computer players allied against you.
+- With Random placement, teammates start near each other.
+- If you're wiped out while a teammate is still fighting, you watch the rest of the battle with the map revealed. The result screen shows Victory if your team wins.
+- The game won't start with everyone on one team ("All players are allied.").
+
+**Colours in skirmish.** Click a row's colour to choose it; right-click to go back to automatic. Each colour can only be used once. Rows left on automatic get the game's own colours (each clan's colour first), moving aside if you picked theirs. A row with a Random clan gets its colour when the game starts.
+
+**Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
 ## What it does
 
@@ -105,6 +123,13 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 **Map editor** (more in [The map editor, inside the game](#the-map-editor-inside-the-game))
 - The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points, map settings, events (triggers) and Global AI, undo for all of it, and a map check.
 - Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
+
+**Skirmish** (more in [Skirmish teams and campaign progress](#skirmish-teams-and-campaign-progress))
+- Teams: allied sides chosen on the setup screen, for you and the computer players. Teammates start together and win together.
+- Colours: choose each player's colour; right-click for automatic.
+
+**Campaign**
+- Progress is kept between sessions: a campaign you've started offers Continue or Start Over.
 
 **Multiplayer**
 - The main menu's Multiplayer works again: the game's own LAN and Internet play over TCP/IP, for up to four players. On the GOG release it only showed an error. GOG's DirectPlay workaround couldn't load DirectPlay, and earlier versions of WarBreeds HD also left Windows COM set up in a way the game's network start-up rejected. Both are fixed.

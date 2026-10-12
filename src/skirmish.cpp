@@ -20,6 +20,7 @@
 
 #include "editor/mapfile.h"
 #include "game.h"
+#include "skirmish_teams.h"
 
 namespace skirmish {
 namespace {
@@ -75,6 +76,7 @@ void __fastcall HookSetupSkirmish(void* registry) {
     }
     g_log("skirmish: map %s (%s)", g_map.c_str(), g_custom ? "custom: keeps its Global AI settings" : "shipped");
     ((void(__thiscall*)(void*))kSetupSkirmish)(registry);
+    teams::Apply(registry);  // allied teams chosen on the setup screen
     g_registry = nullptr;
 }
 

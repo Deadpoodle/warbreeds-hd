@@ -183,6 +183,8 @@ Suggested place for the extra data: append it after stage 8 (hook the end of `Se
 
 ### Campaign progress record
 
+> **WarBreeds HD v0.14.0** (`src/campaign.cpp`) records {campaign, chapter, set} at every briefing in `WarBreedsHD-progress.ini` and offers Continue / Start Over on the campaign screen. Skirmish save/load (above) is still to do.
+
 **Definitions.** The campaign definitions are read-only Mohawk resources in **`DATA\MISSION.MHK`**. **H**
 - `CAMP` id: a flags word (0x100 → ACampaign+0x1a) and a list of chapter ids.
 - `CHAP`: a chapter. Its `CHMV` resource holds the chapter movie name, stored at +0x14.

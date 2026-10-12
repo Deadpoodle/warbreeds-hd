@@ -400,6 +400,8 @@ Opcodes 0x1a..0x20 (switch cases 3..9) are lobby/system messages. The base `Comm
 
 ## 7. What skirmish alliances need
 
+> **Done in WarBreeds HD v0.14.0** (`src/skirmish_teams.cpp`): Team and Color columns on the skirmish setup, teams applied after SetupSkirmish with `ApplyTeams`, team-grouped random starts, watching after defeat with a living ally, Victory for the team. Details in the development log (2026-10-12).
+
 The game already supports everything after setup: the mask drives targeting, auto-attack, mines, turrets,
 retaliation, AI targeting and AI threat maps, and team victory. What is missing is a way to set the masks
 for a skirmish. Plan:

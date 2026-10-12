@@ -24,6 +24,7 @@
 #include "editor/editor.h"
 #include "editor/ai_settings.h"
 #include "editor/events.h"
+#include "skirmish_teams.h"
 
 namespace autopilot {
 namespace {
@@ -2310,6 +2311,234 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             g_h.log("autopilot: done, quitting");
             PostQuitMessage(0);
             stage = 4;
+        }
+        return;
+    }
+    if (g_h.mode == 21 || g_h.mode == 22) {
+        // 21: skirmish teams and colours (tools/teams_check.py). Target 0: a
+        //     2v2 (human + AI 1 on team 1, AI 2 + AI 3 on team 2), colours
+        //     picked on two rows (one put back to automatic), random starts;
+        //     in the game the human is defeated (an ally lives: watching), then
+        //     the enemy team (victory). 1: no teams (the stock alliances).
+        //     2: everyone on one team (Start refused). 3: the 2v2, the ally
+        //     defeated first, then the human (defeat).
+        // 22: campaign progress (tools/campaign_check.py). Target 0: fresh
+        //     Tanu, win mission 1, on to mission 2's briefing. 1: Tanu again:
+        //     Continue. 2: Start Over. 3: a broken record: Continue falls back.
+        static int acted;
+        static DWORD at, lastAct;
+        static std::string last;
+        static std::vector<std::pair<int, POINT>> queue;  // 0 left click, 1 right click
+        std::string top = g_h.topScene ? g_h.topScene() : "";
+        std::string key = scene + " / " + top;
+        if (key != last) {
+            last = key;
+            at = now;
+            acted = 0;
+            g_h.log("autopilot: now %s; widgets: %s", key.c_str(), menu::WidgetTexts().c_str());
+        }
+        DWORD in = now - at;
+        void* topScene = nullptr;
+        {
+            short ti = *(short*)0x51bee8;
+            if (ti >= 0 && ti <= 16) topScene = ((void**)0x55aea8)[ti];
+        }
+        auto clickCmd = [&](short cmd) {
+            if (!topScene) return false;
+            void** list = *(void***)((char*)topScene + 0xc);
+            int count = *(int*)((char*)topScene + 0x10);
+            for (int i = 0; list && i < count && i < 256; ++i) {
+                char* w = (char*)list[i];
+                if (!w || *(uintptr_t*)w != 0x50925c || *(short*)(w + 0x20) != cmd) continue;
+                short* r = (short*)(w + 0xc);
+                Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
+                g_h.log("autopilot: click command %#x (%s)", cmd, w + 0x2c);
+                return true;
+            }
+            g_h.log("autopilot: command %#x not found", cmd);
+            return false;
+        };
+        auto shot = [&](const char* what) {
+            char tag[64];
+            snprintf(tag, sizeof tag, "%s-%d-%s", g_h.mode == 21 ? "teams" : "camp", g_h.target, what);
+            Save(tag);
+        };
+        char* reg = *(char**)0x57927c;
+        auto player = [&](int i) { return reg ? *(char**)(reg + 4 + 4 * i) : nullptr; };
+        auto defeat = [&](int id) {
+            g_h.log("autopilot: defeating player %d", id);
+            ((void(__thiscall*)(void*, int, int))0x43b780)(reg, id, 1);
+        };
+        auto allied = [&](char* a, char* b) {
+            int ia = *(short*)(a + 4), ib = *(short*)(b + 4);
+            return (*(uint8_t*)(a + 0x18) & (1 << ib)) && (*(uint8_t*)(b + 0x18) & (1 << ia));
+        };
+        if (g_h.mode == 21) {
+            if (!queue.empty() && now - lastAct > 300) {
+                auto a = queue.front();
+                queue.erase(queue.begin());
+                if (a.first == 0) {
+                    Click(a.second);
+                } else {
+                    Post(WM_MOUSEMOVE, 0, a.second);
+                    Post(WM_RBUTTONDOWN, MK_RBUTTON, a.second);
+                    Post(WM_RBUTTONUP, 0, a.second);
+                    g_h.log("autopilot: right-click %ld,%ld", a.second.x, a.second.y);
+                }
+                lastAct = now;
+                return;
+            }
+            if (scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos && in > 2500 &&
+                acted == 0) {
+                Click({87, 77});  // Skirmish
+                acted = 1;
+            } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && in > 2600 && acted == 0) {
+                char* settings = (char*)0x5511cc;
+                int used = 0;
+                for (int i = 0; i < 8; ++i) used += settings[i * 0x28] != 0;
+                *(int*)(settings + 0x220) = std::min(3, used - 1);  // computer players
+                *(int*)(settings + 0x21c) = 0;                      // random placement
+                g_h.log("autopilot: skirmish map %s, %d players; AI count %d, random starts", settings + 0x170, used,
+                        *(int*)(settings + 0x220));
+                acted = 1;
+            } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && in > 3600 && acted == 1) {
+                auto add = [&](int kind, int row, int icon, int times) {
+                    long x, y;
+                    if (!teams::HitPoint(topScene, row, icon, x, y)) {
+                        g_h.log("autopilot: row %d %s icon not found", row, icon ? "colour" : "team");
+                        return;
+                    }
+                    for (int i = 0; i < times; ++i) queue.push_back({kind, POINT{x, y}});
+                };
+                if (g_h.target == 2) {
+                    for (int r = 0; r < 4; ++r) add(0, r, 0, 1);
+                } else if (g_h.target != 1) {
+                    add(0, 0, 0, 1);
+                    add(0, 1, 0, 1);
+                    add(0, 2, 0, 2);
+                    add(0, 3, 0, 2);
+                    add(0, 1, 1, 2);
+                    add(0, 2, 1, 1);
+                    add(0, 3, 1, 1);
+                    add(1, 3, 1, 1);  // back to automatic
+                }
+                acted = 2;
+            } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && acted == 2 && queue.empty() &&
+                       now - lastAct > 1200) {
+                shot("setup");
+                Click({437, 457});  // Start
+                lastAct = now;
+                acted = 3;
+            } else if (scene == ".?AVSMultiSetup@@" && acted == 3 && now - lastAct > 6000) {
+                shot("after-start");
+                g_h.log("autopilot: still on the setup (%s)", top.c_str());
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+                acted = 9;
+            } else if (scene == ".?AVSGame@@" && in > 5000 && acted == 0) {
+                shot("game");
+                acted = 1;
+                if (g_h.target == 1) {
+                    g_h.log("autopilot: done, quitting");
+                    PostQuitMessage(0);
+                    acted = 9;
+                }
+            } else if (scene == ".?AVSGame@@" && in > 6000 && acted == 1) {
+                char* me = *(char**)0x579288;
+                int ally = -1;
+                for (int i = 0; me && i < 8; ++i)
+                    if (player(i) && player(i) != me && allied(me, player(i))) ally = i;
+                g_h.log("autopilot: local player %d, ally %d", me ? *(short*)(me + 4) : -1, ally);
+                if (g_h.target == 3 && ally >= 0) defeat(ally);
+                if (me) defeat(*(short*)(me + 4));
+                acted = 2;
+            } else if (scene == ".?AVSGame@@" && in > 10000 && acted == 2) {
+                g_h.log("autopilot: after the defeat: local player %p, top %s", *(void**)0x579288, top.c_str());
+                shot("watching");
+                acted = 3;
+            } else if (scene == ".?AVSGame@@" && in > 12000 && acted == 3) {
+                // The enemy team: living players not allied with the former human.
+                char* human = nullptr;
+                for (int j = 0; j < 8; ++j) {
+                    char* h = player(j);
+                    if (h && ((char(__thiscall*)(void*))(*(void***)h)[0x7c / 4])(h) == 1) human = h;
+                }
+                for (int i = 0; human && i < 8; ++i) {
+                    char* p = player(i);
+                    if (p && p != human && *(short*)(p + 0x48f6) == 1 && !allied(human, p)) defeat(i);
+                }
+                acted = 4;
+            } else if (scene == ".?AVSGame@@" && in > 40000 && acted < 9) {
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+                acted = 9;
+            } else if (scene == ".?AVSReward@@" && in > 2500 && acted == 0) {
+                shot("result");
+                g_h.log("autopilot: result screen; done, quitting");
+                PostQuitMessage(0);
+                acted = 9;
+            }
+            return;
+        }
+        // Mode 22: campaign progress.
+        static bool prepared;
+        if (!prepared) {
+            prepared = true;
+            std::string ini = g_h.dir + "WarBreedsHD-progress.ini";
+            if (g_h.target == 0) DeleteFileA(ini.c_str());
+            if (g_h.target == 3) {
+                WritePrivateProfileStringA("Tanu", "Chapter", "9", ini.c_str());
+                WritePrivateProfileStringA("Tanu", "Set", "9", ini.c_str());
+                WritePrivateProfileStringA("Tanu", "Mission", "5", ini.c_str());
+            }
+        }
+        static int briefings;
+        if (scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos && in > 2500 &&
+            acted == 0) {
+            clickCmd(0x66);  // the campaigns
+            acted = 1;
+        } else if (top.find("SSinglePlayer") != std::string::npos && in > 2000 && acted == 0) {
+            shot("campaigns");
+            clickCmd(100);  // Tanu Ascendancy
+            acted = 1;
+        } else if (top.find("SSinglePlayer") != std::string::npos && in > 3500 && acted == 1) {
+            g_h.log("autopilot: campaign screen now: %s", menu::WidgetTexts().c_str());
+            shot("prompt");
+            clickCmd(g_h.target == 2 ? 0x92 : 0x91);
+            acted = 2;
+        } else if (top.find("SMissionBrief") != std::string::npos && in > 3000 && acted == 0) {
+            ++briefings;
+            char* c = *(char**)0x57928c;
+            int ch = c ? *(unsigned short*)(c + 4) : -1;
+            int set = c && ch >= 0 && ch < *(int*)(c + 0x10) ? *(unsigned short*)((*(char***)(c + 0xc))[ch]) : -1;
+            g_h.log("autopilot: briefing %d: campaign %d chapter %d set %d", briefings,
+                    c ? *(unsigned short*)(c + 0x18) : -1, ch, set);
+            shot(briefings == 1 ? "brief1" : "brief2");
+            if (g_h.target == 0 && briefings == 1) {
+                if (!ClickWidget("ACCEPT", true) && !ClickWidget("Accept", true)) clickCmd(100);
+                acted = 1;
+            } else {
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+                acted = 9;
+            }
+        } else if (scene == ".?AVSGame@@" && in > 6000 && acted == 0) {
+            char* me = *(char**)0x579288;
+            g_h.log("autopilot: mission running; winning as player %d", me ? *(short*)(me + 4) : -1);
+            shot("mission");
+            if (me) ((void(__thiscall*)(void*, int))0x43bb20)(reg, *(short*)(me + 4));
+            acted = 1;
+        } else if (scene == ".?AVSReward@@" && in > 3000 && acted == 0) {
+            shot("reward");
+            if (!clickCmd(0x17)) {
+                PostKey(WM_KEYDOWN, VK_ESCAPE);
+                PostKey(WM_KEYUP, VK_ESCAPE);
+            }
+            acted = 1;
+        } else if (in > 60000 && acted < 9) {
+            g_h.log("autopilot: stuck in %s; quitting", key.c_str());
+            PostQuitMessage(0);
+            acted = 9;
         }
         return;
     }

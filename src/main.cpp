@@ -29,6 +29,8 @@
 #include "controls.h"
 #include "editor/editor.h"
 #include "skirmish.h"
+#include "skirmish_teams.h"
+#include "campaign.h"
 
 #include "version.h"
 
@@ -970,6 +972,8 @@ void Init(HMODULE self) {
     ApplyControlOptions();
     editor::Install({Log, g_dir, IniInt("Debug", "Autopilot", 0) != 0});  // after controls: its mouse hooks chain
     skirmish::Install(Log);
+    teams::Install(Log);
+    campaign::Install(g_dir, Log);
     {
         movie::Hooks mh;
         mh.log = Log;
