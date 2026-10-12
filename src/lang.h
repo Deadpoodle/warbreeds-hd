@@ -41,7 +41,7 @@ const char* DrawnTranslation(const char* text, int n);
 std::wstring Wide(const char* text, int n);
 bool HasHigh(const char* text, int n);
 
-// [Debug] WriteLangTemplate=1: Lang\WarBreedsHD_template.txt from this exe's string table.
+// Lang\WarBreedsHD_template.txt from this copy of the game (written at every start).
 void WriteTemplate();
 
 }  // namespace lang

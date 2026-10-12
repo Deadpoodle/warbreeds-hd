@@ -923,7 +923,7 @@ void Init(HMODULE self) {
     if (IniInt("Debug", "Headless", 0)) headless::Install(Log);
     // Before the game's static initialisers load its string table (this is DllMain).
     lang::Install(g_dir, IniGet("Display", "Language", "en"), Log);
-    if (IniInt("Debug", "WriteLangTemplate", 0)) lang::WriteTemplate();
+    lang::WriteTemplate();  // for translators: every key with its English, from this copy
 
     // The engine's timer/audio threads (timeSetEvent callbacks, SuspendThread)
     // race and can deadlock on multi-core CPUs; GOG's DDrawCompat pins the game

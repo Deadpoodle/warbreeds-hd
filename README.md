@@ -111,7 +111,7 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 | ![The main menu in French](docs/screenshots/lang-fr-menu.jpg) | ![A Tanu mission briefing in German](docs/screenshots/lang-de-briefing.jpg) |
 
 - **French and German come with the patch.** They were drafted by machine (an AI model) from the game's English, so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
-- **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and a debug option writes a ready-to-fill template from your own copy of the game.
+- **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and the game writes a ready-to-fill template into that folder each time it starts, made from your own copy (every line with its English).
 - The game's own letters are used: its bitmap fonts already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. With the Orbitron font option they come from Orbitron instead.
 - Spoken voices and the movies stay English, and so does the text players type (the game only accepts plain letters there).
 

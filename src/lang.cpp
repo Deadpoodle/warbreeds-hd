@@ -503,14 +503,20 @@ bool HasHigh(const char* text, int n) {
     return false;
 }
 
+// The template: every key a language file can have, with the English beside it,
+// written from the player's own copy of the game (so nothing of the game's text
+// is shipped with the patch). The game's strings come from WARBREED.EXE; the
+// mission titles, map messages and WarBreeds HD's own keys from a shipped
+// language file, with its text as a reference.
 void WriteTemplate() {
     std::string path = g_dir + "Lang\\WarBreedsHD_template.txt";
     CreateDirectoryA((g_dir + "Lang").c_str(), nullptr);
     FILE* f = fopen(path.c_str(), "wb");
     if (!f) return;
-    fputs("\xEF\xBB\xBF# WarBreeds HD language template, made from your own copy of WARBREED.EXE.\r\n"
-          "# Copy it to WarBreedsHD_<code>.txt (e.g. WarBreedsHD_es.txt), set Language, and fill in\r\n"
-          "# the lines after each English comment. Empty lines stay English. See README.txt.\r\n\r\n"
+    fputs("\xEF\xBB\xBF# WarBreeds HD language template, made from your own copy of the game.\r\n"
+          "# It is rewritten every time the game starts: COPY it before editing, as\r\n"
+          "# WarBreedsHD_<code>.txt (for example WarBreedsHD_es.txt), then fill in the lines\r\n"
+          "# after each comment. Lines left empty stay English. README.txt explains the rest.\r\n\r\n"
           "Language = \r\n\r\n[game]\r\n",
           f);
     static char buf[0x1800];
@@ -526,7 +532,49 @@ void WriteTemplate() {
         fprintf(f, "# %s\r\n%d = \r\n", en.c_str(), id);
     }
     for (Literal& l : g_lits) fprintf(f, "# %s\r\n0x%x = \r\n", (const char*)l.text, (unsigned)l.text);
-    fputs("\r\n[patch]\r\n# WarBreeds HD's own text: copy the [patch] section of another language file.\r\n", f);
+
+    // The other sections' keys, from a shipped language (French if it's there).
+    std::string reference;
+    std::string refName;
+    for (const char* code : {"fr", "de"}) {
+        FILE* r = fopen(FilePath(code).c_str(), "rb");
+        if (!r) continue;
+        fclose(r);
+        reference = FilePath(code);
+        break;
+    }
+    if (reference.empty()) {
+        for (const Language& l : Available(true))
+            if (l.code != "en") {
+                reference = FilePath(l.code);
+                break;
+            }
+    }
+    if (FILE* r = reference.empty() ? nullptr : fopen(reference.c_str(), "rb")) {
+        char line[4096];
+        std::string section;
+        while (fgets(line, sizeof line, r)) {
+            std::string t = line;
+            if (t.compare(0, 3, "\xEF\xBB\xBF") == 0) t = t.substr(3);
+            t = Trim(t);
+            if (t.empty() || t[0] == '#') continue;
+            if (t[0] == '[') {
+                section = t.substr(1, t.find(']') - 1);
+                if (section != "game") fprintf(f, "\r\n[%s]\r\n", section.c_str());
+                continue;
+            }
+            size_t eq = t.find('=');
+            if (eq == std::string::npos) continue;
+            std::string key = Trim(t.substr(0, eq)), value = Trim(t.substr(eq + 1));
+            if (section.empty()) {
+                if (key == "Language") refName = value;
+                continue;
+            }
+            if (section == "game") continue;
+            fprintf(f, "# %s: %s\r\n%s = \r\n", refName.c_str(), value.c_str(), key.c_str());
+        }
+        fclose(r);
+    }
     fclose(f);
     g_log("lang: wrote %s", path.c_str());
 }

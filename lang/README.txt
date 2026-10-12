@@ -47,11 +47,20 @@ Encoding: UTF-8).
 - Letters: anything in Western European languages works (é è ç ß ü ...).
   The game's fonts have no « »: use plain "quotes".
 
-To start a new language, add WriteLangTemplate=1 under [Debug] in
-WarBreedsHD.ini and start the game once. It writes WarBreedsHD_template.txt here, made from your own copy of the
-game: every game string's English as a comment, ready to fill in. Copy the
-[patch] section from WarBreedsHD_fr.txt and translate the English keys' values.
-Rename the result WarBreedsHD_<code>.txt (es, it, pl, ...).
+TO START A NEW LANGUAGE
+-----------------------
+
+1. Start the game once with WarBreeds HD installed. It writes
+   WarBreedsHD_template.txt into this folder, made from your own copy of the
+   game: every line to translate, with the English (and the French, for
+   reference) in a comment above it.
+2. Copy it and rename the copy WarBreedsHD_<code>.txt, for example
+   WarBreedsHD_es.txt. (The template itself is rewritten every time the game
+   starts, so don't edit it directly.)
+3. Put the language's name after "Language =" at the top, then fill in the
+   lines you want. Anything left empty stays in English, so you can test a
+   few lines at a time.
+4. Start the game: the new language is on Settings > Interface > Language.
 
 For checking a file there is tools/lang_check.py in the source repository:
 it reports missing placeholders, letters the fonts can't draw, and text that

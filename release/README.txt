@@ -1,4 +1,4 @@
-WarBreeds HD 0.15.0
+WarBreeds HD 0.15.1
 ===================
 
 An unofficial patch for WarBreeds (Red Orb Entertainment, 1998) that makes it
@@ -36,7 +36,7 @@ INSTALL (WINDOWS)
 2. Copy wsock32.dll and the Fonts, Menus and Lang folders into that folder,
    next to WARBREED.EXE. (If Windows asks for permission, allow it.)
 
-3. Start the game as usual. The main menu shows "WarBreeds HD v0.15.0" at the
+3. Start the game as usual. The main menu shows "WarBreeds HD v0.15.1" at the
    bottom right and has a new Settings item.
 
 On first launch the patch creates WarBreedsHD.ini (all settings, with

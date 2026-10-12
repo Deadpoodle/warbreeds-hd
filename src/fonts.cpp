@@ -405,11 +405,20 @@ int WINAPI h_DrawTextA(HDC dc, LPCSTR text, int n, LPRECT r, UINT format) {
     Trace(text, n, __builtin_return_address(0));
     if (const char* t = lang::DrawnTranslation(text, n)) text = t, n = (int)strlen(t);
     return WithFit(dc, text, n, [&] {
+        // Word-wrapping doesn't count the stand-in's extra letter spacing, so wrapped
+        // lines (mission briefings) came out wider than their box and were cut off:
+        // wrap and draw them without it.
+        bool wrap = (format & DT_WORDBREAK) && TrueTypeIn(dc);
+        int extra = wrap ? SetTextCharacterExtra(dc, 0) : 0;
+        int result;
         if (lang::HasHigh(text, n) && TrueTypeIn(dc)) {
             std::wstring w = lang::Wide(text, n);
-            return DrawTextW(dc, w.c_str(), (int)w.size(), r, format);
+            result = DrawTextW(dc, w.c_str(), (int)w.size(), r, format);
+        } else {
+            result = o_DrawTextA(dc, text, n, r, format);
         }
-        return o_DrawTextA(dc, text, n, r, format);
+        if (wrap) SetTextCharacterExtra(dc, extra);
+        return result;
     });
 }
 
