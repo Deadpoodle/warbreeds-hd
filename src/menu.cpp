@@ -28,6 +28,7 @@
 #include "version.h"
 #include "fonts.h"
 #include "lang.h"
+#include "voices.h"
 #include "editor/editor.h"
 #include "editor/raw_paint.h"
 
@@ -150,6 +151,8 @@ std::vector<Setting>& Settings() {
          {{"Auto", "auto"}, {"1x", "1.0"}, {"1.5x", "1.5"}, {"2x", "2.0"}, {"2.5x", "2.5"}, {"3x", "3.0"}}, kInterface},
         // Choices: English and every language file in Lang\ (RefreshLanguages).
         {"Language", "Display", "Language", "en", {{"English", "en"}}, kInterface},
+        // Choices: By language, English, and every Voices\<code>\GLOBSFX.MHK (RefreshLanguages).
+        {"Voices", "Display", "Voices", "auto", {{"By language", "auto"}, {"English", "en"}}, kInterface},
     };
     return s;
 }
@@ -158,9 +161,21 @@ std::vector<Setting>& Settings() {
 // so a newly added file shows up without a restart. Names stay in their own language.
 void RefreshLanguages() {
     for (Setting& s : Settings()) {
-        if (strcmp(s.key, "Language") != 0) continue;
-        s.choices.clear();
-        for (const lang::Language& l : lang::Available(true)) s.choices.push_back({l.name.c_str(), l.code.c_str()});
+        if (strcmp(s.key, "Language") == 0) {
+            s.choices.clear();
+            for (const lang::Language& l : lang::Available(true)) s.choices.push_back({l.name.c_str(), l.code.c_str()});
+        }
+        if (strcmp(s.key, "Voices") == 0) {
+            // Each installed voice language by its language's own name (from Lang\), else its code.
+            static std::vector<std::string> names;
+            const std::vector<std::string>& codes = voices::Available(true);
+            names.assign(codes.begin(), codes.end());
+            for (std::string& n : names)
+                for (const lang::Language& l : lang::Available(false))
+                    if (l.code == n) n = l.name;
+            s.choices.resize(2);  // By language, English
+            for (size_t i = 0; i < codes.size(); ++i) s.choices.push_back({names[i].c_str(), codes[i].c_str()});
+        }
     }
 }
 
@@ -326,9 +341,13 @@ int CurrentChoice(const Setting& s) {
     return -1;
 }
 
+// The Font option is English's: other languages use their own (fonts::SetFor).
+bool FontByLanguage(const Setting& s) { return strcmp(s.key, "Font") == 0 && lang::Current() != "en"; }
+
 std::string Label(const Setting& s) {
     int c = CurrentChoice(s);
     std::string v = c >= 0 ? lang::tr(s.choices[c].shown) : lang::trf("Custom ({1})", {IniGet(s)});
+    if (FontByLanguage(s)) v = lang::tr("By language");
     return lang::trf("{1}: {2}", {lang::tr(s.label), v});
 }
 
@@ -654,6 +673,7 @@ bool Cycle(void* button, int dir) {
     if (g_page == kPageNew && g_pageScene) return CycleNew(g_pageScene, c, dir);
     if (c < kCmdFirstSetting || c >= kCmdFirstSetting + (short)all.size()) return false;
     const Setting& s = all[c - kCmdFirstSetting];
+    if (FontByLanguage(s)) return true;  // fixed while the language isn't English
     int n = (int)s.choices.size();
     int cur = CurrentChoice(s);
     int next = cur < 0 ? 0 : ((cur + dir) % n + n) % n;
@@ -661,7 +681,9 @@ bool Cycle(void* button, int dir) {
     g_h.log("menu: %s = %s", s.label, s.choices[next].value);
     if (g_h.applySettings) g_h.applySettings();
     PlaySelect();
-    if (strcmp(s.key, "Language") == 0 && g_pageScene) {  // every label changes
+    // Every label changes (Language), or every width does (Font: the tab headers and
+    // the footer are laid out from measured widths): show the page again.
+    if ((strcmp(s.key, "Language") == 0 || strcmp(s.key, "Font") == 0) && g_pageScene) {
         ShowPage(g_pageScene, kPageSettings);
         return true;
     }

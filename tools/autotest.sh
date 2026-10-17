@@ -16,7 +16,8 @@ SECS=${2:-40}
 T=${TESTDIR:-testrun}
 PATH=/c/msys64/mingw32/bin:$PATH sh build.sh 2>&1 | grep -E "error|warning" || true
 cp build/wsock32.dll $T/
-rm -f $T/auto-*.bmp $T/WarBreedsHD-samples*.txt
+# Every screenshot, frame dump and recording of the last run (only test output is a .bmp here).
+rm -f $T/*.bmp $T/*.BMP $T/WarBreedsHD-samples*.txt
 sed -i -e "s/^Autopilot=.*/Autopilot=$MODE/" -e "s/^Headless=.*/Headless=1/" -e "s/^Profile=.*/Profile=${PROFILE:-0}/" -e "s/^AutopilotTarget=.*/AutopilotTarget=${TARGET:-0}/" $T/WarBreedsHD.ini
 python tools/watchvis.py "$SECS" > build/vis.txt &
 powershell -NoProfile -File tools/smoke.ps1 -Seconds "$SECS" -Dir $T

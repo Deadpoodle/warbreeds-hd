@@ -2421,6 +2421,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                     add(0, 2, 1, 1);
                     add(0, 3, 1, 1);
                     add(1, 3, 1, 1);  // back to automatic
+                    add(0, 0, 1, 1);  // the human off its clan's colour (the result screen must show it)
                 }
                 acted = 2;
             } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && acted == 2 && queue.empty() &&
@@ -2547,11 +2548,11 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         // Everything is clicked by command id or position, never by English text.
         // Target 0: main menu, the three Settings tabs, the campaign screen and a
         //   Tanu briefing (and its second page), the mission, the Esc menu.
-        // 1: skirmish setup, a skirmish (Shamans selected, the build list), then
-        //   the Gene Lab and Device Lab screens.
+        // 1: skirmish setup, a skirmish (Shamans selected, the build list).
         // 2: on Settings > Interface, Language cycled through every language (live),
         //   back to the first.
         // 3: the map editor's panel on a map.
+        // 4, 5: the Gene Lab, the Device Lab (from the main menu).
         static int acted, shots, cycles;
         static DWORD at;
         static std::string last;
@@ -2666,6 +2667,16 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 at = now;
             } else if (scene == ".?AVSGame@@" && stage == 4 && in > 1200) {
                 shot("build-list");
+                quit();
+            }
+        } else if (g_h.target == 4 || g_h.target == 5) {
+            // The Gene Lab (main menu row 4) or the Device Lab (row 5).
+            if (mainMenu && stage == 0 && in > 2500) {
+                Click({87, g_h.target == 4 ? 133 : 161});
+                stage = 1;
+                at = now;
+            } else if (stage == 1 && !mainMenu && in > 4000) {
+                shot(g_h.target == 4 ? "gene-lab" : "device-lab");
                 quit();
             }
         } else if (g_h.target == 2) {

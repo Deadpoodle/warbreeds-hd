@@ -110,10 +110,37 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 |---|---|
 | ![The main menu in French](docs/screenshots/lang-fr-menu.jpg) | ![A Tanu mission briefing in German](docs/screenshots/lang-de-briefing.jpg) |
 
-- **French and German come with the patch.** They were drafted by machine (an AI model) from the game's English, so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
+- **French and German come with the patch.** The French game text is the 1998 French release's own (used with the original developers' blessing), extracted from that CD with [tools/locale_extract.py](tools/locale_extract.py) ([re/french-version.md](re/french-version.md)). German, and WarBreeds HD's own text in both, were drafted by machine (an AI model), so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
 - **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and the game writes a ready-to-fill template into that folder each time it starts, made from your own copy (every line with its English).
-- The game's own letters are used: its bitmap fonts already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. With the Orbitron font option they come from Orbitron instead.
-- Spoken voices and the movies stay English, and so does the text players type (the game only accepts plain letters there).
+- **The font follows the language.** The 1998 French release drew its text in narrower TrueType fonts than the English bitmap faces, and its text is written for them. In French, WarBreeds HD uses that release's fonts if they are installed. Otherwise the menus use Roboto Condensed (close to the release's Bell Gothic, narrowed to the 1998 width where needed). The HUD, the labs and the headings keep the English game's own pixel fonts, which read best at those small sizes, with the few tight spots ("Construire") set a pixel tighter. The 1998 interface face was too small to read at 1080p. A language's fonts are a small file beside its text, `Lang\WarBreedsHD_<code>.fonts`, made by [tools/font_metrics.py](tools/font_metrics.py).
+- Other languages use the game's own bitmap fonts, which already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. The Orbitron font option is for English only.
+- The movies stay English, and so does the text players type (the game only accepts plain letters there).
+
+### French or German voices
+
+The spoken announcements ("construction complete", "unit lost", ...) can play in French or German, taken from your own copy of that version of the game. No game audio comes with the patch, and the English voices of your Steam or GOG copy are never changed.
+
+All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `SFX.MHK`, is the same in every version.
+
+1. **Find the file** on your French or German WarBreeds CD (or a disc image of it): `WARBREED\DATA\GLOBSFX.MHK`. The French one is about 4.5 MB; the English one is about 3.9 MB.
+2. **Make a folder** in your WarBreeds game folder (the one with `WARBREED.EXE`): `Voices`, and inside it a folder named after the language: `fr` for French, `de` for German.
+3. **Copy the file** into it, keeping its name:
+
+   ```
+   WarBreeds\                  your game folder
+     WARBREED.EXE
+     DATA\GLOBSFX.MHK          the English voices: leave this one alone
+     Voices\
+       fr\GLOBSFX.MHK          from the French CD
+       de\GLOBSFX.MHK          from the German CD
+   ```
+
+   Don't replace `DATA\GLOBSFX.MHK`. It is the English set, and it is still used whenever English voices are chosen.
+4. **Pick the voices** on the main menu: **Settings > Interface > Voices**.
+   - **By language** (the default): the voices of the language the game is shown in, if you have them, else English.
+   - **English**, or any language you've added: those voices, whatever the text language.
+
+   The change is immediate. A file that isn't a WarBreeds `GLOBSFX.MHK` is ignored (the log, `WarBreedsHD.log`, says so) and English plays instead.
 
 ## What it does
 
@@ -152,7 +179,9 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 - The main menu's Multiplayer works again: the game's own LAN and Internet play over TCP/IP, for up to four players. On the GOG release it only showed an error. GOG's DirectPlay workaround couldn't load DirectPlay, and earlier versions of WarBreeds HD also left Windows COM set up in a way the game's network start-up rejected. Both are fixed.
 - Every player needs WarBreeds HD (all on the same version) and Windows' DirectPlay feature.
 - One player picks Internet TCP/IP, then Create. The others pick Join and type the host's IP address. The host may need to allow WARBREED.EXE through Windows Firewall. IPX, the other 1998 option, doesn't exist on modern Windows.
-- Tested with two copies on one PC. Reports from games between PCs are welcome.
+- **Internet play without a VPN:** every player must be reachable on TCP/UDP 47624 (the host) and 2300-2400. WarBreeds HD asks each router to forward those ports (UPnP), and corrects the private addresses players behind a router send. Players behind their provider's own NAT (CGNAT) can still join but not be reached for hosting; a virtual LAN (ZeroTier, Tailscale, Hamachi) always works. `WarBreedsHD.log` says what UPnP did. Ports 6073 and 41624, seen in some guides, aren't used.
+- **One DirectPlay:** GOG's and Steam's `dplayx.dll` in the game folder is a stub. The game's own import and DirectPlay's TCP/IP provider used to bind to it alongside Windows' real DirectPlay. Both now use Windows' DirectPlay. A crash in multiplayer writes `crash:` lines to the log and `WarBreedsHD-crash.dmp`.
+- Tested with two copies on one PC; games between PCs over the internet are being tested. Reports are welcome.
 
 **Controls** (the full list is in [docs/controls.md](docs/controls.md))
 - Arrow keys scroll smoothly. Optional WASD.
@@ -171,7 +200,7 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
 
 **Fonts**
-- An optional modern font, Orbitron, which switches live. Text that would run wider than the original font is narrowed to fit, so titles stay inside their bars.
+- An optional modern font for English, Orbitron, which switches live. Text that would run wider than the original font is narrowed to fit, so titles stay inside their bars. It isn't meant for translations: in other languages the font follows the language (see Languages).
 
 ## Install
 
@@ -219,7 +248,8 @@ The patch includes a debug autopilot and a headless mode, so most testing ran hi
 The WarBreeds HD code, tools and documentation are released into the **public domain** ([The Unlicense](LICENSE)): do whatever you want with them.
 
 Not covered:
-- **Orbitron font:** under the SIL Open Font License.
+- **Fonts** (Orbitron, Roboto Condensed): under the SIL Open Font License.
+- **The French game text** in `lang/WarBreedsHD_fr.txt` (`[game]`, `[maps]`, `[messages]`): the 1998 French release's own, included with the original developers' blessing.
 - **WarBreeds itself:** © 1998 Red Orb Entertainment / Broderbund. No game files are included.
 - **Widescreen menu artwork in the releases:** derived from the game's original art.
 

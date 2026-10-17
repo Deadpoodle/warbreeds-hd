@@ -25,6 +25,14 @@ docs/screenshots/raw/
 !re/names.tsv
 !re/types.tsv
 
+# Localized game discs (the player's own copies, read by tools/locale_extract.py)
+jeu-*/
+*.7z
+*.img
+*.sub
+*.ccd
+*.cue
+
 # The official 1998 map editor (Red Orb): local reference only, never published
 wbedit/
 wb20edit.zip

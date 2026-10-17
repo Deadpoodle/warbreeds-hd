@@ -5,8 +5,8 @@ Usage: package.py [--art DIR]
               saved as JPEG quality 95 without chroma subsampling (about a
               third of the size; no visible change at the 4:3 seams).
 
-Takes build/wsock32.dll (run build.sh first), the Orbitron font from
-third_party/fonts/orbitron, release/README.txt and release/LICENSE.txt
+Takes build/wsock32.dll (run build.sh first), the fonts in third_party/fonts/
+(Orbitron, and Roboto Condensed for the French menus), release/README.txt and release/LICENSE.txt
 (CRLF for Notepad), lang/ as Lang\, and docs/controls.md made into a
 standalone Controls.html (the zip's offline copy; GitHub shows the .md).
 The version comes from src/version.h."""
@@ -105,11 +105,20 @@ def main():
     os.makedirs(os.path.join(out, "Menus"))
 
     shutil.copy(os.path.join(ROOT, "build", "wsock32.dll"), out)
-    shutil.copytree(os.path.join(ROOT, "third_party", "fonts", "orbitron"), os.path.join(out, "Fonts"))
-    # Languages: the shipped files (UTF-8 as written) and the how-to (CRLF for Notepad).
+    # Fonts (SIL OFL): each font file, with its licence as OFL-<Family>.txt.
+    os.makedirs(os.path.join(out, "Fonts"))
+    for family in sorted(os.listdir(os.path.join(ROOT, "third_party", "fonts"))):
+        src = os.path.join(ROOT, "third_party", "fonts", family)
+        for f in sorted(os.listdir(src)):
+            if f.lower().endswith(".ttf"):
+                shutil.copy(os.path.join(src, f), os.path.join(out, "Fonts"))
+                licence = "OFL-" + re.split(r"[\[\-.]", f)[0] + ".txt"
+        shutil.copy(os.path.join(src, "OFL.txt"), os.path.join(out, "Fonts", licence))
+    # Languages: the shipped files (UTF-8 as written; .fonts: a language's release
+    # fonts) and the how-to (CRLF for Notepad).
     os.makedirs(os.path.join(out, "Lang"))
     for f in sorted(os.listdir(os.path.join(ROOT, "lang"))):
-        if f.startswith("WarBreedsHD_") and f.endswith(".txt"):
+        if f.startswith("WarBreedsHD_") and f.endswith((".txt", ".fonts")) and "_template" not in f and f != "WarBreedsHD_en.txt":
             shutil.copy(os.path.join(ROOT, "lang", f), os.path.join(out, "Lang"))
     text = open(os.path.join(ROOT, "lang", "README.txt"), encoding="utf-8").read().replace("\r\n", "\n")
     open(os.path.join(out, "Lang", "README.txt"), "w", encoding="utf-8", newline="").write(text.replace("\n", "\r\n"))

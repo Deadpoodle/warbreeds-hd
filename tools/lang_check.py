@@ -17,7 +17,10 @@ entry of the language file:
     marked ~ (a tight spot) is squeezed into the English's room when drawn:
     one past what the squeeze can do (about 1.35x) is TOO WIDE and must be
     reworded. Unmarked values wider than their English are listed with --all,
-    to check on screen.
+    to check on screen. A language with a .fonts file beside it (its release's
+    fonts, e.g. French) is drawn in those, every line fitted to the width it had
+    in that release, so this check is skipped for it; the game logs any line
+    that still can't fit ("STILL TOO WIDE").
 Exit status 1 if anything is an error.
 """
 import os
@@ -129,6 +132,7 @@ def main():
     font = fon_widths(os.path.join(game, 'WBMD14.FON'))
     lits = source_literals()
     entries, errors = parse(path)
+    release_fonts = os.path.exists(os.path.splitext(path)[0] + '.fonts')
     warnings, squeezed = [], []
     language = None
     done = 0
@@ -178,7 +182,7 @@ def main():
                 lines = sum(max(1, -(-width(font, part) // 357)) for part in value.split('\r\n'))
                 if lines > 7 * 16:
                     errors.append(f'{where}: about {lines} lines; the briefing shows 7 pages of 16')
-            if '\r\n' not in english and len(english) <= 80:
+            if '\r\n' not in english and len(english) <= 80 and not release_fonts:
                 we, wv = width(font, english), width(font, value)
                 if fit and we and wv > we * SQUEEZE_MAX:
                     errors.append(f'{where}: TOO WIDE for its spot: {wv} px vs English {we} px ({wv / we:.2f}x); reword')
@@ -196,6 +200,8 @@ def main():
     print(f'{os.path.basename(path)}: {language}: {done} entries; game strings {len(have)} of {len(translatable)}')
     for w in warnings:
         print('warning:', w)
+    if release_fonts:
+        print('widths: drawn in the release fonts (' + os.path.basename(os.path.splitext(path)[0]) + '.fonts), not checked here')
     if verbose:
         for q in squeezed:
             print('fit:', q)

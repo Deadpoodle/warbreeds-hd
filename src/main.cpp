@@ -32,6 +32,8 @@
 #include "skirmish_teams.h"
 #include "campaign.h"
 #include "lang.h"
+#include "voices.h"
+#include "net.h"
 
 #include "version.h"
 
@@ -52,6 +54,12 @@ decltype(&CoCreateInstance) g_gogCreate;  // GOG's loader, if it had patched the
 void Log(const char* fmt, ...);
 constexpr uintptr_t kCommsCoInitReturn = 0x4c7a43, kCommsCreateOperand = 0x4c7a79, kCreateSlot = 0x595b30;
 const GUID kClsidDirectPlay = {0xd1eb6d20, 0x8923, 0x11d0, {0x9d, 0x97, 0x00, 0xa0, 0xc9, 0x0a, 0x43, 0xcb}};
+
+decltype(&ExitProcess) o_ExitProcess;
+void WINAPI h_ExitProcess(UINT code) {
+    net::Shutdown();
+    o_ExitProcess(code);
+}
 
 HRESULT WINAPI h_CoInitialize(LPVOID reserved) {
     HRESULT hr = o_CoInitialize(reserved);
@@ -87,8 +95,11 @@ void __cdecl h_CommsDebug(const char* fmt, ...) {
 }
 
 HRESULT WINAPI h_CoCreateInstance(REFCLSID clsid, LPUNKNOWN outer, DWORD ctx, REFIID iid, LPVOID* out) {
+    bool dplay = IsEqualGUID(clsid, kClsidDirectPlay);
+    if (dplay) net::BeforeDirectPlay();  // one DirectPlay, its TCP/IP watched (net.cpp)
     HRESULT hr = o_CoCreateInstance(clsid, outer, ctx, iid, out);
-    if (IsEqualGUID(clsid, kClsidDirectPlay)) {
+    if (dplay) net::AfterDirectPlay();
+    if (dplay) {
         Log("multiplayer: DirectPlay through COM -> %#lx", (unsigned long)hr);
         if (FAILED(hr) && g_gogCreate) {
             hr = g_gogCreate(clsid, outer, ctx, iid, out);
@@ -190,11 +201,17 @@ void WriteDefaultIni() {
         ";                (Menus\\<Scene>-21x9.png on ultrawide screens) filling the sides\n"
         ";   original   - the original art only: menus at the left edge, black beside them\n"
         "MenuArt=widescreen\n"
-        "; Text font: original (the game's own) or orbitron (Orbitron, a modern sci-fi font\n"
-        "; from Fonts\\Orbitron[wght].ttf, SIL Open Font License). Changes live.\n"
+        "; Text font in English: original (the game's own) or orbitron (Orbitron, a modern sci-fi\n"
+        "; font from Fonts\\Orbitron[wght].ttf, SIL Open Font License; made for English only).\n"
+        "; Other languages use their own 1998 release's fonts when Lang\\ has them\n"
+        "; (WarBreedsHD_<code>.fonts, e.g. French), so their text fits. Changes live.\n"
         "Font=original\n"
         "; Language: en (built in), or the code of a file in Lang\\ (WarBreedsHD_<code>.txt, e.g. fr, de)\n"
         "Language=en\n"
+        "; Voices (the spoken announcements): auto = the language's own if installed, else English;\n"
+        "; en; or a code with Voices\\<code>\\GLOBSFX.MHK, copied from that language's CD\n"
+        "; (WARBREED\\DATA\\GLOBSFX.MHK). The game's English file in DATA\\ is never changed.\n"
+        "Voices=auto\n"
         "\n"
         "[Zoom]\n"
         "; Zoom is a magnification: screen pixels per game pixel. 1.0 shows the most detail\n"
@@ -268,6 +285,14 @@ void WriteDefaultIni() {
         "; Which core: -1 = the first one no other running copy of the game uses\n"
         "; (two copies on one PC, e.g. to try multiplayer); 0, 1, 2... = that core.\n"
         "CPU=-1\n"
+        "\n"
+        "[Network]\n"
+        "; Internet play through routers. NatFix: when a player behind a router sends their\n"
+        "; private address, answer the address their messages really came from.\n"
+        "NatFix=1\n"
+        "; UPnP: ask your router to forward the ports multiplayer uses (47624 and the ones\n"
+        "; DirectPlay picks in 2300-2400) while the game runs, so no manual port forwarding.\n"
+        "UPnP=1\n"
         "\n"
         "[Render]\n"
         "; d3d11 - WarBreeds HD draws the game itself (recommended; no flicker on zoom)\n"
@@ -354,8 +379,11 @@ void ApplyControlOptions() {
     controls::SetOptions(o);
 }
 
+// The font follows the language: a language with its release's fonts
+// (Lang\WarBreedsHD_<code>.fonts) always uses them; the Font option is English's.
 void ApplyFontOption() {
-    fonts::SetModern(_stricmp(IniGet("Display", "Font", "original").c_str(), "orbitron") == 0);
+    fonts::SetFor(IniGet("Display", "Language", "en"),
+                  _stricmp(IniGet("Display", "Font", "original").c_str(), "orbitron") == 0);
 }
 
 void ApplyLiveSettings() {
@@ -400,6 +428,7 @@ void ApplyLiveSettings() {
     ApplyControlOptions();
     std::string language = IniGet("Display", "Language", "en");
     if (_stricmp(language.c_str(), lang::Current().c_str()) != 0) lang::Set(language);
+    voices::Set(IniGet("Display", "Voices", "auto"), language);
 }
 
 void LoadConfig() {
@@ -924,6 +953,9 @@ void Init(HMODULE self) {
     // Before the game's static initialisers load its string table (this is DllMain).
     lang::Install(g_dir, IniGet("Display", "Language", "en"), Log);
     lang::WriteTemplate();  // for translators: every key with its English, from this copy
+    // Before the game first opens its sound files (App_StartRunning).
+    voices::Install(g_dir, Log);
+    voices::Set(IniGet("Display", "Voices", "auto"), IniGet("Display", "Language", "en"));
 
     // The engine's timer/audio threads (timeSetEvent callbacks, SuspendThread)
     // race and can deadlock on multi-core CPUs; GOG's DDrawCompat pins the game
@@ -971,6 +1003,7 @@ void Init(HMODULE self) {
     else
         Log("frame tick hook: %s", InstallFrameTickHook() ? "ok" : "FAILED (zoom disabled)");
     diag::Init(g_dir, Log);
+    diag::InstallCrashLog();
     camera::Init(g_cfg.cam, Log);
     // Needed whatever the zoom mode: any frame as large as a small map halved the view.
     Log("view fix: %s", camera::InstallViewFix() ? "installed" : "FAILED (unexpected code)");
@@ -1069,6 +1102,9 @@ void Init(HMODULE self) {
     // Multiplayer start-up: DirectPlay through COM again (see h_CoInitialize).
     render::HookImport(0x595b34, &h_CoInitialize, &o_CoInitialize);
     render::HookImport(0x595b30, &h_CoCreateInstance, &o_CoCreateInstance);
+    net::Install(Log, IniInt("Debug", "NetLog", 0) != 0, IniInt("Network", "NatFix", 1) != 0,
+                 IniInt("Network", "UPnP", 1) != 0);
+    render::HookImport(0x5957b0, &h_ExitProcess, &o_ExitProcess);  // router mappings removed at exit
     if (IniInt("Debug", "CommsLog", 0)) {
         uint8_t* p = (uint8_t*)0x4c60f0;
         const uint8_t expect[] = {0x8b, 0x4c, 0x24, 0x04, 0x81, 0xec};

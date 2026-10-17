@@ -8,13 +8,18 @@ language is a file in this folder:
   WarBreedsHD_fr.txt   Français
   WarBreedsHD_de.txt   Deutsch
 
+  WarBreedsHD_fr.fonts the fonts French is shown in (see FONTS below)
+
 The patch looks for WarBreedsHD_<code>.txt files every time the Settings page
 opens, so a new file shows up without restarting the game.
 
-The French and German translations were drafted by machine (an AI model)
-from the game's English. They will have mistakes and clumsy wording:
-corrections are very welcome, at https://github.com/Deadpoodle/warbreeds-hd
-(open an issue, or send a changed file).
+The French game text ([game], [maps], [messages]) is the 1998 French
+release's own, with a few typos fixed; it is used with the original
+developers' blessing. The German translation, and WarBreeds HD's own text
+([patch]) in both, were drafted by machine (an AI model) from the English.
+They will have mistakes and clumsy wording: corrections are very welcome, at
+https://github.com/Deadpoodle/warbreeds-hd (open an issue, or send a changed
+file).
 
 
 MAKING OR FIXING A TRANSLATION
@@ -47,6 +52,26 @@ Encoding: UTF-8).
 - Letters: anything in Western European languages works (é è ç ß ü ...).
   The game's fonts have no « »: use plain "quotes".
 
+
+FONTS
+-----
+
+A language can bring its own fonts: WarBreedsHD_<code>.fonts beside its text
+file. French has one. The 1998 French release drew its text in narrower fonts
+than the English game (Bell Gothic, Geometric 231 and Sherwood, instead of
+the English bitmap fonts), and its text is written to fit them. So in
+French:
+- if those fonts are installed on your PC (the French CD's FONTS folder),
+  they are used, exactly as in 1998;
+- otherwise the menus use Roboto Condensed (from the Fonts folder), a
+  look-alike narrowed where needed to the width a line had in 1998; the HUD,
+  the labs and the headings use the game's own fonts, which read best at
+  their small sizes. A line marked ~ is set a pixel tighter, or one size
+  smaller, where it would run out of its button.
+The .fonts file is made by tools/font_metrics.py in the source repository.
+Without one, a language uses the game's own fonts. The Font setting
+(Orbitron) applies to English only.
+
 TO START A NEW LANGUAGE
 -----------------------
 
@@ -65,3 +90,20 @@ TO START A NEW LANGUAGE
 For checking a file there is tools/lang_check.py in the source repository:
 it reports missing placeholders, letters the fonts can't draw, and text that
 is too long for where it is shown.
+
+
+VOICES
+------
+
+The spoken announcements ("construction complete", "unit lost", ...) are all
+in one file, DATA\GLOBSFX.MHK. To hear them in another language, copy that
+file from your own CD of that version of the game (WARBREED\DATA\GLOBSFX.MHK)
+into a folder named after the language's code, next to this Lang folder:
+
+  Voices\fr\GLOBSFX.MHK
+  Voices\de\GLOBSFX.MHK
+
+Never replace the game's own DATA\GLOBSFX.MHK: it is the English one, and is
+used whenever English voices are chosen. Settings > Interface > Voices lists
+the voices it finds; "By language" uses the voices of the language the game
+is shown in, if you have them, else English.

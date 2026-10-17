@@ -16,7 +16,9 @@ WHAT'S IN THIS FOLDER
 ---------------------
 
   wsock32.dll      The patch itself (loaded automatically by the game).
-  Fonts\           Orbitron, an optional modern font (SIL Open Font License).
+  Fonts\           Free fonts (SIL Open Font License): Orbitron, an optional
+                   modern font for English, and Roboto Condensed, the French
+                   menus' stand-in for the 1998 French release's font.
   Menus\           Widescreen artwork for the 4:3 menu screens.
   Lang\            Languages: French and German, and how to add more.
   Controls.html    Every keyboard and mouse control, original and new.
@@ -59,8 +61,9 @@ take effect immediately.
              Alt+F4, capture mouse, mouse scheme (Classic / Modern),
              builder click, quick-build keys, group build. Long tabs
              scroll with the mouse wheel ("More above/below").
-  Interface  Menu art (widescreen / original), font (original / Orbitron),
-             interface size, language.
+  Interface  Menu art (widescreen / original), font (original / Orbitron;
+             English only: other languages use their own), interface size,
+             language.
 
 Every option is also in WarBreedsHD.ini, with an explanation.
 
@@ -149,7 +152,8 @@ Fixes
     leave trails ([Render] FullRedraw=0 in WarBreedsHD.ini restores the
     original behaviour).
   - With the Orbitron font, text that would run wider than the original font
-    is narrowed to fit, so titles stay inside their bars.
+    is narrowed to fit, so titles stay inside their bars. Orbitron is made
+    for English: in other languages the Font setting shows "By language".
 
 
 LANGUAGES
@@ -157,14 +161,41 @@ LANGUAGES
 
 Settings > Interface > Language shows the game in another language, at
 once: menus, units, briefings, result screens, and WarBreeds HD's own pages
-and map editor. French and German are included. They were drafted by
-machine (an AI model), so corrections are welcome:
+and map editor. French and German are included. The French game text is
+the 1998 French release's own. Its menus are shown in a look-alike of that
+release's font (or the original if you have it installed), and the HUD and
+labs in the game's own fonts, so it fits and stays readable. German, and WarBreeds HD's own text in both, were drafted by machine
+(an AI model), so corrections are welcome:
 https://github.com/Deadpoodle/warbreeds-hd
 
 Each language is a text file in the Lang folder (WarBreedsHD_fr.txt, ...);
 the Settings page lists every file it finds. Lang\README.txt explains how to
-fix a translation or add a new language. Voices, movies and the text you
-type stay English.
+fix a translation or add a new language. Movies and the text you type stay
+English.
+
+FRENCH OR GERMAN VOICES
+
+The spoken announcements ("construction complete", "unit lost", ...) can be
+French or German, taken from your own copy of that version of the game. No
+game audio comes with the patch, and your English voices are never changed.
+
+1. On your French or German WarBreeds CD (or its disc image), find
+   WARBREED\DATA\GLOBSFX.MHK (French: about 4.5 MB).
+2. In your WarBreeds game folder (the one with WARBREED.EXE), make a folder
+   named Voices, and inside it one named after the language: fr for
+   French, de for German.
+3. Copy GLOBSFX.MHK into it, keeping its name:
+
+     WarBreeds\DATA\GLOBSFX.MHK       the English voices: leave this alone
+     WarBreeds\Voices\fr\GLOBSFX.MHK  from the French CD
+     WarBreeds\Voices\de\GLOBSFX.MHK  from the German CD
+
+4. On the main menu, Settings > Interface > Voices:
+   By language (the default) - the voices of the language the game is
+     shown in, if you have them, else English;
+   English, or a language you added - those voices, whatever the text.
+   The change is immediate. A file that isn't a WarBreeds GLOBSFX.MHK is
+   ignored (WarBreedsHD.log says so) and English plays instead.
 
 
 SKIRMISH TEAMS AND COLOURS
@@ -206,15 +237,35 @@ an error, and earlier versions of this patch broke it too; both are fixed.)
   - To host: Multiplayer, enter your name, Internet TCP/IP, Create.
     To join: the same, but Join, then type the host's IP address
     (on a home network it looks like 192.168.x.x; "ipconfig" shows it).
-  - The host may need to allow WARBREED.EXE through Windows Firewall.
-    Over the Internet, the host's router must forward DirectPlay's ports
-    (TCP and UDP 47624, and 2300-2400).
+  - Windows Firewall may ask to allow WARBREED.EXE: allow it (private and
+    public networks for Internet play).
   - IPX, the game's other 1998 option, doesn't exist on modern Windows.
   - After Start, the game takes about half a minute to begin while it
     measures each player's connection.
   - Two copies on one PC work too; each copy takes its own CPU core.
 
-Tested with two copies on one PC; games between PCs are not tested yet.
+Over the Internet. DirectPlay needs every player to be reachable from the
+others: TCP and UDP port 47624 (the host) and 2300-2400 (everyone). WarBreeds
+HD asks each player's router to forward these by itself (UPnP), and corrects
+the addresses players behind a router send, so on most home connections the
+host just gives the others their internet address (search "what is my IP").
+WarBreedsHD.log says what happened ("upnp: ...").
+  - If the log says "no router answered", UPnP is off on that router: turn
+    it on in the router's settings, or forward the ports above by hand to
+    that PC.
+  - If it says the router's internet address is private (CGNAT, common on
+    mobile and some fibre connections), others can't reach that PC: let a
+    player with a normal connection host, or use a VPN.
+  - A virtual LAN always works: ZeroTier, Tailscale or Hamachi. Everyone
+    joins the same network, and the host gives out the VPN address.
+(Ports 6073 and 41624, seen in some guides, aren't used by this game.)
+
+[Network] NatFix and UPnP in WarBreedsHD.ini turn these off. If the game
+ever crashes in multiplayer, WarBreedsHD.log ends with "crash:" lines and
+WarBreedsHD-crash.dmp is written beside it: please send both.
+
+Tested with two copies on one PC; games between PCs over the Internet are
+being tested now: reports are welcome.
 
 
 UNINSTALL
@@ -265,5 +316,9 @@ CREDITS
 
 WarBreeds (c) 1998 Red Orb Entertainment / Broderbund. This patch is an
 unofficial fan project, not affiliated with or endorsed by the rights holders.
-Orbitron font by Matt McInerney, SIL Open Font License 1.1 (Fonts\OFL.txt).
+Fonts, all SIL Open Font License 1.1 (licences in Fonts\OFL-<name>.txt):
+Orbitron by The League of Moveable Type and the Orbitron Project Authors;
+Roboto Condensed by The Roboto Project Authors.
+The French game text is the 1998 French release's own, included with the
+original developers' blessing.
 See LICENSE.txt.

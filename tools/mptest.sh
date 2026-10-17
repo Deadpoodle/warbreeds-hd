@@ -13,7 +13,7 @@ PATH=/c/msys64/mingw32/bin:$PATH sh build.sh 2>&1 | grep -E "error|warning" || t
 for pair in "$HOST 1" "$JOIN 2"; do
   set -- $pair
   cp build/wsock32.dll $1/
-  rm -f $1/auto-*.bmp
+  rm -f $1/*.bmp $1/*.BMP
   sed -i -e "s/^Autopilot=.*/Autopilot=20/" -e "s/^Headless=.*/Headless=1/" -e "s/^AutopilotTarget=.*/AutopilotTarget=$2/" \
          -e "s/^CommsLog=.*/CommsLog=${COMMS:-0}/" $1/WarBreedsHD.ini
 done

@@ -228,6 +228,75 @@ DWORD WINAPI ArmThread(LPVOID) {
 }
 }  // namespace
 
+// --- crash log ----------------------------------------------------------------
+// An unhandled exception: the code, where (module+offset), the registers, likely
+// return addresses on the stack, which DirectPlay DLLs are loaded (from where), and
+// WarBreedsHD-crash.dmp (a minidump, for a debugger). Players send the log and dump.
+namespace {
+LPTOP_LEVEL_EXCEPTION_FILTER g_prevFilter;
+volatile LONG g_crashed;
+
+void LogModule(const char* name) {
+    HMODULE m = GetModuleHandleA(name);
+    char path[MAX_PATH] = "";
+    if (m) GetModuleFileNameA(m, path, sizeof path);
+    g_log("crash:   %s: %s", name, m ? path : "not loaded");
+}
+
+LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
+    if (InterlockedExchange(&g_crashed, 1) == 0) {
+        const EXCEPTION_RECORD* r = ep->ExceptionRecord;
+        const CONTEXT* c = ep->ContextRecord;
+        char where[200];
+        Describe((uintptr_t)r->ExceptionAddress, where, sizeof where);
+        g_log("crash: exception %08lx at %s (thread %lu)", r->ExceptionCode, where, GetCurrentThreadId());
+        if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
+            g_log("crash:   %s address %08lx", r->ExceptionInformation[0] ? "writing" : "reading",
+                  (unsigned long)r->ExceptionInformation[1]);
+        g_log("crash:   eax %08lx ebx %08lx ecx %08lx edx %08lx esi %08lx edi %08lx ebp %08lx esp %08lx", c->Eax,
+              c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp);
+        const uintptr_t* sp = (const uintptr_t*)c->Esp;
+        for (int i = 0, shown = 0; i < 1024 && shown < 16; ++i) {
+            if (IsBadReadPtr(sp + i, 4)) break;
+            HMODULE m = nullptr;
+            if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                    (LPCSTR)sp[i], &m) || !m)
+                continue;
+            char buf[200];
+            Describe(sp[i], buf, sizeof buf);
+            g_log("crash:   [esp+%03x] %s", i * 4, buf);
+            ++shown;
+        }
+        LogModule("dplayx.dll");
+        LogModule("dpwsockx.dll");
+        // A minidump beside the log.
+        if (HMODULE dh = LoadLibraryA("dbghelp.dll")) {
+            typedef BOOL(WINAPI * Dump_t)(HANDLE, DWORD, HANDLE, int, void*, void*, void*);
+            struct Info {
+                DWORD tid;
+                EXCEPTION_POINTERS* ep;
+                BOOL client;
+            } info{GetCurrentThreadId(), ep, FALSE};
+            auto dump = (Dump_t)GetProcAddress(dh, "MiniDumpWriteDump");
+            HANDLE f = CreateFileA((g_dir + "WarBreedsHD-crash.dmp").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (dump && f != INVALID_HANDLE_VALUE) {
+                BOOL ok = dump(GetCurrentProcess(), GetCurrentProcessId(), f, 0x1 /* MiniDumpWithDataSegs */, &info,
+                               nullptr, nullptr);
+                g_log("crash: %s WarBreedsHD-crash.dmp", ok ? "wrote" : "could not write");
+            }
+            if (f != INVALID_HANDLE_VALUE) CloseHandle(f);
+        }
+    }
+    return g_prevFilter ? g_prevFilter(ep) : EXCEPTION_CONTINUE_SEARCH;
+}
+}  // namespace
+
+void InstallCrashLog() {
+    LPTOP_LEVEL_EXCEPTION_FILTER prev = SetUnhandledExceptionFilter(CrashFilter);
+    if (prev != CrashFilter) g_prevFilter = prev;  // installed again later: keep the first one we replaced
+}
+
 void TraceWrites(uintptr_t addr) {
     static bool installed;
     if (!installed) {

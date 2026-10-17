@@ -16,10 +16,18 @@ namespace fonts {
 namespace {
 
 void (*g_log)(const char*, ...);
-bool g_modern;
-bool g_loaded;  // the TrueType file is available
+std::string g_dir;
+bool g_loaded;  // the Orbitron file is available
 
-// Stand-in for each of the game's faces, at the same cell height so line
+// What the game's faces are drawn in: its own bitmap faces; Orbitron (an English
+// option); or a language's release fonts (Lang\WarBreedsHD_<code>.fonts: the faces
+// that language's 1998 release used, or free stand-ins for them).
+enum Mode { kBitmap, kOrbitron, kRelease };
+Mode g_mode = kBitmap;
+std::string g_release;  // the language whose release fonts are loaded
+bool g_releaseReal;     // the player has the release's own fonts installed: drawn as in 1998
+
+// Orbitron for each of the game's faces, at the same cell height so line
 // spacing and boxes stay as they were. Small sizes use Medium with 1 px of
 // extra letter spacing (Orbitron runs its letters together below ~15 px);
 // heavier weights lose the dots on i/j there.
@@ -41,34 +49,50 @@ const Spec kSpecs[] = {
     {"Darwin18", "Orbitron SemiBold", 600, 27, 0},  // headings (unit names, menu titles)
 };
 
+constexpr int kFaces = sizeof kSpecs / sizeof kSpecs[0];
+
+// The current mode's stand-in for each face (kSpecs order). height is GDI's
+// lfHeight: positive a cell height, negative a character height. room: in release
+// mode, the advance widths (Windows-1252 0x20..0xFF) of the release's own face; a
+// string the stand-in draws wider than that is narrowed to it, so text fits
+// wherever the release's did.
+struct Stand {
+    std::string face;
+    int weight = 400, height = 0, extra = 0;
+    std::vector<int> room;
+};
+Stand g_stand[kFaces];
+
 // The game creates and deletes its fonts over and over (every frame on some
-// screens), so each face gets one stand-in, made on first use and kept.
-HFONT g_standIn[sizeof kSpecs / sizeof kSpecs[0]];
-std::map<HFONT, int> g_specOf;        // game font -> kSpecs index
-std::map<HFONT, HFONT> g_originalOf;  // stand-in -> a game font of that face
+// screens), so each face gets one stand-in, made on first use and kept until
+// the mode changes.
+HFONT g_standIn[kFaces];
+std::map<HFONT, HFONT> g_originalOf;  // stand-in -> the game font it last stood in for
 // Orbitron is wider than the game's faces, and the game lays text out in boxes
 // sized for them ("Select Components" ran out of its title bar). A string that
 // would come out wider than the original face draws it is measured and drawn
 // with a horizontally narrowed stand-in instead, so it takes the original's room.
-HFONT g_original[sizeof kSpecs / sizeof kSpecs[0]];  // our own copy of each original face
-std::map<std::pair<int, int>, HFONT> g_narrow;       // (spec, average char width) -> font
-std::map<std::string, HFONT> g_fitOf;                // spec + text -> font to use (stand-in if it fits)
+// In release mode the room is the release face's (Stand::room) instead.
+HFONT g_original[kFaces];                       // our own copy of each original face
+std::map<std::pair<int, int>, HFONT> g_narrow;  // (spec, average char width) -> font
+std::map<std::string, HFONT> g_fitOf;           // spec + text -> font to use (stand-in if it fits)
 HDC g_scratch;
 // Our TrueType fonts (stand-ins and narrowed ones). Translated text is Mac Roman
 // (the order the game's bitmap faces hold accented letters in), so with these
 // selected, text with accents is measured and drawn through the W functions.
 std::map<HFONT, bool> g_trueType;
 bool TrueTypeIn(HDC dc) { return g_trueType.count((HFONT)GetCurrentObject(dc, OBJ_FONT)) != 0; }
-std::map<HFONT, int> g_faceOf;  // every game font handle -> kSpecs index
-LOGFONTA g_lf[sizeof kSpecs / sizeof kSpecs[0]];
+std::map<HFONT, int> g_faceOf;  // every live game font handle -> kSpecs index
+LOGFONTA g_lf[kFaces];
 
 // A translation marked ~ (a tight spot) is fitted into the room its English took:
 // it may run up to kFitSlack wider than its English original; past that it is
 // squeezed, within legibility (Orbitron at most kMaxNarrow narrower; the
 // bitmap faces 1 px tighter, then the same family's next smaller face), and
 // past that it overflows: tools/lang_check.py reports it so the wording can be
-// shortened instead.
-constexpr double kFitSlack = 1.10, kMaxNarrow = 0.80;
+// shortened instead. Release fonts narrow to the release's room, at most
+// kMaxNarrowRelease (their room is exact, so any string the release fitted fits).
+constexpr double kFitSlack = 1.10, kMaxNarrow = 0.80, kMaxNarrowRelease = 0.60;
 
 decltype(&CreateFontIndirectA) o_CreateFontIndirectA;
 decltype(&SelectObject) o_SelectObject;
@@ -79,25 +103,97 @@ decltype(&TextOutA) o_TextOutA;
 decltype(&DrawTextA) o_DrawTextA;
 
 int SpecFor(const char* face) {
-    for (int i = 0; i < (int)(sizeof kSpecs / sizeof kSpecs[0]); ++i)
+    for (int i = 0; i < kFaces; ++i)
         if (_stricmp(face, kSpecs[i].face) == 0) return i;
     return -1;
 }
 
+HFONT MakeFont(const Stand& s, int ave) {
+    LOGFONTA m{};
+    m.lfHeight = s.height;
+    m.lfWidth = ave;
+    m.lfWeight = s.weight;
+    m.lfCharSet = DEFAULT_CHARSET;
+    m.lfQuality = NONANTIALIASED_QUALITY;  // the game draws into an 8-bit frame
+    strncpy(m.lfFaceName, s.face.c_str(), LF_FACESIZE - 1);
+    HFONT f = (o_CreateFontIndirectA ? o_CreateFontIndirectA : CreateFontIndirectA)(&m);
+    if (f) g_trueType[f] = true;
+    return f;
+}
+
 HFONT StandIn(int i) {
+    if (g_mode == kBitmap || g_stand[i].face.empty()) return nullptr;
     if (!g_standIn[i]) {
-        const Spec& s = kSpecs[i];
-        LOGFONTA m{};
-        m.lfHeight = s.height;  // cell height, like the bitmap face's
-        m.lfWeight = s.weight;
-        m.lfCharSet = DEFAULT_CHARSET;
-        m.lfQuality = NONANTIALIASED_QUALITY;  // the game draws into an 8-bit frame
-        strncpy(m.lfFaceName, s.sub, LF_FACESIZE - 1);
-        g_standIn[i] = (o_CreateFontIndirectA ? o_CreateFontIndirectA : CreateFontIndirectA)(&m);
-        if (g_standIn[i]) g_trueType[g_standIn[i]] = true;
-        g_log("fonts: %s -> %s %d px%s", s.face, s.sub, s.height, g_standIn[i] ? "" : " FAILED");
+        g_standIn[i] = MakeFont(g_stand[i], 0);
+        g_log("fonts: %s -> %s %d px%s", kSpecs[i].face, g_stand[i].face.c_str(), g_stand[i].height,
+              g_standIn[i] ? "" : " FAILED");
     }
     return g_standIn[i];
+}
+
+// Retires every stand-in and fitted font (the mode or its fonts changed); the next
+// SelectObject swaps new ones in. They aren't deleted: one may still be selected in
+// a DC, and the game may get it back from SelectObject (mapped to its own font, as
+// before). A few fonts per language change.
+void DropStandIns() {
+    for (HFONT& f : g_standIn) f = nullptr;
+    g_narrow.clear();
+    g_fitOf.clear();
+}
+
+// Lang\WarBreedsHD_<code>.fonts (tools/font_metrics.py): one line per game face,
+//   WBMd14 = BellGothic BT, 14, 400 | Roboto Condensed, 400, 16 | 4 5 4 ...
+// the release's face, size and weight | the stand-in ("-": the game's own face),
+// weight, cell height | the room.
+bool LoadRelease(const std::string& code, Stand (&out)[kFaces], bool& real) {
+    FILE* f = fopen((g_dir + "Lang\\WarBreedsHD_" + code + ".fonts").c_str(), "rb");
+    if (!f) return false;
+    Stand own[kFaces];  // the release's own faces, as the release asked for them
+    int got = 0;
+    char line[4096];
+    while (fgets(line, sizeof line, f)) {
+        if (line[0] == '#') continue;
+        char game[32], face[64], sub[64];
+        int size, weight, sweight, cell, used = 0;
+        if (sscanf(line, " %31[^ =] = %63[^,], %d, %d | %63[^,], %d, %d |%n", game, face, &size, &weight, sub, &sweight,
+                   &cell, &used) < 7 || !used)
+            continue;
+        int i = SpecFor(game);
+        if (i < 0) continue;
+        own[i].face = face;
+        own[i].weight = weight;
+        own[i].height = -size;
+        out[i].face = strcmp(sub, "-") == 0 ? "" : sub;  // "-": the game's own face
+        out[i].weight = sweight;
+        out[i].height = cell;
+        out[i].room.clear();
+        for (char *p = line + used, *e; out[i].room.size() < 224; p = e) {
+            long w = strtol(p, &e, 10);
+            if (e == p) break;
+            out[i].room.push_back((int)w);
+        }
+        if (out[i].room.size() != 224) out[i].room.clear();
+        ++got;
+    }
+    fclose(f);
+    // The release's own fonts, if the player has them installed (the file names the
+    // face Windows drew in 1998, fallbacks included, so each must be found as named).
+    real = got == kFaces;
+    HDC dc = CreateCompatibleDC(nullptr);
+    for (int i = 0; i < kFaces && real; ++i) {
+        HFONT probe = MakeFont(own[i], 0);
+        HGDIOBJ old = SelectObject(dc, probe);
+        char name[LF_FACESIZE] = "";
+        GetTextFaceA(dc, sizeof name, name);
+        SelectObject(dc, old);
+        g_trueType.erase(probe);
+        DeleteObject(probe);
+        real = _stricmp(name, own[i].face.c_str()) == 0;
+    }
+    DeleteDC(dc);
+    if (real)
+        for (int i = 0; i < kFaces; ++i) out[i] = own[i];
+    return got > 0;
 }
 
 // The game's bitmap faces keep their accented letters in Mac Roman order, and
@@ -112,7 +208,7 @@ bool g_symbolCopies;
 // [Debug] TextTrace=1: every distinct string the game draws, with the code that
 // drew it (finds text that doesn't come from the string table).
 bool g_textTrace;
-void Trace(HDC dc, const char* text, int n, void* from) {
+void Trace(HDC dc, const char* text, int n, void* from, const RECT* box = nullptr, UINT format = 0) {
     if (!g_textTrace || !text) return;
     static std::map<std::string, bool> seen;
     std::string t = n < 0 ? std::string(text) : std::string(text, n);
@@ -123,8 +219,11 @@ void Trace(HDC dc, const char* text, int n, void* from) {
     GetTextMetricsA(dc, &tm);
     LOGFONTA lf{};
     GetObjectA(GetCurrentObject(dc, OBJ_FONT), sizeof lf, &lf);
-    g_log("text: \"%s\" from %p: %s h%ld ave%ld lfWidth %ld extra %d", t.c_str(), from, face, tm.tmHeight,
-          tm.tmAveCharWidth, lf.lfWidth, GetTextCharacterExtra(dc));
+    SIZE sz{};
+    o_GetTextExtentPointA(dc, text, n < 0 ? (int)strlen(text) : n, &sz);
+    g_log("text: \"%s\" from %p: %s h%ld ave%ld lfWidth %ld extra %d width %ld rect %ld-%ld format 0x%x", t.c_str(),
+          from, face, tm.tmHeight, tm.tmAveCharWidth, lf.lfWidth, GetTextCharacterExtra(dc), sz.cx,
+          box ? box->left : 0, box ? box->right : 0, format);
 }
 
 void LoadSymbolCopies(const char* dir) {
@@ -183,15 +282,11 @@ HFONT WINAPI h_CreateFontIndirectA(const LOGFONTA* lf) {
             g_lf[i] = *lf;
         }
         g_faceOf[f] = i;
-        if (g_loaded && StandIn(i)) {
-            g_specOf[f] = i;
-            g_originalOf[g_standIn[i]] = f;
-        }
     }
     return f;
 }
 
-// The game selects its own font; while the option is on, the stand-in goes
+// The game selects its own font; in Orbitron or release mode the stand-in goes
 // into the DC instead. The game only ever sees its own handles.
 HGDIOBJ WINAPI h_SelectObject(HDC dc, HGDIOBJ obj) {
     if (!obj || GetObjectType(obj) != OBJ_FONT) return o_SelectObject(dc, obj);
@@ -199,10 +294,13 @@ HGDIOBJ WINAPI h_SelectObject(HDC dc, HGDIOBJ obj) {
     int extra = 0;
     auto o = g_originalOf.find((HFONT)obj);  // a stand-in handed back to us
     if (o != g_originalOf.end()) want = o->second;
-    auto s = g_specOf.find((HFONT)want);
-    if (g_modern && s != g_specOf.end()) {
-        extra = kSpecs[s->second].extra;
-        want = g_standIn[s->second];
+    auto s = g_faceOf.find((HFONT)want);
+    if (s != g_faceOf.end()) {
+        if (HFONT stand = StandIn(s->second)) {
+            extra = g_stand[s->second].extra;
+            g_originalOf[stand] = (HFONT)want;
+            want = stand;
+        }
     }
     HGDIOBJ prev = o_SelectObject(dc, want);
     SetTextCharacterExtra(dc, extra);  // the game never sets it itself
@@ -211,7 +309,7 @@ HGDIOBJ WINAPI h_SelectObject(HDC dc, HGDIOBJ obj) {
 }
 
 int SpecOfStandIn(HFONT f) {
-    for (int i = 0; i < (int)(sizeof kSpecs / sizeof kSpecs[0]); ++i)
+    for (int i = 0; i < kFaces; ++i)
         if (g_standIn[i] && g_standIn[i] == f) return i;
     return -1;
 }
@@ -233,26 +331,33 @@ int Width(HFONT f, int extra, const char* text, int n) {
     return sz.cx;
 }
 
+// The width this text took in the release's own face (the sum of its advance
+// widths, as GDI lays a line out); -1 if face i has no room.
+int RoomWidth(int i, const char* text, int n) {
+    const std::vector<int>& room = g_stand[i].room;
+    if (room.size() != 224) return -1;
+    if (n < 0) n = (int)strlen(text);
+    std::wstring w = lang::Wide(text, n);
+    std::string ansi(w.size() * 2 + 1, '\0');
+    int len = WideCharToMultiByte(1252, 0, w.c_str(), (int)w.size(), &ansi[0], (int)ansi.size(), nullptr, nullptr);
+    int sum = 0;
+    for (int k = 0; k < len; ++k) {
+        uint8_t b = (uint8_t)ansi[k];
+        if (b >= 0x20) sum += room[b - 0x20];
+    }
+    return sum;
+}
+
 bool HasBracket(const char* text, int n) {
     for (int k = 0; k < n; ++k)
         if (strchr("()[]", text[k]) && text[k]) return true;
     return false;
 }
 
-// Spec i's stand-in at this average character width.
+// Face i's stand-in at this average character width.
 HFONT Narrow(int i, int ave) {
     HFONT& f = g_narrow[{i, ave}];
-    if (!f) {
-        LOGFONTA m{};
-        m.lfHeight = kSpecs[i].height;
-        m.lfWidth = ave;
-        m.lfWeight = kSpecs[i].weight;
-        m.lfCharSet = DEFAULT_CHARSET;
-        m.lfQuality = NONANTIALIASED_QUALITY;
-        strncpy(m.lfFaceName, kSpecs[i].sub, LF_FACESIZE - 1);
-        f = o_CreateFontIndirectA(&m);
-        if (f) g_trueType[f] = true;
-    }
+    if (!f) f = MakeFont(g_stand[i], ave);
     return f;
 }
 
@@ -266,35 +371,47 @@ int AveWidth(HFONT f) {
 
 // The font to measure and draw this string with in a DC holding a stand-in:
 // the stand-in itself, or a narrowed one if the stand-in runs wider than the
-// original face. nullptr: not a stand-in, nothing to do.
+// original face (Orbitron) or the release's own face (release mode). nullptr:
+// not a stand-in, nothing to do.
 HFONT FitFont(HDC dc, const char* text, int n) {
-    if (!g_modern || !text) return nullptr;
+    if (g_mode == kBitmap || !text) return nullptr;
     int i = SpecOfStandIn((HFONT)GetCurrentObject(dc, OBJ_FONT));
-    if (i < 0 || !g_original[i]) return nullptr;
+    if (i < 0) return nullptr;
     if (n < 0) n = (int)strlen(text);
     std::string key = std::string(1, (char)('A' + i)) + std::string(text, n);
     auto hit = g_fitOf.find(key);
     if (hit != g_fitOf.end()) return hit->second;
     if (g_fitOf.size() > 4000) g_fitOf.clear();  // the game's strings are few; just a safety cap
-    int extra = kSpecs[i].extra;
-    int original = Width(g_original[i], 0, text, n), have = Width(g_standIn[i], extra, text, n);
-    int want = original;  // Orbitron always takes the original face's room, however much it must narrow
-    if (const char* en = lang::EnglishOf(text, n))
-        want = std::min(want, (int)(kFitSlack * Width(g_original[i], 0, en, -1)));
+    int extra = g_stand[i].extra;
+    int have = Width(g_standIn[i], extra, text, n), want, least;
     HFONT use = g_standIn[i];
+    if (!g_scratch) g_scratch = CreateCompatibleDC(nullptr);
     int natural = AveWidth(use);
-    if (have > want && want > 0) {
+    if (g_mode == kRelease) {
+        want = RoomWidth(i, text, n);  // -1: the release's own fonts, drawn as they are
+        least = std::max(1, (int)(natural * kMaxNarrowRelease + 0.5));
+    } else {
+        if (!g_original[i]) return nullptr;
+        int original = Width(g_original[i], 0, text, n);
+        want = original;  // Orbitron always takes the original face's room, however much it must narrow
+        if (const char* en = lang::EnglishOf(text, n))
+            want = std::min(want, (int)(kFitSlack * Width(g_original[i], 0, en, -1)));
         // A translation squeezed into its English's room narrows at most kMaxNarrow past
         // the original face's width; the plain fit to the original has no floor.
-        int least = want < original && have > 0 ? std::max(1, (int)(natural * (double)original / have * kMaxNarrow + 0.5))
-                                                : 1;
-        for (int ave = std::max(least, (int)(natural * (double)want / have)); ave >= least; --ave) {
+        least = want < original && have > 0 ? std::max(1, (int)(natural * (double)original / have * kMaxNarrow + 0.5))
+                                            : 1;
+    }
+    if (have > want && want > 0) {
+        bool fits = false;
+        for (int ave = std::max(least, std::min(natural - 1, (int)(natural * (double)want / have))); ave >= least;
+             --ave) {
             HFONT f = Narrow(i, ave);
             if (!f) break;
             use = f;
-            if (Width(f, extra, text, n) <= want) break;
+            if ((fits = Width(f, extra, text, n) <= want)) break;
         }
-        g_log("fonts: \"%.*s\" (%s) narrowed to fit %d px (Orbitron %d px)", n, text, kSpecs[i].face, want, have);
+        g_log("fonts: \"%.*s\" (%s) narrowed to fit %d px (%s %d px)%s", n, text, kSpecs[i].face, want,
+              g_stand[i].face.c_str(), have, fits ? "" : ": STILL TOO WIDE");
     }
     g_fitOf[key] = use;
     return use;
@@ -339,9 +456,9 @@ int Ascent(HFONT f) {
 }
 
 bool SqueezeFor(HDC dc, const char* text, int n, Squeeze& out) {
-    if (g_modern || !text) return false;
+    if (!text) return false;
     auto face = g_faceOf.find((HFONT)GetCurrentObject(dc, OBJ_FONT));
-    if (face == g_faceOf.end()) return false;
+    if (face == g_faceOf.end() || StandIn(face->second)) return false;  // drawn in a stand-in
     const char* en = lang::EnglishOf(text, n);
     if (!en) return false;
     int i = face->second;
@@ -511,7 +628,7 @@ BOOL WINAPI h_TextOutA(HDC dc, int x, int y, LPCSTR text, int n) {
 }
 
 int WINAPI h_DrawTextA(HDC dc, LPCSTR text, int n, LPRECT r, UINT format) {
-    Trace(dc, text, n, __builtin_return_address(0));
+    Trace(dc, text, n, __builtin_return_address(0), r, format);
     if (const char* t = lang::DrawnTranslation(text, n)) text = t, n = (int)strlen(t);
     return WithFit(dc, text, n, [&] {
         // Word-wrapping doesn't count the stand-in's extra letter spacing, so wrapped
@@ -532,7 +649,7 @@ int WINAPI h_DrawTextA(HDC dc, LPCSTR text, int n, LPRECT r, UINT format) {
 }
 
 BOOL WINAPI h_DeleteObject(HGDIOBJ obj) {
-    g_specOf.erase((HFONT)obj);
+    g_faceOf.erase((HFONT)obj);  // GDI may hand the handle out again for another font
     return o_DeleteObject(obj);
 }
 
@@ -548,10 +665,23 @@ BOOL WINAPI h_GetCharABCWidthsA(HDC dc, UINT first, UINT last, LPABC abc) {
 
 void Install(const char* dir, void (*log)(const char*, ...)) {
     g_log = log;
+    g_dir = dir;
     LoadSymbolCopies(dir);
-    std::string path = std::string(dir) + "Fonts\\Orbitron[wght].ttf";
-    g_loaded = AddFontResourceExA(path.c_str(), FR_PRIVATE, nullptr) > 0;
-    if (!g_loaded) log("fonts: %s not found; Font=orbitron unavailable", path.c_str());
+    // Every font in Fonts\ (Orbitron, and the release fonts' stand-ins), private to the game.
+    std::string fontDir = std::string(dir) + "Fonts\\";
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((fontDir + "*.ttf").c_str(), &fd);
+    int n = 0;
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            bool ok = AddFontResourceExA((fontDir + fd.cFileName).c_str(), FR_PRIVATE, nullptr) > 0;
+            if (_stricmp(fd.cFileName, "Orbitron[wght].ttf") == 0) g_loaded = ok;
+            n += ok;
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    log("fonts: %d fonts loaded from %s", n, fontDir.c_str());
+    if (!g_loaded) log("fonts: Orbitron[wght].ttf not found; Font=orbitron unavailable");
     // GDI32 import slots in WARBREED.EXE.
     bool ok = render::HookImport(0x5956ec, &h_CreateFontIndirectA, &o_CreateFontIndirectA) &&
               render::HookImport(0x5956f8, &h_SelectObject, &o_SelectObject) &&
@@ -564,26 +694,21 @@ void Install(const char* dir, void (*log)(const char*, ...)) {
 }
 
 int TextWidth(const char* face, const char* text) {
+    int i = SpecFor(face);
+    if (i >= 0 && StandIn(i)) {
+        int w = Width(g_standIn[i], g_stand[i].extra, text, -1);
+        int room = g_mode == kRelease ? RoomWidth(i, text, -1) : -1;
+        return room > 0 && w > room ? room : w;  // drawn narrowed to the release's room
+    }
     HDC dc = CreateCompatibleDC(nullptr);
     if (!dc) return 0;
     LOGFONTA lf{};
     strncpy(lf.lfFaceName, face, LF_FACESIZE - 1);
-    if (g_symbolCopies && SpecFor(face) >= 0) lf.lfCharSet = SYMBOL_CHARSET;  // as the game's (above)
+    if (g_symbolCopies && i >= 0) lf.lfCharSet = SYMBOL_CHARSET;  // as the game's (above)
     HFONT own = CreateFontIndirectA(&lf);  // the game's bitmap face (not through the hooks)
-    HFONT use = own;
-    int i = SpecFor(face);
-    if (g_modern && i >= 0 && StandIn(i)) {
-        use = g_standIn[i];
-        SetTextCharacterExtra(dc, kSpecs[i].extra);
-    }
-    HGDIOBJ old = SelectObject(dc, use);
+    HGDIOBJ old = SelectObject(dc, own);
     SIZE sz{};
-    if (use != own && lang::HasHigh(text, -1)) {
-        std::wstring w = lang::Wide(text, -1);
-        GetTextExtentPoint32W(dc, w.c_str(), (int)w.size(), &sz);
-    } else {
-        GetTextExtentPoint32A(dc, text, (int)strlen(text), &sz);
-    }
+    GetTextExtentPoint32A(dc, text, (int)strlen(text), &sz);
     SelectObject(dc, old);
     DeleteObject(own);
     DeleteDC(dc);
@@ -592,10 +717,27 @@ int TextWidth(const char* face, const char* text) {
 
 void SetTextTrace(bool on) { g_textTrace = on; }
 
-void SetModern(bool on) {
-    if (on && !g_loaded) on = false;
-    if (on != g_modern && g_log) g_log("fonts: %s", on ? "Orbitron" : "original");
-    g_modern = on;
+void SetFor(const std::string& language, bool orbitron) {
+    Mode mode = kBitmap;
+    Stand stand[kFaces];
+    bool real = false;
+    if (_stricmp(language.c_str(), "en") != 0 && LoadRelease(language, stand, real)) {
+        mode = kRelease;
+    } else if (orbitron && g_loaded && _stricmp(language.c_str(), "en") == 0) {
+        mode = kOrbitron;
+        for (int i = 0; i < kFaces; ++i) stand[i] = {kSpecs[i].sub, kSpecs[i].weight, kSpecs[i].height, kSpecs[i].extra, {}};
+    }
+    if (mode == g_mode && (mode != kRelease || (language == g_release && real == g_releaseReal))) return;
+    DropStandIns();
+    for (int i = 0; i < kFaces; ++i) g_stand[i] = stand[i];
+    g_mode = mode;
+    g_release = mode == kRelease ? language : "";
+    g_releaseReal = real;
+    if (g_log)
+        g_log("fonts: %s", mode == kOrbitron ? "Orbitron"
+                           : mode == kBitmap ? "the game's own"
+                           : real            ? "the release's own (installed)"
+                                             : "the release's, by free stand-ins");
 }
 
 }  // namespace fonts

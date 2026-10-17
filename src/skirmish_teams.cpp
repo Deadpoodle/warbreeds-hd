@@ -34,6 +34,7 @@
 //     watches instead (the multiplayer path: no local player, map revealed),
 //     and the result screen shows Victory if that team wins (DeclareWinner's
 //     call to Game_EndMission at 0x43bb64).
+//   - Result screen: the players' discs show their own colours (PatchRewardColours).
 #include "skirmish_teams.h"
 
 #include <windows.h>
@@ -484,7 +485,7 @@ void Apply(void* registry) {
     for (int i = 0; i < 8; ++i) {
         char* p = *(char**)((char*)registry + 4 + 4 * i);
         if (p)
-            g_log("teams: player %d (%s) team %d allies %#x colour %#x start %d,%d", i, IsHuman(p) ? "human" : "AI",
+            g_log("teams: player %d (%s, clan %d) team %d allies %#x colour %#x start %d,%d", i, IsHuman(p) ? "human" : "AI", *(int*)(p + 0x4878),
                   any ? Team(i) : 0, *(uint8_t*)(p + kAllyMask), *(uint8_t*)(p + 0x484e), *(short*)(p + kStartX),
                   *(short*)(p + kStartY));
     }
@@ -507,6 +508,24 @@ bool HitPoint(void* scene, int row, int kind, long& x, long& y) {
     return false;
 }
 
+// The result screen (SReward::Draw 0x493180) draws each player's clan icon on a
+// disc of the player's colour (+0x484e), except in a skirmish (model 0x32), where
+// it took each clan's stock colour (Tanu 0xe7, Sen-Soth 0xef, Kelika 0xd7, Magha
+// 0xbf): right before colours could be picked, wrong after. The skirmish test's
+// jne becomes a jmp, so every mode uses the player's own colour.
+constexpr uintptr_t kRewardColourBranch = 0x4931df;
+
+bool PatchRewardColours() {
+    uint8_t* p = (uint8_t*)kRewardColourBranch;
+    if (p[-3] != 0x83 || p[-2] != 0xf9 || p[-1] != 0x32 || (p[0] != 0x75 && p[0] != 0xeb) || p[1] != 0x2e) return false;
+    DWORD old;
+    if (!VirtualProtect(p, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
+    p[0] = 0xeb;
+    VirtualProtect(p, 1, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), p, 1);
+    return true;
+}
+
 void Install(void (*log)(const char*, ...)) {
     g_log = log;
     bool ok = PatchSlot(kSlotInit, kInit, (void*)&HookInit) && PatchSlot(kSlotLDown, kLDown, (void*)&HookLDown) &&
@@ -515,7 +534,7 @@ void Install(void (*log)(const char*, ...)) {
               PatchCall(kRowDrawCall, kRowDraw, (void*)&HookRowDraw) &&
               PatchCall(kRandomStartsCall, kRandomStarts, (void*)&HookRandomStarts) &&
               PatchCall(kDefaultStartsCall, kDefaultStarts, (void*)&HookDefaultStarts) &&
-              PatchCall(kColoursCall, kColours, (void*)&HookColours);
+              PatchCall(kColoursCall, kColours, (void*)&HookColours) && PatchRewardColours();
     bool defeat = PatchDefeat() && PatchCall(kEndMissionCall, kEndMission, (void*)&HookEndMission);
     log("teams: skirmish teams and colours %s; watching after defeat %s", ok ? "installed" : "FAILED (unexpected code)",
         defeat ? "installed" : "FAILED (unexpected code)");
