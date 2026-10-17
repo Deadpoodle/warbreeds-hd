@@ -59,7 +59,8 @@ take effect immediately.
              VSync, FPS counter, movie scaling and size.
   Controls   Smooth arrow-key scrolling, WASD, scroll speed, zoom limits,
              Alt+F4, capture mouse, mouse scheme (Classic / Modern),
-             builder click, quick-build keys, group build. Long tabs
+             builder click, quick-build keys, group build, placement
+             range. Long tabs
              scroll with the mouse wheel ("More above/below").
   Interface  Menu art (widescreen / original), font (original / Orbitron;
              English only: other languages use their own), interface size,
@@ -138,12 +139,20 @@ Controls (full list in Controls.html)
   - Group build: with several builders selected, the build, plant and repair
     buttons and keys still work. The nearest one starts the building and the
     others walk over and help build it.
+  - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric
+    Tower shows its range ring at the cursor, like the rings of the
+    Refineries and Relays already built: what a Refinery collects (every
+    energy pod inside), what a Relay powers, how far a turret picks targets
+    by itself. Settings > Controls > Placement Range.
   - Pods can be planted in fog: the Shaman walks there and plants.
   - Optional Modern mouse scheme: left-click selects, right-click gives
     orders. Classic (the original) is the default.
   - Alt+F4 quits.
 
 Fixes
+  - A 1998 crash in long games: the game's memory of an enemy building seen
+    earlier could, once that building was destroyed out of sight and its
+    number reused, be read from the wrong thing and crash (divide by zero).
   - Pins the game to one CPU core. The 1998 timer code can hang or crash on
     multi-core CPUs (the GOG release does the same).
   - The in-mission Game Options resolution slider is removed: resolution is

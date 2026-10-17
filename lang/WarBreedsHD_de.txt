@@ -574,6 +574,7 @@ Mouse Scheme = Mausschema
 Builder Click = Schamanen-Klick
 Quick-Build Keys = Schnellbautasten
 Group Build = Gruppenbau
+Placement Range = Bau-Reichweite
 Menu Art = Menügrafik
 Font = Schrift
 Interface Size = Oberflächengröße

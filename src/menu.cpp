@@ -143,6 +143,7 @@ std::vector<Setting>& Settings() {
         {"Builder Click", "Input", "BuilderRepair", "1", {{"Finish/Repair", "1"}, {"Select", "0"}}, kControls},
         {"Quick-Build Keys", "Input", "QuickBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
         {"Group Build", "Input", "GroupBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
+        {"Placement Range", "Input", "PlacementRange", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
         // Interface
         {"Menu Art", "Display", "MenuArt", "widescreen", {{"Widescreen", "widescreen"}, {"Original", "original"}},
          kInterface},

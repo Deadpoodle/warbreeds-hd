@@ -217,6 +217,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | Plant mode, click fogged ground | The Shaman walks there and plants. Buildings could always be placed in fog. In build or plant mode the cursor over fog shows that the Shaman will walk. |
 | Several Shamans selected (and nothing else) | The panel shows the build, plant, upgrade and repair buttons, and <kbd>B</kbd>, <kbd>P</kbd>, <kbd>R</kbd>, <kbd>U</kbd> and quick-build work. The original offered them only with exactly one Shaman. Settings → Controls → Group Build. |
 | Place a building with several Shamans | The nearest Shaman starts it. The others walk to its edge and help build it as soon as it stands. If the building can't go there, nothing happens and you stay in build mode, as with one Shaman. |
+| Place a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower | Its range ring shows at the cursor, in the same running sparks as the rings of the field buildings already built. A Refinery collects every energy pod inside it (300 px); a Relay powers buildings within 275 px, a Relay+ 400 px. A Turret picks targets by itself within about 272 px and a Plasma Cannon about 336 px (both keep firing at a target out to 400 px); an Electric Tower zaps within 226 px. Settings → Controls → Placement Range. |
 | Plant, repair or cancel with several Shamans | The nearest Shaman plants the pod. Repair sends them all. The panel's cancel stops them all. Upgrade and Get Genes act on the first Shaman only. |
 
 ### Modern mouse scheme

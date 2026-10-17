@@ -13,7 +13,9 @@
 //     orders / cancels a mode;
 //   - group build (option): with several builders (and nothing else) selected
 //     the panel and B/P/R/U keys work as for one; a placed building is started
-//     by the nearest of them and the others join it (Repair) once it stands.
+//     by the nearest of them and the others join it (Repair) once it stands;
+//   - placement range (option): a Refinery, Relay, Relay+, Turret, Plasma Cannon
+//     or Electric Tower being placed shows its range ring at the cursor.
 
 namespace controls {
 
@@ -23,10 +25,14 @@ struct Options {
     bool buildInFog = true;
     bool modernMouse = false;  // left selects, right orders (Classic: left does both)
     bool groupBuild = true;    // several selected builders build together
+    bool placementRange = true;  // a Refinery/Relay being placed shows its range ring
 };
 
 void Install(void (*log)(const char*, ...));
 void SetOptions(const Options& o);
+// Tests: start placing device `type` with the build list open, whether or not the
+// player may build it yet.
+bool DebugPlace(int type);
 // Every frame tick; sgame = null outside missions (drops pending group builds).
 void Tick(void* sgame);
 

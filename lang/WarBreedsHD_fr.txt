@@ -589,6 +589,7 @@ Mouse Scheme = Schéma souris
 Builder Click = Clic bâtisseur
 Quick-Build Keys = Raccourcis constr.
 Group Build = Construction groupée
+Placement Range = Portée au placement
 Menu Art = Fonds de menu
 Font = Police
 Interface Size = Taille de l'interface

@@ -190,6 +190,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Quick-build: B, then a letter (R Refinery, T Turret, …); P, then 1–3 for pods.
 - Builders clicked onto your own unfinished or damaged building go and finish or repair it.
 - Group build: with several builders selected, the build, plant and repair buttons and keys still work. The nearest builder starts the building and the others walk over and help build it.
+- Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower shows its range ring at the cursor, in the game's own style: what a Refinery collects, what a Relay powers, how far a turret picks targets by itself. Settings > Controls > Placement Range.
 - Pods can be planted in fog: the Shaman walks there and plants.
 - An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default.
 - Alt+F4 quits.
@@ -197,6 +198,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 **Fixes**
 - Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same. Each running copy takes a core of its own, so two copies on one PC don't slow each other down.
 - Removes the in-mission resolution slider, which fought the new resolution handling.
+- Fixes a 1998 crash in long games: the remembered picture of a building seen earlier, refreshed when its ground comes back into view, could read from a different unit once that building was destroyed out of sight and its number reused, and divide by zero.
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
 
 **Fonts**

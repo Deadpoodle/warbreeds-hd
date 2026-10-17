@@ -4,6 +4,7 @@
 // window and the cursor is virtual, so the real mouse and keyboard are never
 // touched (combine with [Debug] Headless=1 to keep the window off-screen).
 #include "autopilot.h"
+#include "controls.h"
 
 #include <windows.h>
 
@@ -2548,7 +2549,9 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         // Everything is clicked by command id or position, never by English text.
         // Target 0: main menu, the three Settings tabs, the campaign screen and a
         //   Tanu briefing (and its second page), the mission, the Esc menu.
-        // 1: skirmish setup, a skirmish (Shamans selected, the build list).
+        // 1: skirmish setup, a skirmish (Shamans selected, the build list), then a
+        //   Refinery being placed (its range ring); 6, 7, 8: the same with a Relay,
+        //   a Turret, an Electric Tower.
         // 2: on Settings > Interface, Language cycled through every language (live),
         //   back to the first.
         // 3: the map editor's panel on a map.
@@ -2645,7 +2648,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 quit();
                 stage = 10;
             }
-        } else if (g_h.target == 1) {
+        } else if (g_h.target == 1 || (g_h.target >= 6 && g_h.target <= 8)) {
             if (mainMenu && stage == 0 && in > 2500) {
                 Click({87, 77});  // Skirmish
                 stage = 1;
@@ -2667,6 +2670,25 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 at = now;
             } else if (scene == ".?AVSGame@@" && stage == 4 && in > 1200) {
                 shot("build-list");
+                // Placing (quick-build): a Refinery (target 1) or a Relay (6), with its range ring.
+                // (Only the Refinery can be built at the start: the others are placed
+                // without the availability check.)
+                if (g_h.target == 1) {
+                    PostKey(WM_KEYDOWN, 'R');
+                    PostKey(WM_KEYUP, 'R');
+                } else {
+                    // [Debug] PlaceType=0x.. overrides (e.g. 0x36 Relay+, 0x37 Plasma Cannon).
+                    int type = g_h.target == 6 ? 0x2e : g_h.target == 7 ? 0x31 : 0x32;
+                    char v[32] = "";
+                    GetPrivateProfileStringA("Debug", "PlaceType", "", v, sizeof v, (g_h.dir + "WarBreedsHD.ini").c_str());
+                    if (v[0]) type = (int)strtol(v, nullptr, 0);
+                    controls::DebugPlace(type);
+                }
+                stage = 5;
+                at = now;
+            } else if (scene == ".?AVSGame@@" && stage == 5 && in > 2500) {
+                shot(g_h.target == 6 ? "place-relay" : g_h.target == 7 ? "place-turret" : g_h.target == 8 ? "place-etower"
+                                                                                                 : "place-refinery");
                 quit();
             }
         } else if (g_h.target == 4 || g_h.target == 5) {

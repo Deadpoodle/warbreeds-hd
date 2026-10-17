@@ -264,6 +264,10 @@ void WriteDefaultIni() {
         "; is started by the nearest of them; the others walk over and help build it as soon\n"
         "; as it stands. A pod is planted by the nearest; Repair sends them all. 0 = original.\n"
         "GroupBuild=1\n"
+        "; Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower shows its\n"
+        "; range ring at the cursor (a Refinery collects every pod inside it; a turret picks\n"
+        "; targets by itself inside it). 0 = original.\n"
+        "PlacementRange=1\n"
         "; Mouse in missions:\n"
         ";   classic - the original: left-click selects and orders, right-click deselects\n"
         ";   modern  - left-click selects, right-click moves / attacks / acts (and cancels a\n"
@@ -376,6 +380,7 @@ void ApplyControlOptions() {
     o.buildInFog = IniInt("Input", "BuildInFog", 1) != 0;
     o.modernMouse = _stricmp(IniGet("Input", "MouseScheme", "classic").c_str(), "modern") == 0;
     o.groupBuild = IniInt("Input", "GroupBuild", 1) != 0;
+    o.placementRange = IniInt("Input", "PlacementRange", 1) != 0;
     controls::SetOptions(o);
 }
 

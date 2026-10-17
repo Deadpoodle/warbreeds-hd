@@ -195,8 +195,22 @@ void* ShamanInState(int state) {
     return s;
 }
 
-// Does what clicking build-list button i does (0x442613..0x442673); the list
-// shows the types the player can build (0x442fbb).
+// Places `type` at the cursor, as clicking its build-list button does
+// (0x442613..0x442673).
+void StartBuilding(void* shaman, int type) {
+    if (F<short>(shaman, kCaptureFlag) == 0) ((void(__thiscall*)(void*, int))kCapture)(shaman, 1);
+    F<int>(shaman, kShamanState) = 3;
+    F<int>(shaman, kShamanBuildType) = type;
+    // The ghost's world position (the button path takes it from its click;
+    // mouse moves update it from then on).
+    void* sg = (void*)((uintptr_t*)game::Scenes)[0];
+    F<short>(shaman, kShamanPlaceX) = (short)((int(__thiscall*)(void*, int))kToWorldX)(sg, game::at<short>(game::CursorX));
+    F<short>(shaman, kShamanPlaceY) = (short)((int(__thiscall*)(void*, int))kToWorldY)(sg, game::at<short>(game::CursorY));
+    ((void(__thiscall*)(void*))kStartPlacement)(shaman);
+}
+
+// The build list's buttons as keys; the list shows the types the player can
+// build (0x442fbb).
 bool QuickBuild(int vk, bool shift) {
     void* shaman = ShamanInState(2);
     if (!shaman) return false;
@@ -207,15 +221,7 @@ bool QuickBuild(int vk, bool shift) {
             g_log("controls: quick-build %s not available", kBuildKeys[i].name);
             return false;  // the game's own key (e.g. S = stop) still works
         }
-        if (F<short>(shaman, kCaptureFlag) == 0) ((void(__thiscall*)(void*, int))kCapture)(shaman, 1);
-        F<int>(shaman, kShamanState) = 3;
-        F<int>(shaman, kShamanBuildType) = 0x2c + i;
-        // The ghost's world position (the button path takes it from its click;
-        // mouse moves update it from then on).
-        void* sg = (void*)((uintptr_t*)game::Scenes)[0];
-        F<short>(shaman, kShamanPlaceX) = (short)((int(__thiscall*)(void*, int))kToWorldX)(sg, game::at<short>(game::CursorX));
-        F<short>(shaman, kShamanPlaceY) = (short)((int(__thiscall*)(void*, int))kToWorldY)(sg, game::at<short>(game::CursorY));
-        ((void(__thiscall*)(void*))kStartPlacement)(shaman);
+        StartBuilding(shaman, 0x2c + i);
         g_log("controls: quick-build %s", kBuildKeys[i].name);
         return true;
     }
@@ -847,6 +853,96 @@ short __thiscall HookShamanCursor(void* sh, int sx, int sy, int wx, int wy, int 
     return ((ShamanClick_t)kShamanCursor)(sh, sx, sy, wx, wy, a5);
 }
 
+// Placement range (option): while a Refinery, Relay or Relay+ (or a turret or the
+// Electric Tower, below) is being placed, its ring at the cursor, as the game draws
+// the rings of the field buildings already built.
+// Placing any building makes the game show the player's power fields
+// (StartPlacement 0x442c90 sets World+0x06; the world tick fades World+0x2d13c
+// from 0 to 8); SGame::DrawWorldLayer draws them by FUN_00448b90(World, camX, camY)
+// at 0x47bb37, each device through its vtable+0x7c into FUN_00459200(ring, camX,
+// camY, fade, type, selected): sparks running round a circle of the type's range
+// (0x54de68[type]: Refinery 300 px, Relay 275, Relay+ 400; a Refinery collects
+// every pod within it). A ring is 0x44 bytes: 4 x 16 bits (a set bit = a point
+// shown), then its centre (+0x40/+0x42); FUN_004591a0(ring, x, y) sets it up.
+constexpr uintptr_t kFieldsDrawCall = 0x47bb37, kFieldsDraw = 0x448b90;
+constexpr uintptr_t kRingInit = 0x4591a0, kRingDraw = 0x459200, kWorldFieldFade = 0x2d13c;
+
+// The own builder placing a building: the selected builder, or group build's lead.
+void* Placer() {
+    int n;
+    void** sel = Selection(n);
+    for (int i = 0; sel && i < n; ++i)
+        if (sel[i] && IsBuilder(sel[i]) && Mine(sel[i]) && F<int>(sel[i], kShamanState) == 3) return sel[i];
+    return nullptr;
+}
+
+// The turrets and the Electric Tower get a ring too. The ring draw takes its circle
+// from a table with rows for the three field buildings only (0x54d170, short[3][64]
+// = the quarter-circle table 0x505538 (100..2) x range / 100), so for these one row
+// is lent for the draw and put back. Their radius (re/units.md): the distance they
+// pick a target at by themselves (FUN_004501e0: a box of 2 x sight/64 tiles round
+// their own tile; g_SightRange Turret 290, Cannon 330, E. Tower 256), as a circle:
+// Turret 8.5 tiles (272 px), Plasma Cannon 10.5 (336 px); the E. Tower's zap
+// reaches 226 px (FUN_004104a0, d^2 <= 51200). Turrets keep firing at a target up
+// to 400 px (ATurret::vf08).
+constexpr uintptr_t kRingRows = 0x54d170, kQuarterCircle = 0x505538;
+
+int TurretRange(int type) {
+    switch (type) {
+    case 0x31: return 272;  // Turret
+    case 0x37: return 336;  // Plasma Cannon
+    case 0x32: return 226;  // Electric Tower
+    default: return 0;
+    }
+}
+
+void __fastcall HookFieldsDraw(void* world, void*, int camX, int camY) {
+    ((void(__thiscall*)(void*, int, int))kFieldsDraw)(world, camX, camY);
+    if (!g_opt.placementRange || !world) return;
+    void* sh = Placer();
+    if (!sh) return;
+    int type = F<int>(sh, kShamanBuildType), range = TurretRange(type);
+    if (type != 0x2c && type != 0x2e && type != 0x36 && !range) return;
+    alignas(4) uint8_t ring[0x44];
+    ((void*(__thiscall*)(void*, int, int))kRingInit)(ring, F<short>(sh, kShamanPlaceX), F<short>(sh, kShamanPlaceY));
+    memset(ring, 0xff, 0x40);  // every point of the circle
+    int fade = F<uint8_t>(world, kWorldFieldFade);  // grows in with the other rings
+    short* row = (short*)kRingRows;  // the Refinery's row, lent to a turret
+    short saved[64];
+    if (range) {
+        memcpy(saved, row, sizeof saved);
+        for (int i = 0; i < 64; ++i) row[i] = (short)(((const short*)kQuarterCircle)[i] * range / 100);
+    }
+    ((void(__thiscall*)(void*, int, int, int, int, int))kRingDraw)(ring, camX, camY, fade ? fade : 8,
+                                                                  range ? 0x2c : type, 0);
+    if (range) memcpy(row, saved, sizeof saved);
+}
+
+// A 1998 crash: the player's memory of a building seen earlier (ADevicePlaceholder,
+// drawn while its tile is fogged) refreshes itself from the building, by id (+0x28),
+// whenever the tile is in view (vf0c 0x420060, every turn). If the building was
+// destroyed out of sight and its id reused by a creature, pod or corpse, it reads
+// that thing as a building; with an "upgrading" flag (+0x3a) set it divides by
+// GetBuildTime/4 (0 for a pod or corpse): integer divide by zero at 0x42014c.
+// The memory now refreshes only from a building; for anything else it stays as
+// it is, as when the id is empty.
+constexpr uintptr_t kSlotMemoryTick = 0x503fb0, kMemoryTick = 0x420060;
+
+uint32_t __fastcall HookMemoryTick(void* mem, void*) {
+    void* w = World();
+    unsigned id = F<unsigned short>(mem, 0x28);
+    void* t = w && id < (unsigned)F<int>(w, 0x14) ? F<void**>(w, 0x10)[id] : nullptr;
+    if (t && (!IsDevice(t) || ((short(__thiscall*)(void*))(*(void***)t)[kVBuildTime / 4])(t) < 4)) {
+        static int logged;
+        if (logged++ < 5)
+            g_log("controls: memory of a building at %d,%d points at thing %u (type %#x), no longer that building: "
+                  "kept as it was",
+                  F<short>(mem, 8), F<short>(mem, 0xa), id, Type(t));
+        return 0;
+    }
+    return ((uint32_t(__thiscall*)(void*))kMemoryTick)(mem);
+}
+
 bool PatchSlot(uintptr_t slot, uintptr_t expect, void* hook) {
     if (*(uintptr_t*)slot != expect) return false;
     DWORD old;
@@ -888,9 +984,21 @@ void Install(void (*log)(const char*, ...)) {
     for (uintptr_t site : game::PanelClickDownCalls)
         group = group && PatchCall(site, game::WorldPanelClickDown, (void*)&HookPanelDown);
     log("controls: group build hooks %s", group ? "installed" : "FAILED (unexpected code)");
+    bool range = PatchCall(kFieldsDrawCall, kFieldsDraw, (void*)&HookFieldsDraw);
+    log("controls: placement range %s", range ? "installed" : "FAILED (unexpected code)");
+    bool memory = PatchSlot(kSlotMemoryTick, kMemoryTick, (void*)&HookMemoryTick);
+    log("controls: building memory guard %s", memory ? "installed" : "FAILED (unexpected vtable)");
 }
 
 void SetOptions(const Options& o) { g_opt = o; }
+
+bool DebugPlace(int type) {
+    void* shaman = ShamanInState(2);
+    if (!shaman) return false;
+    StartBuilding(shaman, type);
+    g_log("controls: placing type %#x (test, not checked for availability)", type);
+    return true;
+}
 
 void Tick(void* sgame) {
     if (!sgame) {
