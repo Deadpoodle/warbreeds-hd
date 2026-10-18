@@ -124,7 +124,7 @@ bool ObstacleSiteOk(int type, int x, int y, std::string& why) {
             } else if (need >= 0 && g_corner) {
                 int c = g_corner(tx, ty);
                 if (c >= 0 && c != need) {
-                    why = lang::trf("{1} only goes on {2}", {Name(type), lang::tr(where)});
+                    why = lang::trf("{1} only goes on {2}", {lang::Name(Name(type)), lang::tr(where)});
                     return false;
                 }
             }
@@ -239,7 +239,7 @@ int Put(int type, int owner, int wx, int wy, const ThingRec* attrs, std::string&
         int fit = ((int(__thiscall*)(uintptr_t, int, int, int, int, int, int, int))kCanPlace)(
             World(), owner, x + fp / 2, y + fp / 2, type, 0, 0, 0);
         if (fit == 1) {
-            why = lang::trf("No room for a {1} there", {Name(type)});
+            why = lang::trf("No room for a {1} there", {lang::Name(Name(type))});
             return kNoThing;
         }
         id = CreateAt(owner, type, x, y, 1, 1);
@@ -261,7 +261,7 @@ int Put(int type, int owner, int wx, int wy, const ThingRec* attrs, std::string&
         id = ((unsigned short(__thiscall*)(uintptr_t, int, int, int, int, int, int, int, int))kPlaceCreature)(
             World(), owner, type, x, y, g[0], g[1], g[2], g[3]);
         if (id == kNoThing)
-            why = lang::trf("No room for a {1} there", {Name(type)});
+            why = lang::trf("No room for a {1} there", {lang::Name(Name(type))});
         else if (attrs)
             ApplyCreature(Thing(id), *attrs, false);
     } else {

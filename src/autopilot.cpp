@@ -2556,7 +2556,11 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         //   back to the first.
         // 3: the map editor's panel on a map.
         // 4, 5: the Gene Lab, the Device Lab (from the main menu).
+        // 10: a skirmish's pod list (the pods' names).
+        // 9: one live language switch on Settings, then a skirmish's Shaman panel
+        //   (labels the game copied at start-up must follow the switch).
         static int acted, shots, cycles;
+        static bool switched;
         static DWORD at;
         static std::string last;
         std::string top = g_h.topScene ? g_h.topScene() : "";
@@ -2648,7 +2652,8 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 quit();
                 stage = 10;
             }
-        } else if (g_h.target == 1 || (g_h.target >= 6 && g_h.target <= 8)) {
+        } else if (g_h.target == 1 || (g_h.target >= 6 && g_h.target <= 8) || (g_h.target == 9 && switched) ||
+                   g_h.target == 10) {
             if (mainMenu && stage == 0 && in > 2500) {
                 Click({87, 77});  // Skirmish
                 stage = 1;
@@ -2664,10 +2669,14 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 at = now;
             } else if (scene == ".?AVSGame@@" && stage == 3 && in > 1200) {
                 shot("panel");
-                PostKey(WM_KEYDOWN, 'B');  // the build list
-                PostKey(WM_KEYUP, 'B');
+                int list = g_h.target == 10 ? 'P' : 'B';  // the pod list (10) or the build list
+                PostKey(WM_KEYDOWN, list);
+                PostKey(WM_KEYUP, list);
                 stage = 4;
                 at = now;
+            } else if (scene == ".?AVSGame@@" && stage == 4 && in > 1200 && g_h.target == 10) {
+                shot("pod-list");
+                quit();
             } else if (scene == ".?AVSGame@@" && stage == 4 && in > 1200) {
                 shot("build-list");
                 // Placing (quick-build): a Refinery (target 1) or a Relay (6), with its range ring.
@@ -2701,7 +2710,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 shot(g_h.target == 4 ? "gene-lab" : "device-lab");
                 quit();
             }
-        } else if (g_h.target == 2) {
+        } else if (g_h.target == 2 || g_h.target == 9) {
             if (mainMenu && stage == 0 && in > 2500) {
                 clickCmd(0x6c);  // Settings
                 stage = 1;
@@ -2711,7 +2720,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 stage = 2;
                 at = now;
             } else if (mainMenu && stage == 2 && in > 1200) {
-                // The Language row: its command is the last setting's (first setting 0x80).
+                // The Language row: the second-to-last setting (Voices is last; first setting 0x80).
                 short languageCmd = -1;
                 void** list = topScene ? *(void***)((char*)topScene + 0xc) : nullptr;
                 int count = topScene ? *(int*)((char*)topScene + 0x10) : 0;
@@ -2720,11 +2729,12 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                     if (w && *(uintptr_t*)w == 0x50925c && *(short*)(w + 0x20) >= 0x80 && *(short*)(w + 0x20) < 0xa0)
                         languageCmd = std::max(languageCmd, *(short*)(w + 0x20));
                 }
+                if (languageCmd > 0x80) --languageCmd;
                 char tag[32];
                 snprintf(tag, sizeof tag, "language-%d", cycles);
                 shot(tag);
                 g_h.log("autopilot: settings now: %s", menu::WidgetTexts().c_str());
-                if (cycles < 4 && languageCmd > 0) {
+                if (cycles < (g_h.target == 9 ? 1 : 4) && languageCmd > 0) {
                     clickCmd(languageCmd);
                     ++cycles;
                     at = now;
@@ -2735,7 +2745,13 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 }
             } else if (mainMenu && stage == 3 && in > 1200) {
                 shot("menu-after");
-                quit();
+                if (g_h.target == 9) {  // then on into a skirmish, as target 1
+                    switched = true;
+                    stage = 0;
+                    at = now;
+                } else {
+                    quit();
+                }
             }
         } else if (g_h.target == 3) {
             if (mainMenu && stage == 0 && in > 2500) {
@@ -2748,6 +2764,11 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 stage = 2;
             } else if (scene == ".?AVSGame@@" && stage == 2 && in > 5000) {
                 shot("editor");
+                if (!ClickItem("Things")) quit();
+                stage = 3;
+                at = now;
+            } else if (stage == 3 && now - at > 1200) {
+                shot("editor-things");
                 quit();
             }
         }

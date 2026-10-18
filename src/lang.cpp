@@ -54,12 +54,14 @@ struct Table {
     std::unordered_map<std::string, std::string> patch;
     std::unordered_map<std::string, std::string> maps;  // upper-case file name
     std::unordered_map<uint32_t, std::string> messages;
+    std::unordered_map<std::string, std::string> names;  // GAMEPLAY.DAT thing/gizmo names, by the English
 };
 Table g_t;
 std::unordered_map<std::string, std::string> g_english;  // translated text -> its English
 std::unordered_map<std::string, std::string> g_drawn;    // the game's English -> translation
 
 std::vector<Language> g_available;
+bool g_quiet;  // Parse without logging (the other languages, read for DrawnTranslation)
 
 constexpr uintptr_t kLoadStringSlot = 0x595a3c;
 constexpr uintptr_t kStrings = 0x55dd54, kStringCount = 0x55dd58;
@@ -212,18 +214,20 @@ bool Parse(const std::string& path, Table* t, std::string* name) {
             t->maps[key] = text;
         } else if (section == "messages") {
             t->messages[(uint32_t)strtoul(key.c_str(), nullptr, 16)] = text;
+        } else if (section == "names") {
+            t->names[ToMacRoman(key, missing)] = text;
         } else {
             --count;
             ++bad;
         }
     }
     fclose(f);
-    if (t)
+    if (t && !g_quiet)
         g_log("lang: %s: %d entries (%zu game, %zu patch, %zu maps, %zu messages)%s", path.c_str(), count,
               t->game.size(), t->patch.size(), t->maps.size(), t->messages.size(),
               missing || bad ? " - with problems below" : "");
-    if (t && missing) g_log("lang:   %d characters have no Mac Roman byte (shown as ?)", missing);
-    if (t && bad) g_log("lang:   %d lines not understood", bad);
+    if (t && !g_quiet && missing) g_log("lang:   %d characters have no Mac Roman byte (shown as ?)", missing);
+    if (t && !g_quiet && bad) g_log("lang:   %d lines not understood", bad);
     return true;
 }
 
@@ -420,11 +424,36 @@ bool Set(const std::string& code) {
     }
     g_t = std::move(t);
     g_current = ok && !code.empty() ? code : "en";
+    // Text the game draws from copies it made outside its string table: the
+    // build list's names (in English), and ~40 labels GameInit copies once at
+    // start-up (the Shaman panel's buttons, stances, Gene Lab labels, the stats
+    // rows) in whatever language was current then. Each is recognised by its
+    // English or any installed language's text for the same id, and drawn in the
+    // current language; in English too. Where two ids share a text, the lower wins.
     g_drawn.clear();
     if (o_LoadStringA) {
+        std::vector<Table> others;
+        g_quiet = true;
+        for (const Language& l : Available(false)) {
+            if (l.code == "en" || l.code == g_current) continue;
+            others.emplace_back();
+            if (!Parse(FilePath(l.code), &others.back(), nullptr)) others.pop_back();
+        }
+        g_quiet = false;
         static char en[0x1800];
-        for (auto& [id, text] : g_t.game)
-            if (o_LoadStringA(g_exe, id, en, sizeof en) > 2 && text != en) g_drawn[en] = text;
+        for (int id = 1; id < 0x400; ++id) {
+            if (Protected(id) || o_LoadStringA(g_exe, id, en, sizeof en) <= 2) continue;
+            auto own = g_t.game.find(id);
+            const std::string& want = own != g_t.game.end() ? own->second : std::string(en);
+            auto from = [&](const std::string& text) {
+                if (text.size() > 2 && text != want && !g_drawn.count(text)) g_drawn[text] = want;
+            };
+            from(en);
+            for (const Table& o : others) {
+                auto it = o.game.find(id);
+                if (it != o.game.end()) from(WithEdges(en, it->second));
+            }
+        }
     }
     g_english.clear();  // only for the translations marked to fit
     for (auto& [english, text] : g_t.patch) {
@@ -445,11 +474,14 @@ bool Set(const std::string& code) {
 const std::string& Current() { return g_current; }
 
 const char* DrawnTranslation(const char* text, int n) {
-    if (!text || g_drawn.empty()) return nullptr;
+    if (!text || (g_drawn.empty() && g_t.names.empty())) return nullptr;
     if (n < 0) n = (int)strlen(text);
     if (n < 3) return nullptr;
-    auto it = g_drawn.find(std::string(text, n));
-    return it == g_drawn.end() ? nullptr : it->second.c_str();
+    std::string s(text, n);
+    auto it = g_drawn.find(s);
+    if (it != g_drawn.end()) return it->second.c_str();
+    auto nm = g_t.names.find(s);  // a name copied from GAMEPLAY.DAT (build and pod lists, labs)
+    return nm == g_t.names.end() ? nullptr : nm->second.c_str();
 }
 
 const char* EnglishOf(const char* text, int n) {
@@ -459,10 +491,18 @@ const char* EnglishOf(const char* text, int n) {
 }
 
 const char* tr(const char* english) {
-    if (!english || g_t.patch.empty()) return english;
+    if (!english) return english;
     auto it = g_t.patch.find(english);
-    return it == g_t.patch.end() ? english : it->second.c_str();
+    return it != g_t.patch.end() ? it->second.c_str() : Name(english);
 }
+
+const char* Name(const char* english) {
+    if (!english || g_t.names.empty()) return english;
+    auto it = g_t.names.find(english);
+    return it == g_t.names.end() ? english : it->second.c_str();
+}
+
+std::string Name(const std::string& english) { return Name(english.c_str()); }
 
 const char* tr(const char* context, const char* english) {
     if (!english || g_t.patch.empty()) return english;
@@ -533,6 +573,23 @@ void WriteTemplate() {
     }
     for (Literal& l : g_lits) fprintf(f, "# %s\r\n0x%x = \r\n", (const char*)l.text, (unsigned)l.text);
 
+    // [names]: every thing and gizmo name in this copy's GAMEPLAY.DAT (char[20] tables at
+    // 0x3c2, 74 thing types, and 0x2e8f, 25 gizmos; read from the file: the game hasn't
+    // loaded it yet).
+    if (FILE* gp = fopen((g_dir + "DATA\\GAMEPLAY.DAT").c_str(), "rb")) {
+        fputs("\r\n[names]\r\n# Names of things and gizmos (build and pod lists, labs, map editor)\r\n", f);
+        std::map<std::string, bool> seen;
+        for (auto [off, count] : {std::pair<long, int>{0x3c2, 74}, {0x2e8f, 25}}) {
+            for (int i = 0; i < count; ++i) {
+                char name[21] = "";
+                fseek(gp, off + 20 * i, SEEK_SET);
+                if (fread(name, 1, 20, gp) != 20 || !name[0] || !seen.emplace(name, true).second) continue;
+                fprintf(f, "%s = \r\n", name);
+            }
+        }
+        fclose(gp);
+    }
+
     // The other sections' keys, from a shipped language (French if it's there).
     std::string reference;
     std::string refName;
@@ -560,7 +617,7 @@ void WriteTemplate() {
             if (t.empty() || t[0] == '#') continue;
             if (t[0] == '[') {
                 section = t.substr(1, t.find(']') - 1);
-                if (section != "game") fprintf(f, "\r\n[%s]\r\n", section.c_str());
+                if (section != "game" && section != "names") fprintf(f, "\r\n[%s]\r\n", section.c_str());
                 continue;
             }
             size_t eq = t.find('=');
@@ -570,7 +627,7 @@ void WriteTemplate() {
                 if (key == "Language") refName = value;
                 continue;
             }
-            if (section == "game") continue;
+            if (section == "game" || section == "names") continue;  // written above
             fprintf(f, "# %s: %s\r\n%s = \r\n", refName.c_str(), value.c_str(), key.c_str());
         }
         fclose(r);

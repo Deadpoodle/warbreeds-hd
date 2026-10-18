@@ -10,8 +10,9 @@ Usage:
   --gog    the English game folder to compare with (default: testgame)
   --lang   also update this language file from the disc: [game] (the string table
            and the three .data literals), [maps] (map names) and [messages]
-           (campaign map chat lines). [patch] is kept as it is. A line marked ~
-           (a tight spot) keeps its mark.
+           (campaign map chat lines) and [names] (GAMEPLAY.DAT's thing and gizmo
+           names: Pod, Crystal Tree, Hammer). [patch] is kept as it is. A line
+           marked ~ (a tight spot) keeps its mark.
   --names  also write re/<code>/names.tsv: re/names.tsv's names moved to this exe's
            addresses (for its own Ghidra project; see re/french-version.md)
 
@@ -66,6 +67,25 @@ FIXES = {
         # into "Votre CGC" on the skirmish setup (the release's narrow font fitted it).
         ('game', '416', 'Brouillard de guerre', 'Brouillard'),
         ('game', '543', 'Technologie génétique', 'Tech. génétique'),  # its button, as the English "Genetic Tech"
+    ],
+    'de': [
+        ('game', '94', 'konte', 'konnte'),
+        ('game', '190', 'enfällt', 'entfällt'),
+        ('game', '543', 'Gentechniker', 'Gentechnik'),  # "genetic technician"; the button means "Genetic Tech"
+        ('maps', 'SPMAG2A.WBM', 'Vebrannte Erde', 'Verbrannte Erde'),
+        ('maps', 'SPMAG5B.WBM', 'Der ösliche Rand', 'Der östliche Rand'),
+        ('messages', '1DE8CB31', 'Verteidiigung', 'Verteidigung'),
+        ('messages', '3D9F0FA3', 'yedda-Wissenschaftler gefunden.  Jetzt zurück zur  Basis bringen.',
+         'Yedda-Wissenschaftler gefunden.  Jetzt zurück zur Basis bringen.'),
+        # One English line ("yedda ruin searched.") has three German versions in SPTAN6A;
+        # messages are keyed by the English, so the one kept is spelled right.
+        ('messages', '4344E552', 'yedd-Ruinen durchsucht.', 'Yedda-Ruinen durchsucht.'),
+        ('messages', 'BFFD32DF', 'in der Nähe Magha-Basis festgehalten', 'in der Nähe der Magha-Basis festgehalten.'),
+        # Shortened to the game's 59-byte copy limit (tools/lang_check.py).
+        ('game', '75', 'zusätzliche Bedrohung beseitigen, damit wir den Paß erobern können.',
+         'Bedrohung beseitigen, damit wir den Paß erobern können.'),
+        ('game', '619', 'Sie können nicht abbrechen, während Sie als bereit markiert sind.',
+         'Sie können nicht abbrechen, während Sie bereit sind.'),
     ],
 }
 CS = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
@@ -468,6 +488,8 @@ def main():
     # The spoken announcements (a player's Voices\<code>\GLOBSFX.MHK; SFX.MHK is the same everywhere)
     for n in disc.find(r'(.*/)?DATA/GLOBSFX\.MHK'):
         wanted[n] = 'GLOBSFX.MHK'
+    for n in disc.find(r'(.*/)?DATA/GAMEPLAY\.DAT'):  # thing and gizmo names
+        wanted[n] = 'GAMEPLAY.DAT'
     for n, dest in wanted.items():
         path = os.path.join(disc_dir, dest)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -595,7 +617,9 @@ def main():
     print(f'report -> {os.path.join(out, "report.md")}')
 
     if a.lang:
-        update_lang(a.lang, a.code, gstr, lstr, lits, {t: cp1252(gog.cstr(t)) for _, t in GOG_LITERALS}, names, messages)
+        things = thing_names(os.path.join(a.gog, 'DATA', 'GAMEPLAY.DAT'), os.path.join(disc_dir, 'GAMEPLAY.DAT'))
+        update_lang(a.lang, a.code, gstr, lstr, lits, {t: cp1252(gog.cstr(t)) for _, t in GOG_LITERALS}, names, messages,
+                    things)
     if a.names:
         carry_names(gog, loc, os.path.join(ROOT, 're', 'names.tsv'),
                     os.path.join(ROOT, 're', 'ghidra-export-v2', 'xrefs.tsv'), os.path.join(out, 'names.tsv'))
@@ -623,7 +647,29 @@ def font_names(path):
     return '?'
 
 
-def update_lang(path, code, gstr, lstr, lits, english_lits, names, messages):
+# GAMEPLAY.DAT's name tables, char[20] each, Windows-1252: the 74 thing types
+# (g_ThingDisplayName 0x550178; "Pod", "Crystal Tree", "Refinery") and the 25 gizmos
+# (g_GizmoName 0x54fcc0; "Hammer"). The game shows them on the build and pod lists
+# and the labs; the map editor lists them.
+NAME_TABLES = [(0x3c2, 74), (0x2e8f, 25)]
+
+
+def thing_names(english_path, local_path):
+    """{English name: the release's name} for every name the release changed."""
+    if not os.path.exists(local_path):
+        return {}
+    en, loc = open(english_path, 'rb').read(), open(local_path, 'rb').read()
+    out = {}
+    for off, count in NAME_TABLES:
+        for i in range(count):
+            e = cp1252(en[off + 20 * i:off + 20 * i + 20])
+            l = cp1252(loc[off + 20 * i:off + 20 * i + 20])
+            if e and l and e != l:
+                out[e] = l
+    return out
+
+
+def update_lang(path, code, gstr, lstr, lits, english_lits, names, messages, things=None):
     head, language, sections = read_lang(path)
     old = {s: {k: (v, fit) for k, v, fit in e if k} for s, e in sections.items()}
     kept, game = [], []
@@ -653,6 +699,14 @@ def update_lang(path, code, gstr, lstr, lits, english_lits, names, messages):
     for k, s in messages.items():
         msgs[k] = (esc(s.strip()), msgs.get(k, ('', False))[1])
     sections['messages'] = [(k, v, f) for k, (v, f) in sorted(msgs.items())]
+    nm = dict(old.get('names', {}))
+    for k, v in (things or {}).items():
+        nm[k] = (v.strip(), nm.get(k, ('', False))[1])
+    if nm:
+        if 'names' not in sections:  # after [messages]
+            sections = {k2: v2 for k1, v1 in sections.items() for k2, v2 in
+                        ([(k1, v1), ('names', [])] if k1 == 'messages' else [(k1, v1)])}
+        sections['names'] = [(k, v, f) for k, (v, f) in sorted(nm.items())]
     for section, key, was, fixed in FIXES.get(code, []):
         entries = sections.get(section, [])
         hit = [i for i, (k, v, _f) in enumerate(entries) if k == key and was in v]
@@ -663,7 +717,7 @@ def update_lang(path, code, gstr, lstr, lits, english_lits, names, messages):
             entries[i] = (k, v.replace(was, fixed), f)
     write_lang(path, head, language, sections)
     print(f'{path}: {len(game)} game lines ({len(kept)} kept from the file: {kept}), '
-          f'{len(names)} map names, {len(messages)} messages from the disc')
+          f'{len(names)} map names, {len(messages)} messages, {len(things or {})} thing names from the disc')
 
 
 if __name__ == '__main__':

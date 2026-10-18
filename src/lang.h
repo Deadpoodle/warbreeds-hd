@@ -23,7 +23,11 @@ bool Set(const std::string& code);
 const std::string& Current();
 
 // WarBreeds HD's own text: the translation of `english` (Mac Roman), or `english`.
-const char* tr(const char* english);
+const char* tr(const char* english);  // also a [names] name
+// A thing or gizmo name from GAMEPLAY.DAT ("Pod", "Crystal Tree", "Hammer"): its
+// [names] translation, or the English.
+const char* Name(const char* english);
+std::string Name(const std::string& english);
 const char* tr(const char* context, const char* english);  // "context|English" keys first
 // A translated pattern with {1}, {2}, ... filled in (the arguments are used as they are).
 std::string trf(const char* english, std::initializer_list<std::string> args);

@@ -13,10 +13,10 @@ language is a file in this folder:
 The patch looks for WarBreedsHD_<code>.txt files every time the Settings page
 opens, so a new file shows up without restarting the game.
 
-The French game text ([game], [maps], [messages]) is the 1998 French
-release's own, with a few typos fixed; it is used with the original
-developers' blessing. The German translation, and WarBreeds HD's own text
-([patch]) in both, were drafted by machine (an AI model) from the English.
+The French and German game text ([game], [maps], [messages], [names]) is
+the 1998 French and German releases' own, with a few typos fixed; it is used
+with the original developers' blessing. WarBreeds HD's own text ([patch]) was
+drafted by machine (an AI model) from the English.
 They will have mistakes and clumsy wording: corrections are very welcome, at
 https://github.com/Deadpoodle/warbreeds-hd (open an issue, or send a changed
 file).
@@ -41,6 +41,9 @@ Encoding: UTF-8).
 
   [messages]                messages campaign maps send, by a code
   1DE8CB31 = ...
+
+  [names]                   names of things and gizmos, by their English
+  Pod = Cocon               (build and pod lists, labs, map editor)
 
 - A line starting with # is a comment. A key left out (or left empty) stays
   in English, so a half-finished file works.

@@ -10,6 +10,7 @@ entry of the language file:
   - placeholders: {1}..{9} and printf specifiers (%d, %s, ...) as in the English;
   - characters: every one must have a Mac Roman byte (the game's fonts), and
     no guillemets (Orbitron has none: use plain quotes);
+  - [names] keys: thing and gizmo names in the game's GAMEPLAY.DAT;
   - hard byte limits: 1023 for any game string; 59 where the English fits a
     text button (59 or less); the 'Squad' word 8; unit names with the info
     panel's prefix 39; briefings within the briefing's 7 pages;
@@ -79,6 +80,18 @@ def fon_widths(path):
                 return {first + i: struct.unpack_from('<H', d, table + i * step)[0] for i in range(last - first + 1)}
 
 
+def gameplay_names(path):
+    """The thing and gizmo names in GAMEPLAY.DAT ([names] keys)."""
+    d = open(path, 'rb').read()
+    out = set()
+    for off, count in ((0x3c2, 74), (0x2e8f, 25)):
+        for i in range(count):
+            n = d[off + 20 * i:off + 20 * i + 20].split(b'\0')[0].decode('cp1252', 'replace')
+            if n:
+                out.add(n)
+    return out
+
+
 def width(widths, text):
     return sum(widths.get(b, 0) for b in text.encode('mac_roman', 'replace'))
 
@@ -108,7 +121,7 @@ def parse(path):
             continue
         if line.startswith('['):
             section = line[1:line.index(']')]
-            if section not in ('game', 'patch', 'maps', 'messages'):
+            if section not in ('game', 'patch', 'maps', 'messages', 'names'):
                 errors.append(f'line {no}: unknown section [{section}]')
             continue
         if '=' not in line:
@@ -129,6 +142,7 @@ def main():
     game, path = sys.argv[1], sys.argv[2]
     verbose = '--all' in sys.argv
     table = string_table(os.path.join(game, 'WARBREED.EXE'))
+    game_names = gameplay_names(os.path.join(game, 'DATA', 'GAMEPLAY.DAT'))
     font = fon_widths(os.path.join(game, 'WBMD14.FON'))
     lits = source_literals()
     entries, errors = parse(path)
@@ -163,6 +177,9 @@ def main():
                 continue
             else:
                 english = table[int(key)]
+        elif section == 'names':
+            if key not in game_names:
+                errors.append(f'{where}: not a thing or gizmo name in GAMEPLAY.DAT')
         elif section == 'patch':
             english = key.split('|', 1)[-1]
             if english not in lits:

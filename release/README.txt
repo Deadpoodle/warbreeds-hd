@@ -170,10 +170,11 @@ LANGUAGES
 
 Settings > Interface > Language shows the game in another language, at
 once: menus, units, briefings, result screens, and WarBreeds HD's own pages
-and map editor. French and German are included. The French game text is
-the 1998 French release's own. Its menus are shown in a look-alike of that
-release's font (or the original if you have it installed), and the HUD and
-labs in the game's own fonts, so it fits and stays readable. German, and WarBreeds HD's own text in both, were drafted by machine
+and map editor. French and German are included. Their game text, unit and
+building names are the 1998 French and German releases' own. Their menus
+are shown in a look-alike of those releases' font (or the original if you
+have it installed), and the HUD and labs in the game's own fonts, so it fits
+and stays readable. WarBreeds HD's own text in both was drafted by machine
 (an AI model), so corrections are welcome:
 https://github.com/Deadpoodle/warbreeds-hd
 
@@ -189,7 +190,7 @@ French or German, taken from your own copy of that version of the game. No
 game audio comes with the patch, and your English voices are never changed.
 
 1. On your French or German WarBreeds CD (or its disc image), find
-   WARBREED\DATA\GLOBSFX.MHK (French: about 4.5 MB).
+   WARBREED\DATA\GLOBSFX.MHK (French: about 4.5 MB, German 4.3 MB).
 2. In your WarBreeds game folder (the one with WARBREED.EXE), make a folder
    named Voices, and inside it one named after the language: fr for
    French, de for German.
@@ -260,8 +261,8 @@ the addresses players behind a router send, so on most home connections the
 host just gives the others their internet address (search "what is my IP").
 WarBreedsHD.log says what happened ("upnp: ...").
   - If the log says "no router answered", UPnP is off on that router: turn
-    it on in the router's settings, or forward the ports above by hand to
-    that PC.
+    it on in the router's settings, or forward UDP port 47624 by hand to the
+    host's PC (players have confirmed that this one port is enough).
   - If it says the router's internet address is private (CGNAT, common on
     mobile and some fibre connections), others can't reach that PC: let a
     player with a normal connection host, or use a VPN.

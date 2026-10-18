@@ -131,7 +131,7 @@ void CheckPower(std::vector<Finding>& out) {
                        : inField(owner, CentreX(t), CentreY(t), t);
             if (!ok && ++unpowered <= 4)
                 out.push_back({lang::trf("P{1}'s {2} at {3},{4} has no power",
-                                         {Num(owner + 1), Name(type), Num(Cells(CentreX(t))), Num(Cells(CentreY(t)))})});
+                                         {Num(owner + 1), lang::Name(Name(type)), Num(Cells(CentreX(t))), Num(Cells(CentreY(t)))})});
         }
     }
     if (unpowered > 4) out.push_back({lang::trf("... and {1} more devices without power", {Num(unpowered - 4)})});

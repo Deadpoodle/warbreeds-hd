@@ -32,6 +32,8 @@ jeu-*/
 *.sub
 *.ccd
 *.cue
+*.iso
+*.bin
 
 # The official 1998 map editor (Red Orb): local reference only, never published
 wbedit/

@@ -809,7 +809,7 @@ void UnitsPage(std::vector<PanelItem>& v) {
             Add(v, row++, 0, line);
         return;
     }
-    Add(v, 2, 0, r.owner < 8 ? lang::trf("{1} (P{2})", {world::Name(r.type), Num(r.owner + 1)}) : world::Name(r.type), -1,
+    Add(v, 2, 0, r.owner < 8 ? lang::trf("{1} (P{2})", {lang::Name(world::Name(r.type)), Num(r.owner + 1)}) : lang::Name(world::Name(r.type)), -1,
         false, r.owner < 8 ? PlayerSwatch(r.owner) : -1);
     if (world::IsCreature(r.type) || world::IsDevice(r.type)) {
         Add(v, 3, 0, lang::trf("Hit points {1}/{2}", {Num(r.hp), Num(world::MaxHp(id))}));
@@ -1077,7 +1077,7 @@ void RemoveThingAt(int wx, int wy) {
         return;
     }
     Edit e;
-    std::string name = world::Name(world::TypeOf(t));
+    std::string name = lang::Name(world::Name(world::TypeOf(t)));
     RemoveRecorded(e, id);
     e.what = lang::trf("Removed a {1}", {name});
     SetStatus(e.what);
@@ -1094,7 +1094,7 @@ void FillCrops(int type) {
         for (int tx = 0; tx < world::TilesW(); ++tx)
             if (world::TerrainType(tx, ty) == 2 && PutRecorded(e, type, world::kNeutral, tx * 32 + 16, ty * 32 + 16, nullptr, why) != kNoThing)
                 ++n;
-    e.what = n ? lang::trf("Filled cropland: {1} {2}", {Num(n), world::Name(type)}) : lang::tr("No empty cropland");
+    e.what = n ? lang::trf("Filled cropland: {1} {2}", {Num(n), lang::Name(world::Name(type))}) : lang::tr("No empty cropland");
     SetStatus(e.what);
     Push(std::move(e));
 }
@@ -1133,7 +1133,7 @@ void SelectThing(int id) {
     if (id != kNoThing) {
         ThingRec r;
         world::Capture(id, r);
-        SetStatus(lang::trf("Selected {1} at {2},{3}", {world::Name(r.type), Num((r.x + 16) / 64), Num((r.y + 16) / 64)}),
+        SetStatus(lang::trf("Selected {1} at {2},{3}", {lang::Name(world::Name(r.type)), Num((r.x + 16) / 64), Num((r.y + 16) / 64)}),
                   false);
     }
 }
@@ -1162,7 +1162,7 @@ void MoveSelected(int wx, int wy) {
     op.tb = old;
     world::Capture(nid, op.ta);
     e.ops.push_back(op);
-    e.what = lang::trf("Moved the {1}", {world::Name(old.type)});
+    e.what = lang::trf("Moved the {1}", {lang::Name(world::Name(old.type))});
     SetStatus(e.what);
     Push(std::move(e));
     ShowSelection();
@@ -1175,7 +1175,7 @@ void DeleteSelected() {
         return;
     }
     Edit e;
-    std::string name = world::Name(world::TypeOf(world::Thing(id)));
+    std::string name = lang::Name(world::Name(world::TypeOf(world::Thing(id))));
     RemoveRecorded(e, id);
     e.what = lang::trf("Deleted the {1}", {name});
     g.selHandle = 0;
@@ -1211,7 +1211,7 @@ void ChangeSelected(const std::function<void(ThingRec&)>& change, const std::str
     e.what = what;
     e.merge = merge;
     ShowSelection();
-    SetStatus(lang::trf("{1} ({2})", {what, world::Name(r.type)}));
+    SetStatus(lang::trf("{1} ({2})", {what, lang::Name(world::Name(r.type))}));
     Push(std::move(e));
 }
 
@@ -2622,7 +2622,7 @@ bool FindItemOnRow(int pageRow, int index, long& x, long& y) {
     return false;
 }
 
-std::string ThingName(int type) { return world::Name(type); }
+std::string ThingName(int type) { return lang::Name(world::Name(type)); }  // as the lists show it
 
 std::string PlayerInfo(int i) {
     PlayerRec r = world::CapturePlayer(i);
