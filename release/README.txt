@@ -170,9 +170,10 @@ LANGUAGES
 ---------
 
 Settings > Interface > Language shows the game in another language, at
-once: menus, units, briefings, result screens, and WarBreeds HD's own pages
-and map editor. French and German are included. Their game text, unit and
-building names are the 1998 French and German releases' own. Their menus
+once: menus, units, map names, briefings, result screens, and WarBreeds
+HD's own pages and map editor. French and German are included. Their game
+text, unit, building and map names are the 1998 French and German releases'
+own. Their menus
 are shown in a look-alike of those releases' font, and the HUD and labs in
 the game's own fonts, so it fits and stays readable. To see them in the
 original fonts instead, copy the files in the CD's FONTS folder into the

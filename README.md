@@ -106,7 +106,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 ## Languages
 
-WarBreeds HD can show the whole game in another language: menus, unit and device names, briefings, the result screens, the credits' titles, and WarBreeds HD's own Settings page and map editor. Pick it on the main menu's **Settings > Interface > Language**; it changes at once.
+WarBreeds HD can show the whole game in another language: menus, unit and device names, map names, briefings, the result screens, the credits' titles, and WarBreeds HD's own Settings page and map editor. Pick it on the main menu's **Settings > Interface > Language**; it changes at once.
 
 | French main menu | A German briefing |
 |---|---|

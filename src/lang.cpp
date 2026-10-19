@@ -40,6 +40,8 @@
 #include <map>
 #include <unordered_map>
 
+#include "editor/mapfile.h"
+
 namespace lang {
 namespace {
 
@@ -71,6 +73,12 @@ constexpr uintptr_t kScenes = 0x55aea8, kSceneTop = 0x51bee8;
 constexpr uintptr_t kMissionTitle = 0x489f00;  // stdcall (AMission* = file name, char out[84])
 const uintptr_t kMissionTitleCalls[] = {0x489e71, 0x489e95, 0x489eb9};
 constexpr uintptr_t kSendMessageCall = 0x419419, kSendMessage = 0x43bc40;  // thiscall (registry, from, mask, text)
+// MapInfo::Name (fastcall: the name at +0xc), where a map's name is shown: the map
+// list (SFileDialog_ListFiles), the skirmish setup's Map line (0x48f410) and the
+// multiplayer dialogs' map field. Not where it's checked.
+constexpr uintptr_t kMapName = 0x415040;
+const uintptr_t kMapNameCalls[] = {0x479cad, 0x48f44a, 0x48b722, 0x48bc64};
+std::unordered_map<std::string, std::string> g_mapNames;  // a map's English name (its header) -> [maps]
 struct Literal {
     uintptr_t push;  // the push imm32 instruction
     uintptr_t text;  // the original string
@@ -260,6 +268,27 @@ void __stdcall h_MissionTitle(const char* mission, char* out) {
     out[59] = 0;
 }
 
+// A map's name where it's shown, from [maps] by its English name (the maps' own
+// headers are English; each [maps] entry is keyed by file).
+const char* __fastcall h_MapName(void* info) {
+    const char* name = ((const char*(__fastcall*)(void*))kMapName)(info);
+    if (!name || g_mapNames.empty()) return name;
+    auto it = g_mapNames.find(name);
+    return it == g_mapNames.end() ? name : it->second.c_str();
+}
+
+void BuildMapNames() {
+    g_mapNames.clear();
+    for (auto& [file, text] : g_t.maps) {
+        editor::MapEntry e;
+        for (const char* dir : {"DATA\\MAPS\\", "CAMPAIGN\\"})
+            if (editor::ReadHeader(g_dir + dir + file, e) && !e.name.empty()) {
+                g_mapNames.emplace(e.name, text);
+                break;
+            }
+    }
+}
+
 void __fastcall h_SendMessage(void* registry, void*, int from, int mask, const char* text) {
     if (text && !g_t.messages.empty()) {
         auto it = g_t.messages.find(Crc32(text));
@@ -368,7 +397,9 @@ void Install(const std::string& dir, const std::string& code, void (*log)(const 
     bool ok = true;
     for (uintptr_t site : kMissionTitleCalls) ok &= PatchCall(site, kMissionTitle, (void*)&h_MissionTitle);
     ok &= PatchCall(kSendMessageCall, kSendMessage, (void*)&h_SendMessage);
-    log("lang: string table hooked; mission titles and map messages %s", ok ? "hooked" : "FAILED (unexpected code)");
+    for (uintptr_t site : kMapNameCalls) ok &= PatchCall(site, kMapName, (void*)&h_MapName);
+    log("lang: string table hooked; mission titles, map names and map messages %s",
+        ok ? "hooked" : "FAILED (unexpected code)");
     if (code != "en" && !code.empty()) Set(code);
 }
 
@@ -424,6 +455,7 @@ bool Set(const std::string& code) {
     }
     g_t = std::move(t);
     g_current = ok && !code.empty() ? code : "en";
+    BuildMapNames();
     // Text the game draws from copies it made outside its string table: the
     // build list's names (in English), and ~40 labels GameInit copies once at
     // start-up (the Shaman panel's buttons, stances, Gene Lab labels, the stats

@@ -42,9 +42,12 @@ creation, GOG `0x4dec76`, sets `lfHeight = -size`), style bit 0 is bold (`lfWeig
 | 10 | (none) | Sherwood 18 |
 
 **A 1998 bug:** slots 1 and 4 ask for the face "Geometr231 Bold BT", but no font has that name (the bold
-file's family is "Geometr231 BT", style Bold). GDI falls back, to Arial on Windows today, so the French game's
-bold interface text has most likely always been Arial Bold. The patch measures against today's fallback
-(Arial Bold); what Windows 9x picked doesn't matter here.
+file's family is "Geometr231 BT", style Bold). GDI on Windows today falls back to Arial. But a player's
+screenshot of the 1998 French game shows the build and pod lists (bold slot, the 14 texts of `0x4547c0`)
+in Geometric 231 ("Cocon", "Spore": thin and round, not Arial Bold), so that is what the 1998 game drew
+there. With the release's own fonts the patch draws slots 1 and 4 in "Geometr231 BT" bold
+(`tools/font_metrics.py`); the room in the `.fonts` file stays today's fallback's (Arial Bold, wider, so
+the stand-ins only get more room).
 
 **Text styles** (`ResolveTextStyle`, `0x469800`; GOG `0x4698c0`: style id to font slot and colours). Styles
 0-44 are the same as the English, apart from:

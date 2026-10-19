@@ -36,7 +36,8 @@ Encoding: UTF-8).
   [patch]                   WarBreeds HD's own text, by its English
   Settings = Ajustes
 
-  [maps]                    campaign mission titles, by map file
+  [maps]                    map names, by map file: mission titles and the
+                            skirmish and multiplayer map lists
   SPTAN1A.WBM = ...
 
   [messages]                messages campaign maps send, by a code

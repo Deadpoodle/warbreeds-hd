@@ -2802,6 +2802,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         // 4, 5: the Gene Lab, the Device Lab (from the main menu); 11: the Device Lab
         //   on a name that takes two lines.
         // 10: a skirmish's pod list (the pods' names).
+        // 12: the skirmish setup's map list (the maps' names).
         // 9: one live language switch on Settings, then a skirmish's Shaman panel
         //   (labels the game copied at start-up must follow the switch).
         static int acted, shots, cycles;
@@ -2898,14 +2899,28 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 stage = 10;
             }
         } else if (g_h.target == 1 || (g_h.target >= 6 && g_h.target <= 8) || (g_h.target == 9 && switched) ||
-                   g_h.target == 10) {
+                   g_h.target == 10 || g_h.target == 12) {
             if (mainMenu && stage == 0 && in > 2500) {
                 Click({87, 77});  // Skirmish
                 stage = 1;
             } else if (scene == ".?AVSMultiSetup@@" && top == ".?AVSMultiSetup@@" && stage == 1 && in > 2600) {
                 shot("skirmish-setup");
+                if (g_h.target == 12) {  // the map list: Options, then its Map button
+                    Click({120, 456});
+                    stage = 19;
+                    return;
+                }
                 Click({437, 457});  // Start
                 stage = 2;
+            } else if (stage == 19 && top.find("SMultiplayerOption") != std::string::npos && in > 1500) {
+                Click({226, 188});  // Map (the dialog's second row)
+                stage = 20;
+            } else if (stage == 20 && top.find("SMultiplayerOption") == std::string::npos &&
+                       top != ".?AVSMultiSetup@@" && in > 2000) {
+                g_h.log("autopilot: map list: %s", menu::WidgetTexts().c_str());
+                shot("map-list");
+                quit();
+                stage = 21;
             } else if (scene == ".?AVSGame@@" && stage == 2 && in > 6000) {
                 shot("skirmish");
                 PostKey(WM_KEYDOWN, 'E');  // select the builders
