@@ -211,8 +211,8 @@ game audio comes with the patch, and your English voices are never changed.
    ignored (WarBreedsHD.log says so) and English plays instead.
 
 
-SKIRMISH TEAMS AND COLOURS
---------------------------
+SKIRMISH TEAMS, COLOURS AND SAVES
+---------------------------------
 
 The skirmish setup has Team and Color columns, like the multiplayer lobby.
 
@@ -294,6 +294,9 @@ Delete these from the game folder:
   wsock32.dll, Fonts\, Menus\, Lang\, WarBreedsHD.ini, WarBreedsHD.log,
   WarBreedsHD-progress.ini,
   and DDrawCompat.ini if it's there.
+Skirmish saves leave a <name>.wbs.hd beside each save in DATA\Saves:
+delete those too (the saves then load as the original game would load
+them).
 
 The game is then exactly as before.
 

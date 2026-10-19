@@ -128,7 +128,7 @@ These keys work with exactly one of your Shamans selected. They open the same pa
 
 | Key | Action |
 |---|---|
-| <kbd>Esc</kbd> | Open the game menu (options, sound, save, quit). |
+| <kbd>Esc</kbd> | Open the game menu (options, sound, load and save, in a skirmish too, quit). |
 | <kbd>Pause</kbd> | Pause and resume. While paused, only Pause and <kbd>Z</kbd> work. |
 | <kbd>I</kbd> | Switch the info panel to its second page (for creatures, their stance). |
 | <kbd>+</kbd> / <kbd>=</kbd> and <kbd>-</kbd> | Zoom the minimap in and out. |

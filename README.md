@@ -86,7 +86,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Still to come**: the original's terrain-specific palettes (placing border tiles by hand), palette thumbnails, and campaign maps (see [docs/nice-to-have.md](docs/nice-to-have.md)).
 
-## Skirmish teams and campaign progress
+## Skirmish teams, saves and campaign progress
 
 | Skirmish setup with teams and colours | Picking a campaign back up |
 |---|---|
@@ -100,7 +100,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Colours in skirmish.** Click a row's colour to choose it; right-click to go back to automatic. Each colour can only be used once. Rows left on automatic get the game's own colours (each clan's colour first), moving aside if you picked theirs. A row with a Random clan gets its colour when the game starts.
 
-**Saving a skirmish.** The Esc menu in a skirmish now has Load Game and Save Game, as in a campaign. The original game could save a skirmish all along but left the two buttons out, and a saved skirmish would have come back under campaign rules: the first player as you, clan colours instead of the ones you chose, and the result screen leading to the main menu. WarBreeds HD writes a small `<name>.wbs.hd` beside each skirmish save (who you were, the skirmish setup and where you were looking), and a skirmish save loads as a skirmish, teams and all, from the Esc menu or the main menu. The `.wbs` itself is the game's own format.
+**Saving a skirmish.** The Esc menu in a skirmish now has Load Game and Save Game, as in a campaign. The original game could save a skirmish all along but left the two buttons out, and a saved skirmish would have come back under campaign rules: the first player as you, clan colours instead of the ones you chose, and the result screen leading to the main menu. WarBreeds HD writes a small `<name>.wbs.hd` beside each skirmish save (who you were, the skirmish setup and where you were looking), and a skirmish save loads as a skirmish, teams and all, from the Esc menu or the main menu. The `.wbs` itself is the game's own format. Keep the two files together (copying a save to another PC, for instance): without its `.hd`, a skirmish save loads as the original game would load it. While you watch an ally after your own defeat, Save Game isn't available.
 
 **Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
@@ -167,7 +167,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - The official 1998 editor on the main menu: edit any map or make a new one, with the original's smart painting, trees, rocks, crops, units, devices, players, start points, map settings, events (triggers) and Global AI, undo for all of it, and a map check.
 - Save As processes the map for pathfinding and saves it where the skirmish setup finds it; Test Map (asks first) plays it.
 
-**Skirmish** (more in [Skirmish teams and campaign progress](#skirmish-teams-and-campaign-progress))
+**Skirmish** (more in [Skirmish teams, saves and campaign progress](#skirmish-teams-saves-and-campaign-progress))
 - Teams: allied sides chosen on the setup screen, for you and the computer players. Teammates start together and win together.
 - Colours: choose each player's colour; right-click for automatic.
 - Load Game and Save Game on the Esc menu; a saved skirmish loads as a skirmish.
@@ -215,7 +215,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 2. Copy `wsock32.dll`, `Fonts\`, `Menus\` and `Lang\` into your WarBreeds folder, next to `WARBREED.EXE`. On Steam, right-click WarBreeds in your library, then Manage > Browse local files.
 3. Start the game. The main menu shows the version at the bottom right and a new Settings item.
 
-To uninstall, delete those files plus `WarBreedsHD.ini`, `WarBreedsHD-progress.ini` and `WarBreedsHD.log`. The zip's README.txt has the details, including notes for Linux, which hasn't been tested yet.
+To uninstall, delete those files plus `WarBreedsHD.ini`, `WarBreedsHD-progress.ini` and `WarBreedsHD.log`, and any `*.wbs.hd` files in `DATA\Saves` (skirmish saves then load as the original game would load them). The zip's README.txt has the details, including notes for Linux, which hasn't been tested yet.
 
 ## Building from source
 
