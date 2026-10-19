@@ -29,6 +29,7 @@ The widths are measurements of the fonts (no glyphs), so the file can be publish
 import ctypes
 import glob
 import os
+import struct
 import sys
 from ctypes import wintypes
 
@@ -49,6 +50,19 @@ class TM(ctypes.Structure):
 
 
 DC = None
+
+# The .rdata rects (left, top, right, bottom) of text boxes the French and German
+# releases resized for their fonts: found by diffing the exes (re/french-version.md).
+LAYOUT_RECTS = [
+    (0x5063f0, 'Device Lab: a long name\'s first line (SDeviceLab::CreateWidgets)'),
+    (0x5063f8, 'Device Lab: a long name\'s second line'),
+    (0x506400, 'Device Lab: the description page'),
+    (0x5075d8, 'Gene Lab: a text box (0x485d5a, 0x4863c5)'),
+    (0x5075e0, 'Gene Lab: a text box (0x485d6c, 0x4864aa)'),
+    (0x507cc8, 'Briefing: the text page (0x489c1b)'),
+    (0x507cd0, 'Briefing: a button label (0x489cdd)'),
+    (0x507cd8, 'Briefing: a button label (0x489d23)'),
+]
 
 
 def measure(face, height, weight):
@@ -119,6 +133,15 @@ def main():
                 raise SystemExit(f'stand-in "{sub}" not loaded (GDI gave "{sgot}")')
         lines.append(f'# {gface}: {face} {size} px{" bold" if weight == 700 else ""}, cell {cell}{resolved}{why}')
         lines.append(f'{gface} = {got}, {size}, {weight} | {sub}, {weight}, {cell} | ' + ' '.join(map(str, room)))
+    # Boxes the release resized for its fonts (scenes copy them from .rdata each time they open).
+    lines.append('# Layout: a box the release sized for its fonts = the release\'s left top right bottom | the English exe\'s;')
+    lines.append('# used only with the release\'s own fonts (the stand-ins keep the English line heights)')
+    for va, what in LAYOUT_RECTS:
+        mine, eng = loc.code(va, 8), gog.code(va, 8)
+        if mine != eng:
+            fmt = lambda b: ' '.join(map(str, struct.unpack('<4h', b)))
+            lines.append(f'# {what}')
+            lines.append(f'Layout {va:#x} = {fmt(mine)} | {fmt(eng)}')
     out = os.path.join(ROOT, 'lang', f'WarBreedsHD_{code}.fonts')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines) + '\n')

@@ -181,6 +181,15 @@ What a skirmish save would also need:
 
 Suggested place for the extra data: append it after stage 8 (hook the end of `SerializeStage` case 8, or `SerializeAll`). The stock loader stops after stage 8 and never reads the extra bytes. **M**
 
+### What WarBreeds HD does (v0.19.0, `src/skirmish_save.cpp`)
+
+- **Esc menu:** the `jne` at 0x4895b0 is NOPed, so a single-player skirmish gets the campaign layout (Objectives, Sound, Game Options, AI Options, Load Game, Save Game, Quit, Leave Game, Resume). Objectives shows the game's own "no objectives" message without a campaign (`SMenu::OnCommand`, `g_Campaign == 0` → ShowDialog 0x265).
+- **Save:** the `SerializeAll` call at 0x480dcb is wrapped. After the stream, for a `.wbs` with the flag up in single player, `<save>.wbs.hd` is written beside it: `LocalPlayer`, `Watching` (the human's index while watching an ally after defeat, `skirmish_teams`), `View` (the view's centre in world pixels: `StoreCameraInPlayer` keeps it only for a local player) and `Settings` (GameSettings 0x5511cc, 0x230 bytes, hex). Any other `.wbs` save deletes a stale `.hd` of that name. The `.wbs` is untouched, so it stays a stock save.
+- **Load:** both `Game_Start(0x32)` calls of a load (0x47cf7f in mission, 0x487bd3 from the main menu) are wrapped: the flag goes **down for every load** (stage 8 then keeps the world as saved; before, a campaign save loaded from inside a skirmish was set up as a skirmish over the loaded world) and the `.hd`, if any, is read; a skirmish save clears `g_Campaign`. The `Game_LoadStage` call in `SProgress::Idle` (0x492716) is wrapped: after stage 8, the settings block, the flag, the local player (or watching) and the view are put back.
+- **The view after any load or mission start:** stage 8 centres the view in the 640x480 loading frame; the mission's HD frame then resized the view about its top-left corner. `camera::InstallKeepCentre` wraps SGame's resize handler (vtable slot 0x4c) to keep the view's centre instead.
+- **Watching after defeat:** Save Game is refused there (`SMenu::OnCommand`, slot 0x5079a0, wrapped: ShowDialog 475 "Save Game" / 622 "You are no longer in the game.", as Alliances refuses). A save made while watching crashed on load: the defeated player's last thing loaded with no owner (`GetPlayer` 0x43ada0 returns living players only), and the skirmish colour path in `AShaman::Draw` (0x440dbd) read owner +0x484e.
+- **Test:** autopilot mode 24, `tools/skirmsave.sh` (save and load in mission, from the main menu, a stock save inside a skirmish, Save Game refused while watching). Measured: the human (player 3 of a random placement) comes back as player 3, colours and alliances match, both AIs go on building (1 → 15 things in a minute), and a win leads back to the skirmish setup.
+
 ### Campaign progress record
 
 > **WarBreeds HD v0.14.0** (`src/campaign.cpp`) records {campaign, chapter, set} at every briefing in `WarBreedsHD-progress.ini` and offers Continue / Start Over on the campaign screen. Skirmish save/load (above) is still to do.

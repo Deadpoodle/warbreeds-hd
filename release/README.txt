@@ -84,6 +84,7 @@ Display
   - Widescreen menu screens. Menu Art = Original shows the original 4:3
     pictures with black bars instead (see the note on the artwork below).
   - F2 shows a frame-rate counter.
+  - A mission or a loaded game starts centred on your base.
 
 Cutscenes
   - The movies play again (the game needed QuickTime 2, which modern Windows
@@ -172,9 +173,10 @@ Settings > Interface > Language shows the game in another language, at
 once: menus, units, briefings, result screens, and WarBreeds HD's own pages
 and map editor. French and German are included. Their game text, unit and
 building names are the 1998 French and German releases' own. Their menus
-are shown in a look-alike of those releases' font (or the original if you
-have it installed), and the HUD and labs in the game's own fonts, so it fits
-and stays readable. WarBreeds HD's own text in both was drafted by machine
+are shown in a look-alike of those releases' font, and the HUD and labs in
+the game's own fonts, so it fits and stays readable. To see them in the
+original fonts instead, copy the files in the CD's FONTS folder into the
+game's Fonts folder. WarBreeds HD's own text in both was drafted by machine
 (an AI model), so corrections are welcome:
 https://github.com/Deadpoodle/warbreeds-hd
 
@@ -222,6 +224,12 @@ The skirmish setup has Team and Color columns, like the multiplayer lobby.
     battle; if your team wins, the result is Victory.
   - Click a row's colour to choose it, right-click for automatic. Each
     colour can be used once; a Random clan gets its colour at the start.
+
+Saving: the Esc menu in a skirmish has Load Game and Save Game, as in a
+campaign. A skirmish save is two files in DATA\Saves: <name>.wbs (the
+game's own) and <name>.wbs.hd (who you were and the skirmish setup). Keep
+them together; without the .hd the game loads as the original would have.
+While you watch an ally after your own defeat, Save Game is not available.
 
 
 CAMPAIGN PROGRESS

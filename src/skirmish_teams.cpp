@@ -466,6 +466,9 @@ bool PatchDefeat() {
 
 }  // namespace
 
+int Watching() { return g_spectateId; }
+void SetWatching(int id) { g_spectateId = id; }
+
 void Apply(void* registry) {
     g_spectateId = -1;
     bool any = false;

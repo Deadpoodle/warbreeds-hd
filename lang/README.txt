@@ -60,12 +60,14 @@ FONTS
 -----
 
 A language can bring its own fonts: WarBreedsHD_<code>.fonts beside its text
-file. French has one. The 1998 French release drew its text in narrower fonts
-than the English game (Bell Gothic, Geometric 231 and Sherwood, instead of
-the English bitmap fonts), and its text is written to fit them. So in
-French:
-- if those fonts are installed on your PC (the French CD's FONTS folder),
-  they are used, exactly as in 1998;
+file. French and German have one. The 1998 French and German releases drew
+their text in narrower fonts than the English game (Bell Gothic, Geometric
+231 and Sherwood, instead of the English bitmap fonts), and their text is
+written to fit them. So in French and German:
+- if you have those fonts (copy the files in the CD's FONTS folder into the
+  game's Fonts folder, or install them), they are used, as in 1998, with the
+  few text boxes the release resized for them (the Layout lines of the
+  .fonts file: the Device Lab's and Gene Lab's, the briefing's);
 - otherwise the menus use Roboto Condensed (from the Fonts folder), a
   look-alike narrowed where needed to the width a line had in 1998; the HUD,
   the labs and the headings use the game's own fonts, which read best at

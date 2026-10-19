@@ -141,11 +141,33 @@ void DropStandIns() {
     g_fitOf.clear();
 }
 
+// A text box the release resized for its fonts: its .rdata rect (left, top, right,
+// bottom) as the release had it and as the English exe has it. Scenes copy these
+// rects when they open, so the release's boxes are written in while its own fonts
+// are drawn (their lines are shorter than the bitmap faces' and the boxes were made
+// for them), and the English ones back otherwise.
+struct Layout {
+    uintptr_t at;
+    short release[4], english[4];
+};
+std::vector<Layout> g_layouts;  // in use: the current language's, written in
+
+bool WriteRect(uintptr_t at, const short (&from)[4], const short (&to)[4]) {
+    if (memcmp((void*)at, from, sizeof from) != 0) return false;  // not the exe we know
+    DWORD old;
+    if (!VirtualProtect((void*)at, sizeof to, PAGE_READWRITE, &old)) return false;
+    memcpy((void*)at, to, sizeof to);
+    VirtualProtect((void*)at, sizeof to, old, &old);
+    return true;
+}
+
 // Lang\WarBreedsHD_<code>.fonts (tools/font_metrics.py): one line per game face,
 //   WBMd14 = BellGothic BT, 14, 400 | Roboto Condensed, 400, 16 | 4 5 4 ...
 // the release's face, size and weight | the stand-in ("-": the game's own face),
-// weight, cell height | the room.
-bool LoadRelease(const std::string& code, Stand (&out)[kFaces], bool& real) {
+// weight, cell height | the room; then the boxes the release resized,
+//   Layout 0x5063f0 = 19 128 132 144 | 19 122 132 144
+// the release's rect | the English exe's.
+bool LoadRelease(const std::string& code, Stand (&out)[kFaces], bool& real, std::vector<Layout>& layouts) {
     FILE* f = fopen((g_dir + "Lang\\WarBreedsHD_" + code + ".fonts").c_str(), "rb");
     if (!f) return false;
     Stand own[kFaces];  // the release's own faces, as the release asked for them
@@ -153,6 +175,14 @@ bool LoadRelease(const std::string& code, Stand (&out)[kFaces], bool& real) {
     char line[4096];
     while (fgets(line, sizeof line, f)) {
         if (line[0] == '#') continue;
+        Layout l{};
+        unsigned at;
+        if (sscanf(line, " Layout %x = %hd %hd %hd %hd | %hd %hd %hd %hd", &at, &l.release[0], &l.release[1],
+                   &l.release[2], &l.release[3], &l.english[0], &l.english[1], &l.english[2], &l.english[3]) == 9) {
+            l.at = at;
+            layouts.push_back(l);
+            continue;
+        }
         char game[32], face[64], sub[64];
         int size, weight, sweight, cell, used = 0;
         if (sscanf(line, " %31[^ =] = %63[^,], %d, %d | %63[^,], %d, %d |%n", game, face, &size, &weight, sub, &sweight,
@@ -721,7 +751,8 @@ void SetFor(const std::string& language, bool orbitron) {
     Mode mode = kBitmap;
     Stand stand[kFaces];
     bool real = false;
-    if (_stricmp(language.c_str(), "en") != 0 && LoadRelease(language, stand, real)) {
+    std::vector<Layout> layouts;
+    if (_stricmp(language.c_str(), "en") != 0 && LoadRelease(language, stand, real, layouts)) {
         mode = kRelease;
     } else if (orbitron && g_loaded && _stricmp(language.c_str(), "en") == 0) {
         mode = kOrbitron;
@@ -733,6 +764,15 @@ void SetFor(const std::string& language, bool orbitron) {
     g_mode = mode;
     g_release = mode == kRelease ? language : "";
     g_releaseReal = real;
+    // The release's boxes with its own fonts only; the English ones otherwise.
+    for (const Layout& l : g_layouts) WriteRect(l.at, l.release, l.english);
+    g_layouts.clear();
+    if (real) {
+        int done = 0;
+        for (const Layout& l : layouts)
+            if (WriteRect(l.at, l.english, l.release)) g_layouts.push_back(l), ++done;
+        if (g_log && !layouts.empty()) g_log("fonts: %d of %d of the release's text boxes", done, (int)layouts.size());
+    }
     if (g_log)
         g_log("fonts: %s", mode == kOrbitron ? "Orbitron"
                            : mode == kBitmap ? "the game's own"

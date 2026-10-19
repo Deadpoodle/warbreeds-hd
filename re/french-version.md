@@ -92,8 +92,32 @@ for the narrow fonts.
 - **Fonts follow the language** (`src/fonts.cpp`, `fonts::SetFor`). A language with
   `Lang\WarBreedsHD_<code>.fonts` is always drawn in its release's fonts; the Font setting (Orbitron) is for
   English only and shows "By language" otherwise.
-  - If every face the release drew in is installed (Bell Gothic, Geometric 231, Sherwood, and Arial for the
-    bold slots), they are used at the release's sizes: French looks as it did in 1998.
+  - If every face the release drew in is installed, or in the game's `Fonts\` folder (Bell Gothic, Geometric
+    231, Sherwood, and Arial for the bold slots), they are used at the release's sizes.
+    - **Text boxes.** The release also resized eight text boxes for those fonts: `.rdata` rects (left, top,
+      right, bottom) that scenes copy into their widgets each time they open. The English exe's boxes are
+      sized for its taller bitmap lines. Found by diffing `.rdata` of the three exes (German has the same
+      values as French):
+
+      | Rect | Box | English | Release |
+      |---|---|---|---|
+      | 0x5063f0 | Device Lab, a long name's first line | 19,122,132,144 | 19,128,132,144 |
+      | 0x5063f8 | Device Lab, a long name's second line | 19,145,132,167 | 19,147,132,161 |
+      | 0x506400 | Device Lab, the description page | 33,237,135,379 | 33,234,135,377 |
+      | 0x5075d8 | Gene Lab, a text box | 370,330,521,349 | 360,330,531,349 |
+      | 0x5075e0 | Gene Lab, a text box | 346,381,553,460 | 346,375,553,459 |
+      | 0x507cc8 | Briefing, the text page | 21,118,378,372 | 21,118,378,374 |
+      | 0x507cd0 | Briefing, a button label | 21,385,81,400 | 21,385,81,402 |
+      | 0x507cd8 | Briefing, a button label | 145,385,220,400 | 145,385,220,402 |
+
+    - **Why it showed.** The Device Lab draws a name over 113 px into two 22 px boxes (top-aligned,
+      bottom-aligned), each holding the *whole* wrapped name and clipped to itself. With Darwin18 (27 px
+      lines) each box shows only its own line. With Sherwood 14 (15 px lines) in the English boxes, each also
+      showed part of the other line: a player's report of "Tourelle Psi avancée" with a garbled line between.
+    - `tools/font_metrics.py` writes them as `Layout` lines into the `.fonts` file; `fonts::SetFor` writes
+      the release's values in while the release's own fonts are drawn (only over the English values it
+      expects), and the English ones back otherwise. The stand-in mode keeps the English boxes: its faces
+      have the English line heights.
   - Otherwise Roboto Condensed for Bell Gothic (the menu faces; 0.87-0.97x its width, picked from a
     GDI-drawn comparison sheet, `tools/fontsheet.py`), and the English game's own bitmap faces for the
     interface faces and Darwin18 (`-` in the `.fonts` file).

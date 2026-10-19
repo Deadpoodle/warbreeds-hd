@@ -9,7 +9,7 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - a Settings page;
 - modern controls;
 - the official map editor, built into the game;
-- allied teams and colour choice in skirmish;
+- allied teams and colour choice in skirmish, and saving a skirmish;
 - campaign progress that survives quitting;
 - the game in French and German, or any language someone adds;
 - the game's own multiplayer, working again.
@@ -100,6 +100,8 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Colours in skirmish.** Click a row's colour to choose it; right-click to go back to automatic. Each colour can only be used once. Rows left on automatic get the game's own colours (each clan's colour first), moving aside if you picked theirs. A row with a Random clan gets its colour when the game starts.
 
+**Saving a skirmish.** The Esc menu in a skirmish now has Load Game and Save Game, as in a campaign. The original game could save a skirmish all along but left the two buttons out, and a saved skirmish would have come back under campaign rules: the first player as you, clan colours instead of the ones you chose, and the result screen leading to the main menu. WarBreeds HD writes a small `<name>.wbs.hd` beside each skirmish save (who you were, the skirmish setup and where you were looking), and a skirmish save loads as a skirmish, teams and all, from the Esc menu or the main menu. The `.wbs` itself is the game's own format.
+
 **Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
 ## Languages
@@ -112,7 +114,7 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 
 - **French and German come with the patch.** Their game text, map titles and messages, and unit and building names are the 1998 French and German releases' own (used with the original developers' blessing), extracted from those CDs with [tools/locale_extract.py](tools/locale_extract.py) ([re/french-version.md](re/french-version.md), [re/german-version.md](re/german-version.md)). WarBreeds HD's own text in both was drafted by machine (an AI model), so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
 - **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and the game writes a ready-to-fill template into that folder each time it starts, made from your own copy (every line with its English).
-- **The font follows the language.** The 1998 French release drew its text in narrower TrueType fonts than the English bitmap faces, and its text is written for them. In French and German (both releases used the same fonts), WarBreeds HD uses those fonts if they are installed. Otherwise the menus use Roboto Condensed (close to the release's Bell Gothic, narrowed to the 1998 width where needed). The HUD, the labs and the headings keep the English game's own pixel fonts, which read best at those small sizes, with the few tight spots ("Construire") set a pixel tighter. The 1998 interface face was too small to read at 1080p. A language's fonts are a small file beside its text, `Lang\WarBreedsHD_<code>.fonts`, made by [tools/font_metrics.py](tools/font_metrics.py).
+- **The font follows the language.** The 1998 French release drew its text in narrower TrueType fonts than the English bitmap faces, and its text is written for them. In French and German (both releases used the same fonts), WarBreeds HD uses those fonts if you have them: copy them from the CD's `FONTS` folder into the game's `Fonts` folder (or install them). The few text boxes the release resized for them (the Device Lab's and Gene Lab's, the briefing's) are then the release's too. Otherwise the menus use Roboto Condensed (close to the release's Bell Gothic, narrowed to the 1998 width where needed). The HUD, the labs and the headings keep the English game's own pixel fonts, which read best at those small sizes, with the few tight spots ("Construire") set a pixel tighter. The 1998 interface face was too small to read at 1080p. A language's fonts are a small file beside its text, `Lang\WarBreedsHD_<code>.fonts`, made by [tools/font_metrics.py](tools/font_metrics.py).
 - Other languages use the game's own bitmap fonts, which already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. The Orbitron font option is for English only.
 - The movies stay English, and so does the text players type (the game only accepts plain letters there).
 
@@ -168,6 +170,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 **Skirmish** (more in [Skirmish teams and campaign progress](#skirmish-teams-and-campaign-progress))
 - Teams: allied sides chosen on the setup screen, for you and the computer players. Teammates start together and win together.
 - Colours: choose each player's colour; right-click for automatic.
+- Load Game and Save Game on the Esc menu; a saved skirmish loads as a skirmish.
 
 **Campaign**
 - Progress is kept between sessions: a campaign you've started offers Continue or Start Over.
@@ -199,6 +202,8 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same. Each running copy takes a core of its own, so two copies on one PC don't slow each other down.
 - Removes the in-mission resolution slider, which fought the new resolution handling.
 - Fixes a 1998 crash in long games: the remembered picture of a building seen earlier, refreshed when its ground comes back into view, could read from a different unit once that building was destroyed out of sight and its number reused, and divide by zero.
+- A mission, and a loaded game, starts centred on your base (it used to sit up and to the left at HD sizes).
+- Loading a campaign save from inside a skirmish no longer sets the loaded game up as a skirmish.
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
 
 **Fonts**

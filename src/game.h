@@ -53,6 +53,8 @@ constexpr uintptr_t SGameScrollMaxX = 0x48;  // short
 constexpr uintptr_t SGameScrollMaxY = 0x4a;  // short
 constexpr uintptr_t SGameViewW = 0x4c;      // short, world pixels visible
 constexpr uintptr_t SGameViewH = 0x4e;      // short
+// void __thiscall SGame::CentreOn(short x, short y) 0x480340: camera = (x, y) - view / 2, clamped.
+constexpr uintptr_t SGameCentreOn = 0x480340;
 constexpr uintptr_t SGameZoomedOut = 0x5e;  // short, 1 = 2x zoom-out active
 // void __thiscall SGame::SetZoomedOut(short on) - on: doubles the view if twice it fits the
 // map; off: clears +0x5e and halves the view (unconditionally), re-centring the camera.

@@ -10,5 +10,9 @@ void Apply(void* registry);
 // Tests: a point (640x480 menu coordinates) on a visible row's team (kind 0)
 // or colour (kind 1) icon of the skirmish setup scene.
 bool HitPoint(void* scene, int row, int kind, long& x, long& y);
+// The human's player index while watching an ally after defeat, else -1; set
+// again when a save made while watching is loaded.
+int Watching();
+void SetWatching(int id);
 
 }  // namespace teams

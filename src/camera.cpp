@@ -70,7 +70,31 @@ void __thiscall FitViewToMap(char* g, int /*zero*/) {
               *(BYTE*)game::MapTilesH, viewW, viewH);
 }
 
+// SGame's resize handler (vtable slot 0x4c, 0x47b2f0) sets the view to the frame's size
+// and leaves the camera (the view's top-left corner) where it was. A mission or a saved
+// game is centred on its start point while it loads, in the 640x480 loading frame; at the
+// mission's HD frame the start point then sat up and to the left (a load wasn't where
+// the player had been looking). The view keeps its centre across a resize instead.
+void __fastcall KeepCentre(char* g, void*, int w, int h) {
+    short viewW = *(short*)(g + game::SGameViewW), viewH = *(short*)(g + game::SGameViewH);
+    int cx = *(short*)(g + game::SGameCameraX) + viewW / 2, cy = *(short*)(g + game::SGameCameraY) + viewH / 2;
+    ((void(__thiscall*)(void*, int, int))game::SGameOnResize)(g, w, h);
+    if (viewW <= 0 || viewH <= 0) return;  // not set up yet
+    if (viewW == *(short*)(g + game::SGameViewW) && viewH == *(short*)(g + game::SGameViewH)) return;
+    ((void(__thiscall*)(void*, int, int))game::SGameCentreOn)(g, cx, cy);
+}
+
 }  // namespace
+
+bool InstallKeepCentre() {
+    uintptr_t* slot = (uintptr_t*)(game::VtblSGame + 0x4c);
+    if (*slot != game::SGameOnResize) return false;
+    DWORD old;
+    if (!VirtualProtect(slot, 4, PAGE_READWRITE, &old)) return false;
+    *slot = (uintptr_t)&KeepCentre;
+    VirtualProtect(slot, 4, old, &old);
+    return true;
+}
 
 bool InstallViewFix() {
     const uint8_t expect[] = {0xe8, 0xaa, 0x1e, 0x00, 0x00};  // call 0x47d430

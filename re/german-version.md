@@ -27,6 +27,8 @@ reached WarBreeds HD. It was done with the process in [french-version.md](french
   no font has, so Windows falls back to Arial Bold.
 - **Text styles:** the same changes as French (style 2 regular; new 45, 46 and 47).
 - **The disc's `FONTS/`:** the same four files.
+- **Text boxes:** the same eight resized boxes as French, with the same values (the `Layout` lines;
+  see french-version.md).
 - **So:** `lang/WarBreedsHD_de.fonts` (from `tools/font_metrics.py de "BellGothic BT=Roboto
   Condensed" "Geometr231 BT=-" "Geometr231 Bold BT=-" "Sherwood=-"`) is identical to the
   French file. Menus use Roboto Condensed fitted to the release's widths; the HUD, labs and

@@ -2135,16 +2135,15 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             stage = 1;
             at = now;
         } else if (stage == 1 && now - at > 1500) {
-            // The Esc menu is drawn at the interface scale (2x, centred): its
-            // "Game Options" button sits at (-130, -54) from the window centre.
-            RECT rc;
-            GetClientRect(render::GameWindow(), &rc);
-            POINT c{rc.right / 2 - 130, rc.bottom / 2 - 54};
-            render::SetFakeCursorClient(c);
-            PostMessageA(render::GameWindow(), WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
-            PostMessageA(render::GameWindow(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.x, c.y));
-            PostMessageA(render::GameWindow(), WM_LBUTTONUP, 0, MAKELPARAM(c.x, c.y));
-            g_h.log("autopilot: click client %ld,%ld (Game Options)", c.x, c.y);
+            // The Esc menu (SMenu): its Game Options button is member +0x4c.
+            short ti = *(short*)0x51bee8;
+            char* menu = ti >= 0 && ti <= 16 ? ((char**)0x55aea8)[ti] : nullptr;
+            char* button = menu ? *(char**)(menu + 0x4c) : nullptr;
+            if (button) {
+                short* r = (short*)(button + 0xc);
+                Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
+            }
+            g_h.log("autopilot: %s", button ? "click Game Options" : "no Game Options button");
             (void)x;
             (void)y;
             stage = 2;
@@ -2544,25 +2543,20 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
         return;
     }
-    if (g_h.mode == 23) {
-        // Languages (tools/langtest.sh sets [Display] Language and Font first).
-        // Everything is clicked by command id or position, never by English text.
-        // Target 0: main menu, the three Settings tabs, the campaign screen and a
-        //   Tanu briefing (and its second page), the mission, the Esc menu.
-        // 1: skirmish setup, a skirmish (Shamans selected, the build list), then a
-        //   Refinery being placed (its range ring); 6, 7, 8: the same with a Relay,
-        //   a Turret, an Electric Tower.
-        // 2: on Settings > Interface, Language cycled through every language (live),
-        //   back to the first.
-        // 3: the map editor's panel on a map.
-        // 4, 5: the Gene Lab, the Device Lab (from the main menu).
-        // 10: a skirmish's pod list (the pods' names).
-        // 9: one live language switch on Settings, then a skirmish's Shaman panel
-        //   (labels the game copied at start-up must follow the switch).
-        static int acted, shots, cycles;
-        static bool switched;
-        static DWORD at;
-        static std::string last;
+    if (g_h.mode == 24) {
+        // Skirmish save and load (tools/skirmsave.sh). Target 0: a skirmish (human
+        // and AI 1 on a team, picked colour, random starts), the Esc menu (Load and
+        // Save shown), saved as HDSKIRM, loaded again from the Esc menu: the same
+        // human, colours, alliances and things, played on as a skirmish; then won:
+        // the result screen leads back to the skirmish setup. 1: HDSKIRM loaded from
+        // the main menu's Load Game. 2: HDSKIRM copied without its .hd (as a stock
+        // save) and loaded from inside a skirmish: not set up again as a skirmish.
+        // 3: the human is defeated first and watches the ally: the Esc menu's Save
+        // Game is refused ("You are no longer in the game.").
+        static int st, acted;
+        static DWORD at, lastAct;
+        static std::string last, before;
+        static std::vector<POINT> queue;
         std::string top = g_h.topScene ? g_h.topScene() : "";
         std::string key = scene + " / " + top;
         if (key != last) {
@@ -2584,6 +2578,257 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             for (int i = 0; list && i < count && i < 256; ++i) {
                 char* w = (char*)list[i];
                 if (!w || *(uintptr_t*)w != 0x50925c || *(short*)(w + 0x20) != cmd) continue;
+                short* r = (short*)(w + 0xc);
+                Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
+                g_h.log("autopilot: click command %#x (%s)", cmd, w + 0x2c);
+                return true;
+            }
+            g_h.log("autopilot: command %#x not found", cmd);
+            return false;
+        };
+        auto shot = [&](const char* what) {
+            char tag[64];
+            snprintf(tag, sizeof tag, "skirmsave-%d-%s", g_h.target, what);
+            Save(tag);
+        };
+        auto quit = [&](const char* why) {
+            g_h.log("autopilot: %s; done, quitting", why);
+            PostQuitMessage(0);
+            st = 99;
+        };
+        auto send = [](int scene, int what, int value) { ((void(__cdecl*)(int, int, int))0x471560)(scene, what, value); };
+        char* reg = *(char**)0x57927c;
+        auto player = [&](int i) { return reg ? *(char**)(reg + 4 + 4 * i) : nullptr; };
+        // What a load must bring back: the skirmish flag, the human, and each
+        // player's colour, alliances and things.
+        auto state = [&]() {
+            char buf[512];
+            char* me = *(char**)0x579288;
+            int n = snprintf(buf, sizeof buf, "skirmish %d local %d camera %d,%d |", *(short*)0x567f7a,
+                             me ? *(short*)(me + 4) : -1, *(short*)(0x567ef8 + 0x38), *(short*)(0x567ef8 + 0x3a));
+            char* w = *(char**)0x579278;
+            int owned[8] = {};
+            if (w) {
+                char** things = *(char***)(w + 0x10);
+                for (int i = 0; i < *(int*)(w + 0x14); ++i)
+                    for (int p = 0; things[i] && p < 8; ++p)
+                        if (player(p) && *(char**)(things[i] + 0x20) == player(p)) ++owned[p];
+            }
+            for (int p = 0; p < 8 && n < (int)sizeof buf - 40; ++p)
+                if (char* pl = player(p))
+                    n += snprintf(buf + n, sizeof buf - n, " p%d c%d a%02x t%d", p, *(uint8_t*)(pl + 0x484e),
+                                  *(uint8_t*)(pl + 0x18), owned[p]);
+            return std::string(buf);
+        };
+        std::string saves = g_h.dir + "DATA\\Saves\\";
+        static std::string file;
+        const char* name = g_h.target == 2 ? "HDPLAIN" : g_h.target == 3 ? "HDWATCH" : "HDSKIRM";
+        file = saves + name + ".wbs";
+        auto exists = [](const std::string& p) { return GetFileAttributesA(p.c_str()) != INVALID_FILE_ATTRIBUTES; };
+        if (!queue.empty() && now - lastAct > 300) {
+            Click(queue.front());
+            queue.erase(queue.begin());
+            lastAct = now;
+            return;
+        }
+        bool mainMenu = scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos;
+        bool game = scene == ".?AVSGame@@" && top == ".?AVSGame@@";
+        if (st == 0 && mainMenu && in > 2500) {
+            if (g_h.target == 0 || g_h.target == 3) {  // saved afresh (no Overwrite? question)
+                DeleteFileA(file.c_str());
+                DeleteFileA((file + ".hd").c_str());
+            }
+            if (g_h.target == 1) {
+                if (!exists(file)) return quit("FAIL: no HDSKIRM.wbs (run target 0 first)");
+                clickCmd(0x64);  // Load Game
+                st = 10;
+            } else {
+                Click({87, 77});  // Skirmish
+                st = 1;
+            }
+        } else if (st == 1 && scene == ".?AVSMultiSetup@@" && top == scene && in > 2600) {
+            char* settings = (char*)0x5511cc;
+            int used = 0;
+            for (int i = 0; i < 8; ++i) used += settings[i * 0x28] != 0;
+            *(int*)(settings + 0x220) = std::min(2, used - 1);  // computer players
+            *(int*)(settings + 0x21c) = 0;                      // random placement
+            st = 12;
+        } else if (st == 12 && scene == ".?AVSMultiSetup@@" && top == scene && in > 3600) {
+            long x, y;
+            const int clicks[][3] = {{0, 0, 1}, {1, 0, 1}, {2, 0, 2}, {0, 1, 2}};  // row, icon (team, colour), times
+            for (auto& c : clicks)
+                if (teams::HitPoint(topScene, c[0], c[1], x, y))
+                    for (int i = 0; i < c[2]; ++i) queue.push_back(POINT{x, y});
+            st = 2;
+            lastAct = now;
+        } else if (st == 2 && scene == ".?AVSMultiSetup@@" && queue.empty() && now - lastAct > 1200) {
+            shot("setup");
+            Click({437, 457});  // Start
+            st = 3;
+        } else if (st == 3 && game && in > 6000) {
+            if (g_h.target == 2) {  // a stock save: the skirmish's file without its .hd
+                if (!CopyFileA((saves + "HDSKIRM.wbs").c_str(), file.c_str(), FALSE))
+                    return quit("FAIL: no HDSKIRM.wbs to copy (run target 0 first)");
+                DeleteFileA((file + ".hd").c_str());
+                before = state();
+                g_h.log("autopilot: before %s", before.c_str());
+                send(2, 0, (int)(uintptr_t)file.c_str());
+                st = 7;
+                return;
+            }
+            if (g_h.target == 3) {  // the human defeated; the ally fights on
+                char* me = *(char**)0x579288;
+                if (me) ((void(__thiscall*)(void*, int, int))0x43b780)(reg, *(short*)(me + 4), 1);
+                st = 13;
+                at = now;
+                return;
+            }
+            PostKey(WM_KEYDOWN, VK_ESCAPE);
+            PostKey(WM_KEYUP, VK_ESCAPE);
+            st = 4;
+        } else if (st == 13 && game && now - at > 4000) {  // watching: the Esc menu's Save Game
+            PostKey(WM_KEYDOWN, VK_ESCAPE);
+            PostKey(WM_KEYUP, VK_ESCAPE);
+            st = 14;
+        } else if (st == 14 && topScene && top.find("SMenu") != std::string::npos && in > 1500) {
+            char* save = *(char**)((char*)topScene + 0x60);
+            if (!save) return quit("FAIL: no Save Game button");
+            short* r = (short*)(save + 0xc);
+            Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
+            st = 15;
+            at = now;
+        } else if (st == 15 && now - at > 2500) {
+            shot("save-refused");
+            g_h.log("autopilot: now on %s", top.c_str());
+            bool refused = !exists(file) && top.find("SSaveDialog") == std::string::npos;
+            quit(refused ? "PASS: Save Game refused while watching" : "FAIL: saved while watching");
+        } else if (st == 4 && top.find("SMenu") != std::string::npos && in > 1500) {
+            shot("esc-menu");
+            g_h.log("autopilot: Esc menu: %s", menu::WidgetTexts().c_str());
+            PostKey(WM_KEYDOWN, VK_ESCAPE);
+            PostKey(WM_KEYUP, VK_ESCAPE);
+            st = 5;
+        } else if (st == 5 && game && in > 1500) {
+            before = state();
+            g_h.log("autopilot: before %s", before.c_str());
+            if (g_h.target == 0) {
+                FILE* f = fopen((saves + "HDSKIRM.state").c_str(), "w");  // for target 1
+                if (f) fprintf(f, "%s\n", before.c_str()), fclose(f);
+            }
+            send(2, 1, (int)(uintptr_t)name);  // as the save dialog does
+            st = 6;
+            at = now;
+        } else if (st == 6 && exists(file) && exists(file + ".hd") && game && in > 2000) {
+            g_h.log("autopilot: saved %s and its .hd; loading it", file.c_str());
+            send(2, 0, (int)(uintptr_t)file.c_str());
+            st = 7;
+        } else if (st == 10 && top.find("SOpenDialog") != std::string::npos && in > 1500) {
+            shot("load-dialog");
+            FILE* f = fopen((saves + "HDSKIRM.state").c_str(), "r");
+            char line[512] = "";
+            if (f) fgets(line, sizeof line, f), fclose(f);
+            before = line;
+            while (!before.empty() && (before.back() == '\n' || before.back() == '\r')) before.pop_back();
+            send(2, 0, (int)(uintptr_t)file.c_str());                // the file, as the dialog's Open does,
+            ((void(__cdecl*)(int, int, int))0x4709a0)(0x23, 0, 5);  // and closes (pops) the dialog
+            st = 7;
+        } else if (st == 7 && scene == ".?AVSProgress@@") {
+            st = 8;  // loading
+        } else if (st == 8 && game && in > 4000) {
+            std::string after = state();
+            g_h.log("autopilot: after  %s", after.c_str());
+            shot("loaded");
+            // Things may differ by a few (the game ran a frame between the snapshot and the save).
+            auto head = [](const std::string& s) { return s.substr(0, s.find('|')); };
+            if (g_h.target == 2)
+                g_h.log("autopilot: %s: a stock save loads with the skirmish flag down",
+                        after.compare(0, 10, "skirmish 0") == 0 ? "PASS" : "FAIL");
+            else
+                g_h.log("autopilot: %s: the skirmish flag and the human came back",
+                        head(after) == head(before) ? "PASS" : "FAIL");
+            st = 9;
+        } else if (st == 9 && game && in > (DWORD)(g_h.target == 0 || g_h.target == 3 ? 64000 : 9000)) {
+            g_h.log("autopilot: a minute on: %s", state().c_str());
+            shot("later");
+            if (g_h.target == 1 || g_h.target == 2) return quit("checked");
+            char* me = *(char**)0x579288;
+            if (me) {
+                ((void(__thiscall*)(void*, int))0x43bb20)(reg, *(short*)(me + 4));  // win
+            } else {  // watching: the human's team wins when the other team is defeated
+                char* human = nullptr;
+                for (int j = 0; j < 8; ++j)
+                    if (char* h = player(j))
+                        if (((char(__thiscall*)(void*))(*(void***)h)[0x7c / 4])(h) == 1) human = h;
+                for (int i = 0; human && i < 8; ++i) {
+                    char* p = player(i);
+                    int ih = *(short*)(human + 4);
+                    bool ally = p && (*(uint8_t*)(human + 0x18) & (1 << i)) && (*(uint8_t*)(p + 0x18) & (1 << ih));
+                    if (p && p != human && *(short*)(p + 0x48f6) == 1 && !ally)
+                        ((void(__thiscall*)(void*, int, int))0x43b780)(reg, i, 1);
+                }
+            }
+            st = 11;
+        } else if (st == 11 && scene == ".?AVSReward@@" && in > 3000 && acted == 0) {
+            shot("result");
+            if (!clickCmd(0x17)) {
+                PostKey(WM_KEYDOWN, VK_ESCAPE);
+                PostKey(WM_KEYUP, VK_ESCAPE);
+            }
+            acted = 1;
+        } else if (st == 11 && scene == ".?AVSMultiSetup@@" && in > 2500) {
+            shot("after-result");
+            g_h.log("autopilot: PASS: the result screen led back to the skirmish setup");
+            quit("won");
+        } else if (st == 11 && mainMenu && in > 2500) {
+            g_h.log("autopilot: FAIL: the result screen led to the main menu, not the skirmish setup");
+            quit("won");
+        } else if (st != 99 && in > 90000) {
+            g_h.log("autopilot: stuck in %s (stage %d)", key.c_str(), st);
+            quit("stuck");
+        }
+        return;
+    }
+    if (g_h.mode == 23) {
+        // Languages (tools/langtest.sh sets [Display] Language and Font first).
+        // Everything is clicked by command id or position, never by English text.
+        // Target 0: main menu, the three Settings tabs, the campaign screen and a
+        //   Tanu briefing (and its second page), the mission, the Esc menu.
+        // 1: skirmish setup, a skirmish (Shamans selected, the build list), then a
+        //   Refinery being placed (its range ring); 6, 7, 8: the same with a Relay,
+        //   a Turret, an Electric Tower.
+        // 2: on Settings > Interface, Language cycled through every language (live),
+        //   back to the first.
+        // 3: the map editor's panel on a map.
+        // 4, 5: the Gene Lab, the Device Lab (from the main menu); 11: the Device Lab
+        //   on a name that takes two lines.
+        // 10: a skirmish's pod list (the pods' names).
+        // 9: one live language switch on Settings, then a skirmish's Shaman panel
+        //   (labels the game copied at start-up must follow the switch).
+        static int acted, shots, cycles;
+        static bool switched;
+        static DWORD at;
+        static std::string last;
+        std::string top = g_h.topScene ? g_h.topScene() : "";
+        std::string key = scene + " / " + top;
+        if (key != last) {
+            last = key;
+            at = now;
+            acted = 0;
+            g_h.log("autopilot: now %s; widgets: %s", key.c_str(), menu::WidgetTexts().c_str());
+        }
+        DWORD in = now - at;
+        void* topScene = nullptr;
+        {
+            short ti = *(short*)0x51bee8;
+            if (ti >= 0 && ti <= 16) topScene = ((void**)0x55aea8)[ti];
+        }
+        auto clickCmd = [&](short cmd, bool anyButton = false) {  // anyButton: image buttons too
+            if (!topScene) return false;
+            void** list = *(void***)((char*)topScene + 0xc);
+            int count = *(int*)((char*)topScene + 0x10);
+            for (int i = 0; list && i < count && i < 256; ++i) {
+                char* w = (char*)list[i];
+                if (!w || (!anyButton && *(uintptr_t*)w != 0x50925c) || *(short*)(w + 0x20) != cmd) continue;
                 short* r = (short*)(w + 0xc);
                 Click({(r[0] + r[2]) / 2, (r[1] + r[3]) / 2});
                 g_h.log("autopilot: click command %#x", cmd);
@@ -2700,15 +2945,22 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                                                                                                  : "place-refinery");
                 quit();
             }
-        } else if (g_h.target == 4 || g_h.target == 5) {
-            // The Gene Lab (main menu row 4) or the Device Lab (row 5).
+        } else if (g_h.target == 4 || g_h.target == 5 || g_h.target == 11) {
+            // The Gene Lab (main menu row 4) or the Device Lab (row 5); 11: the Device
+            // Lab two devices on, a name that takes two lines (Advanced Psi Turret).
             if (mainMenu && stage == 0 && in > 2500) {
                 Click({87, g_h.target == 4 ? 133 : 161});
                 stage = 1;
                 at = now;
             } else if (stage == 1 && !mainMenu && in > 4000) {
-                shot(g_h.target == 4 ? "gene-lab" : "device-lab");
-                quit();
+                if (g_h.target == 11 && acted < 2) {
+                    clickCmd(3, true);  // the next device
+                    ++acted;
+                    at = now - 3000;
+                } else {
+                    shot(g_h.target == 4 ? "gene-lab" : "device-lab");
+                    quit();
+                }
             }
         } else if (g_h.target == 2 || g_h.target == 9) {
             if (mainMenu && stage == 0 && in > 2500) {
