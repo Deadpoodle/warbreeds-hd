@@ -84,7 +84,9 @@ struct Literal {
     uintptr_t text;  // the original string
     char buf[128];
 };
-Literal g_lits[] = {{0x4948bd, 0x51d940, {}}, {0x49480d, 0x51d96c, {}}, {0x489ed3, 0x51d6d4, {}}};
+Literal g_lits[] = {{0x4948bd, 0x51d940, {}}, {0x49480d, 0x51d96c, {}}, {0x489ed3, 0x51d6d4, {}},
+                    {0x478367, 0x51c220, {}},   // the event editor's "No Events" (SEvent::Draw)
+                    {0x4785b8, 0x51c200, {}}};  // its "*PERSISTENT*"
 
 // Ids the game uses as keys, not as text: the window class/title and single-instance
 // check (82), config and Red Orb Zone keys.

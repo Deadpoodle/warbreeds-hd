@@ -2792,7 +2792,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         // Languages (tools/langtest.sh sets [Display] Language and Font first).
         // Everything is clicked by command id or position, never by English text.
         // Target 0: main menu, the three Settings tabs, the campaign screen and a
-        //   Tanu briefing (and its second page), the mission, the Esc menu.
+        //   Tanu briefing (and its second page), the mission, the Esc menu and its Objectives.
         // 1: skirmish setup, a skirmish (Shamans selected, the build list), then a
         //   Refinery being placed (its range ring); 6, 7, 8: the same with a Relay,
         //   a Turret, an Electric Tower.
@@ -2896,6 +2896,19 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 at = now;
             } else if (scene == ".?AVSGame@@" && stage == 9 && in > 1500) {
                 shot("esc-menu");
+                // Then the Esc menu's Objectives (SMenu member +0x54): the mission's objectives window.
+                char* button = topScene ? *(char**)((char*)topScene + 0x54) : nullptr;
+                if (!button) {
+                    quit();
+                    stage = 10;
+                    return;
+                }
+                // What its click does (SMenu::OnCommand 0x489830, through its vtable slot).
+                ((void(__thiscall*)(void*, void*))(*(uintptr_t*)0x5079a0))(topScene, button);
+                stage = 11;
+                at = now;
+            } else if (stage == 11 && now - at > 2500) {
+                shot("objectives");
                 quit();
                 stage = 10;
             }

@@ -466,13 +466,33 @@ std::string DescribeElement(uintptr_t el, bool action) {
 
 // --- public ------------------------------------------------------------------------
 
+// The game's own event screen draws its text (the event, "No Events", "*PERSISTENT*",
+// each condition and action) in style 5 on black: without the outline, as our bar.
+const uintptr_t kStyle5Pushes[] = {0x41161d, 0x41174d, 0x41178e, 0x41183a, 0x411975, 0x478361,
+                                   0x47846b, 0x47857b, 0x4785b2, 0x47900e, 0x479116};  // push 5
+
+bool PatchEventTextStyles() {
+    for (uintptr_t site : kStyle5Pushes)
+        if (((uint8_t*)site)[0] != 0x6a || ((uint8_t*)site)[1] != 5) return false;
+    for (uintptr_t site : kStyle5Pushes) {
+        uint8_t* p = (uint8_t*)site;
+        DWORD old;
+        if (!VirtualProtect(p + 1, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
+        p[1] = fonts::kNoOutline + 5;
+        VirtualProtect(p + 1, 1, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p, 2);
+    }
+    return true;
+}
+
 void Install(void (*log)(const char*, ...)) {
     g_log = log;
     bool ok = PatchSlot(kSlotDraw, (void*)&HookDraw, (void**)&o_Draw) &&
               PatchSlot(kSlotLDown, (void*)&HookLDown, (void**)&o_LDown) &&
               PatchSlot(kSlotKey, (void*)&HookKey, (void**)&o_Key) &&
               PatchSlot(kSlotAccepts, (void*)&HookAccepts, (void**)&o_Accepts);
-    g_log("events: %s", ok ? "installed" : "FAILED");
+    g_log("events: %s; event screen text %s", ok ? "installed" : "FAILED",
+          PatchEventTextStyles() ? "without outline" : "FAILED (unexpected code)");
 }
 
 bool Open() {

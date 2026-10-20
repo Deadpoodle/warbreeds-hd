@@ -492,6 +492,8 @@ Language = Deutsch
 651 = Sie müssen zuerst einen Namen eingeben.
 652 = Achtung -- Die letzte Zeichenfolge!!!!!!!
 0x51d6d4 = Fehler: Keine Missionen!
+0x51c220 = Keine Ereignisse
+0x51c200 = *DAUERHAFT*
 0x51d940 = Geben Sie die IP-Adresse des Sitzungs-Host ein.
 0x51d96c = IP-Adresse
 

@@ -23,6 +23,9 @@
 #include <windows.h>
 #include <string.h>
 
+#include <algorithm>
+#include <set>
+
 #include "game.h"
 #include "prof.h"
 
@@ -396,6 +399,76 @@ bool PatchFrameComplete() {
 
 }  // namespace
 
+// A text page (WTextPage: the Objectives window's text, ...) draws its text over a
+// copy of what was under it, taken from the current port when its text is laid out
+// (Reflow, 0x498750). In a mission the current port then holds only the battlefield:
+// the window's art is drawn on the interface port, every frame. The text area showed
+// the terrain (a player's report). A page laid out outside the interface phase takes
+// that copy again at its first Draw inside it, from the interface port, where the
+// window's art has just been drawn, and lays its text out over it again.
+constexpr uintptr_t kTextPageReflowSlot = 0x509068, kTextPageReflow = 0x498750;  // vtable +0x54
+constexpr uintptr_t kTextPageDrawSlot = 0x509018, kTextPageDraw = 0x498b90;      // vtable +4
+constexpr uintptr_t kTextPageDrawLines = 0x4989a0;                                // vtable +0x50
+constexpr int kPageBackground = 0x454, kPageSize = 0x464, kWidgetRect = 0xc;  // size: short w, h
+std::set<void*> g_stalePages;
+
+void __fastcall TextPageReflow(char* page) {
+    ((void(__thiscall*)(void*))kTextPageReflow)(page);
+    if (g_active)
+        g_stalePages.erase(page);
+    else
+        g_stalePages.insert(page);
+}
+
+// The copy is of the colour indices as they are: the engine's port copy (0x4d878e)
+// maps colours through each port's colour table, and the interface port's isn't the
+// game palette (the game's art reaches it through the blitter, as indices).
+void CopyFromInterface(void* to, int w, int h, int x0, int y0) {
+    Port dst;
+    dst.handle = to;
+    dst.w = w;
+    dst.h = h;
+    uint8_t* d = (uint8_t*)PortBits(dst);
+    const uint8_t* s = PortBits(g_ui);
+    if (!d || !s) return;
+    int dPitch = (w + 3) & ~3, sPitch = (g_ui.w + 3) & ~3;
+    bool dUp = g_bottomUp ? g_bottomUp(d) : true, sUp = g_bottomUp ? g_bottomUp(s) : true;
+    for (int y = 0; y < h; ++y) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= g_ui.h) continue;
+        int x = std::max(0, -x0), n = std::min(w, g_ui.w - x0);
+        if (n <= x) continue;
+        memcpy(d + (size_t)(dUp ? h - 1 - y : y) * dPitch + x, s + (size_t)(sUp ? g_ui.h - 1 - sy : sy) * sPitch + x0 + x,
+               n - x);
+    }
+}
+
+void __fastcall TextPageDraw(char* page) {
+    void* background = *(void**)(page + kPageBackground);
+    if (g_active && background && g_stalePages.erase(page)) {
+        const short* rect = (const short*)(page + kWidgetRect);
+        const short* size = (const short*)(page + kPageSize);
+        ((PortOp_t)game::LockPort)(background);
+        CopyFromInterface(background, size[0], size[1], rect[0], rect[1]);
+        ((PortOp_t)game::UnlockPort)(background);
+        ((void(__thiscall*)(void*))kTextPageDrawLines)(page);
+    }
+    ((void(__thiscall*)(void*))kTextPageDraw)(page);
+}
+
+bool PatchTextPages() {
+    uintptr_t* reflow = (uintptr_t*)kTextPageReflowSlot;
+    uintptr_t* draw = (uintptr_t*)kTextPageDrawSlot;
+    if (*reflow != kTextPageReflow || *draw != kTextPageDraw) return false;
+    DWORD old;
+    if (!VirtualProtect((void*)kTextPageDrawSlot, kTextPageReflowSlot + 4 - kTextPageDrawSlot, PAGE_READWRITE, &old))
+        return false;
+    *reflow = (uintptr_t)&TextPageReflow;
+    *draw = (uintptr_t)&TextPageDraw;
+    VirtualProtect((void*)kTextPageDrawSlot, kTextPageReflowSlot + 4 - kTextPageDrawSlot, old, &old);
+    return true;
+}
+
 bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bool (*bottomUp)(const void* bits), bool debug) {
     g_log = log;
     g_debug = debug;
@@ -416,6 +489,7 @@ bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bo
     ok = ok && Wrap(game::SceneCursorDraw, kSceneCursor, sizeof kSceneCursor, 0, BeginCursor, EndCursor);
     ok = ok && PatchMenuCursorCall();
     log("layers: %s", ok ? "installed" : "FAILED (unexpected code; interface stays in the frame)");
+    if (ok) log("layers: text page backgrounds %s", PatchTextPages() ? "hooked" : "FAILED (unexpected code)");
     return ok;
 }
 

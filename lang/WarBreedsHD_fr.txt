@@ -493,6 +493,8 @@ Language = Français
 651 = Vous devez d'abord entrer un nom.
 652 = Attention - Dernière chaîne !!!!!!!!
 0x51d6d4 = Erreur : aucune mission !
+0x51c220 = Aucun événement
+0x51c200 = *PERMANENT*
 0x51d940 = Entrez l'adresse IP de l'hôte de la session.
 0x51d96c = Adresse IP
 

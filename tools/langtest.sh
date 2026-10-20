@@ -5,7 +5,7 @@
 # notes from the log.
 # Usage: langtest.sh [langs] [fonts] [targets]   e.g. langtest.sh "fr de" "original orbitron" "0 1 2 3"
 #        TESTDIR=testrun-x langtest.sh ...      another hidden test copy
-# Targets: 0 menus, Settings, briefing, mission, Esc menu; 1 skirmish HUD and build list;
+# Targets: 0 menus, Settings, briefing, mission, Esc menu, Objectives; 1 skirmish HUD and build list;
 #          2 live language switching; 3 map editor; 4 Gene Lab; 5 Device Lab;
 #          10 a skirmish's pod list; 11 Device Lab on a two-line name; 12 the skirmish map list;
 #          13, 14 the map editor's AI and Events tabs.
