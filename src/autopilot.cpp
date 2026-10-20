@@ -2788,6 +2788,84 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         }
         return;
     }
+    if (g_h.mode == 25) {
+        // Announcements left over from the map editor (a player's report): open 4 Corners
+        // in the editor, place three Refineries, leave without saving, start a skirmish on
+        // it. The announcement queue (count 0x54c578) is logged after the placing and once
+        // the skirmish runs: it must be empty there (nothing from the editor plays).
+        static int st, placed;
+        static DWORD at;
+        static int bx, by;
+        auto queued = [] { return *(int*)0x54c578; };
+        auto next = [&](int s) {
+            st = s;
+            at = now;
+        };
+        if (!at) at = now;
+        DWORD dt = now - at;
+        std::string top = g_h.topScene ? g_h.topScene() : "";
+        bool mainMenu = scene == ".?AVSHeadquarters@@" && top.find("SMissionMenu") != std::string::npos;
+        if (st == 0 && mainMenu && dt > 2500) {
+            ClickWidget("Map Editor", true);
+            next(1);
+        } else if (st == 1 && dt > 1500) {
+            ClickWidget("4 Corners", true);
+            next(2);
+        } else if (st == 2 && editor::Active() && scene == ".?AVSGame@@" && dt > 4000) {
+            uintptr_t g = ((uintptr_t*)game::Scenes)[0];
+            int f = *(short*)(g + game::SGameZoomedOut) == 1 ? 2 : 1;
+            bx = (*(short*)(g + game::SGameCameraX) + frameW * 30 / 100 * f) / 64;
+            by = (*(short*)(g + game::SGameCameraY) + frameH * 45 / 100 * f) / 64;
+            g_h.log("autopilot: announcements queued when the editor opened: %d", queued());
+            ClickItem("Units");
+            next(3);
+        } else if (st == 3 && dt > 500) {
+            ClickItem("Devices");
+            next(4);
+        } else if (st == 4 && dt > 500) {
+            ClickItem(editor::ThingName(0x2c));  // Refinery
+            next(5);
+        } else if (st == 5 && dt > 700) {
+            int rx, ry;
+            if (ClickFreeCell(editor::kCellOpen, bx + 2 + 4 * placed, by + 3, 40, rx, ry)) ++placed;
+            next(placed < 3 ? 5 : 6);
+        } else if (st == 6 && dt > 1500) {
+            g_h.log("autopilot: %d Refineries placed in the editor (%d in the map); announcements queued: %d", placed,
+                    editor::CountThings(0x2c, 0), queued());
+            ClickWidget("Exit", false);  // unsaved changes: asks once
+            next(7);
+        } else if (st == 7 && dt > 800) {
+            ClickWidget("Exit", false);
+            next(8);
+        } else if (st == 8 && mainMenu && !editor::Active()) {
+            g_h.log("autopilot: left the editor; announcements queued: %d", queued());
+            next(80);
+        } else if ((st == 80 || st == 81) && mainMenu && dt > 3000) {
+            // What the main menu's Skirmish item does (0x48ff40, item 0x65); the menu is
+            // back on its Map Editor page.
+            ((void(__cdecl*)(int, int, int))0x471560)(5, 1, 0);
+            ((void(__cdecl*)(int, int, int))0x4709a0)(0x21, 5, 5);
+            next(81);
+        } else if ((st == 80 || st == 81) && scene == ".?AVSMultiSetup@@") {
+            next(9);
+        } else if (st == 9 && scene == ".?AVSMultiSetup@@" && top == scene && dt > 2600) {
+            Click({437, 457});  // Start (the setup's map: 4 Corners)
+            next(10);
+        } else if (st == 10 && scene == ".?AVSGame@@" && top == scene && dt > 3000) {
+            int n = queued();
+            g_h.log("autopilot: %s: %d announcements queued in the skirmish", n == 0 ? "PASS" : "FAIL", n);
+            next(11);
+        } else if (st == 11 && dt > 20000) {
+            g_h.log("autopilot: done, quitting");
+            PostQuitMessage(0);
+            next(99);
+        } else if (st != 99 && dt > 60000) {
+            g_h.log("autopilot: stuck at stage %d (%s / %s)", st, scene.c_str(), top.c_str());
+            PostQuitMessage(0);
+            next(99);
+        }
+        return;
+    }
     if (g_h.mode == 23) {
         // Languages (tools/langtest.sh sets [Display] Language and Font first).
         // Everything is clicked by command id or position, never by English text.

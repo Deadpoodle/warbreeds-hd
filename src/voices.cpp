@@ -32,6 +32,36 @@ constexpr uintptr_t kAppRunning = 0x5792c8;  // set by App_StartRunning 0x471eb0
 
 decltype(&CreateFileA) o_CreateFileA;
 
+// Announcements wait in a queue (IList<tGlobalSoundInfo> at 0x54c570: up to 12, count
+// at 0x54c578), each due 20 game turns after it was queued (FUN_004641d0), played from
+// SGame::Idle (FUN_004643b0). Only closing the sounds (quitting, alt-tab) emptied it,
+// so what a game left pending played in the next: in the map editor, whose clock
+// stands still, every building placed queued its "construction complete", and they
+// all played in the next skirmish (a player's report). Each new world (all five calls
+// of Game_CreateRegistries 0x471c40: a mission or a load starting, the editor opening
+// a map) now starts with the queue empty.
+constexpr uintptr_t kQueueCount = 0x54c578, kCreateRegistries = 0x471c40;
+const uintptr_t kCreateRegistriesCalls[] = {0x47ac09, 0x480673, 0x487af6, 0x48f072, 0x493694};
+
+unsigned __cdecl HookCreateRegistries() {
+    if (int& n = *(int*)kQueueCount) {
+        g_log("voices: %d queued announcement%s dropped (a new game)", n, n == 1 ? "" : "s");
+        n = 0;
+    }
+    return ((unsigned(__cdecl*)())kCreateRegistries)();
+}
+
+bool PatchCall(uintptr_t site, uintptr_t expect, void* hook) {
+    uint8_t* p = (uint8_t*)site;
+    if (p[0] != 0xe8 || site + 5 + *(int32_t*)(p + 1) != expect) return false;
+    DWORD old;
+    if (!VirtualProtect(p + 1, 4, PAGE_EXECUTE_READWRITE, &old)) return false;
+    *(int32_t*)(p + 1) = (int32_t)((uintptr_t)hook - (site + 5));
+    VirtualProtect(p + 1, 4, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), p, 5);
+    return true;
+}
+
 std::string FileOf(const std::string& code) { return g_dir + "Voices\\" + code + "\\GLOBSFX.MHK"; }
 
 uint32_t BE32(const uint8_t* p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
@@ -113,6 +143,9 @@ void Install(const std::string& dir, void (*log)(const char*, ...)) {
     g_dir = dir;
     g_log = log;
     if (!render::HookImport(kCreateFileSlot, &h_CreateFileA, &o_CreateFileA)) log("voices: CreateFileA hook FAILED");
+    bool ok = true;
+    for (uintptr_t site : kCreateRegistriesCalls) ok &= PatchCall(site, kCreateRegistries, (void*)&HookCreateRegistries);
+    log("voices: announcement queue emptied for each new game: %s", ok ? "hooked" : "FAILED (unexpected code)");
 }
 
 const std::vector<std::string>& Available(bool rescan) {
