@@ -115,16 +115,11 @@ def main():
         drawn = got
         if got.lower() != face.lower():
             # The release asked for a face no font file names (French: "Geometr231 Bold BT";
-            # the bold file's family is "Geometr231 BT"), and today's Windows falls back to Arial.
-            # The 1998 game drew it in that family (a player's screenshot of the French build
-            # list: "Cocon", "Spore" in Geometric 231), so with the release's fonts it's the family
-            # in bold. The room stays the fallback's (wider: the stand-ins only get more room).
-            family = face.replace(' Bold', '')
-            if family != face and measure(family, -size, weight)[2].lower() == family.lower():
-                drawn = family
-                resolved = f'; no font is named "{face}": drawn in {family} bold (room: {got}, Windows\' fallback today)'
-            else:
-                resolved = f'; no font is named "{face}": Windows draws it in {got}'
+            # the bold file's family is "Geometr231 BT"), so Windows drew it in its fallback,
+            # Arial Bold: a player's 1998 screenshots show the map list (style 8, this slot) in
+            # Arial Bold. (The build list's Geometric 231 is the release's style 2 change to
+            # the regular face: src/fonts.cpp, ResolveStyle.)
+            resolved = f'; no font is named "{face}": Windows draws it in {got}'
         # The room: this face, or a narrower face of the table the release moved one of its styles to.
         room, why = widths, ''
         for st, g in (gst.items() if style_rooms else ()):

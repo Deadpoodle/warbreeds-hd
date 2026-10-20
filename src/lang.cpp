@@ -536,6 +536,11 @@ const char* Name(const char* english) {
 
 std::string Name(const std::string& english) { return Name(english.c_str()); }
 
+std::string MapName(const std::string& english) {
+    auto it = g_mapNames.find(english);
+    return it == g_mapNames.end() ? english : it->second;
+}
+
 const char* tr(const char* context, const char* english) {
     if (!english || g_t.patch.empty()) return english;
     auto it = g_t.patch.find(std::string(context) + "|" + english);

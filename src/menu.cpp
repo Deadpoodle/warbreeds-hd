@@ -446,7 +446,7 @@ int MaxMapScroll() { return MapItems() > kMapRows ? MapItems() - kMapRows : 0; }
 std::string MapItemText(int i) {
     if (i == 0) return lang::tr("New Map");
     const editor::MapEntry& m = g_maps[i - 1];
-    return m.name + "  (" + m.file.substr(0, m.file.find_last_of('.')) + ")";
+    return lang::MapName(m.name) + "  (" + m.file.substr(0, m.file.find_last_of('.')) + ")";
 }
 
 // New Map: size (presets, or width and height), base terrain, players.

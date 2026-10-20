@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <string>
 
+#include "../fonts.h"
 #include "../game.h"
 #include "../lang.h"
 #include "editor.h"
@@ -74,7 +75,8 @@ int g_slot = -1;  // the player shown
 
 // --- the panel (frame pixels inside the game's tan event panel) --------------------
 
-constexpr int kStyle = 5, kStyleLit = 4, kStyleSmall = 2;
+// On the page's black background, without the styles' offset outline (it blurred thin letters).
+constexpr int kStyle = fonts::kNoOutline + 5, kStyleLit = fonts::kNoOutline + 4, kStyleSmall = 2;
 constexpr int kLeftX = 20, kStepX = 92, kStepW = 16, kRightX = 176, kTop = 100, kRowGap = 44;
 
 RECT StepRect(Setting s, int level) {

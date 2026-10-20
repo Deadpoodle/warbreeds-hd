@@ -42,12 +42,11 @@ creation, GOG `0x4dec76`, sets `lfHeight = -size`), style bit 0 is bold (`lfWeig
 | 10 | (none) | Sherwood 18 |
 
 **A 1998 bug:** slots 1 and 4 ask for the face "Geometr231 Bold BT", but no font has that name (the bold
-file's family is "Geometr231 BT", style Bold). GDI on Windows today falls back to Arial. But a player's
-screenshot of the 1998 French game shows the build and pod lists (bold slot, the 14 texts of `0x4547c0`)
-in Geometric 231 ("Cocon", "Spore": thin and round, not Arial Bold), so that is what the 1998 game drew
-there. With the release's own fonts the patch draws slots 1 and 4 in "Geometr231 BT" bold
-(`tools/font_metrics.py`); the room in the `.fonts` file stays today's fallback's (Arial Bold, wider, so
-the stand-ins only get more room).
+file's family is "Geometr231 BT", style Bold). GDI falls back to Arial, so the French game's bold interface
+text is Arial Bold. A player's screenshots of the 1998 French game confirm it: the skirmish map list
+(style 8, slot 1) is Arial Bold. Its build and pod lists ("Cocon", "Spore", "Raffinerie") are Geometric 231
+because they are style 2, which the release made regular (below). (v0.19.1 took that for the bold slot's
+face and drew slots 1 and 4 in Geometric 231 bold; v0.19.2 put Arial back.)
 
 **Text styles** (`ResolveTextStyle`, `0x469800`; GOG `0x4698c0`: style id to font slot and colours). Styles
 0-44 are the same as the English, apart from:
@@ -91,7 +90,8 @@ for the narrow fonts.
     skirmish setup), 543 `Technologie génétique` → `Tech. génétique` (its button; the English is "Genetic Tech");
   - marked `~` (a pixel tighter, or one face smaller, when wider than its English's room): 17 `Construire`,
     455 `Equipe`, 456 `Couleur`, 474 `Charger un jeu`, 475 `Enregistrer le jeu`, 543.
-  - The map editor's map list shows each map's own (English) name from its file, as in English.
+  - Map names: `[maps]` reaches the mission titles, the skirmish and multiplayer map lists (v0.19.1) and the
+    map editor's map list (v0.19.2), by each map's English header name (`lang::MapName`).
 - **Fonts follow the language** (`src/fonts.cpp`, `fonts::SetFor`). A language with
   `Lang\WarBreedsHD_<code>.fonts` is always drawn in its release's fonts; the Font setting (Orbitron) is for
   English only and shows "By language" otherwise.
@@ -139,9 +139,14 @@ for the narrow fonts.
     room (as style 2 became regular), but that squeezed the build list's bold labels ("Raffinerie") badly,
     and the release kept those bold. The room is now the face the release drew in, Arial Bold
     (`tools/font_metrics.py --style-rooms` restores the stricter rule).
-  - Not reproduced: the per-site style changes (style 2 regular at two places; Sherwood 18 at two). The room
-    already keeps those texts within the release's widths, and those sites only lose the bold or the larger
-    size.
+  - **Style 2 (v0.19.2, `src/fonts.cpp` ResolveStyle):** with the release's own fonts, style 2 is the regular
+    slot, as in the release; the places the release moved to its new bold style 47 use a style 47 here too
+    (`push 2` patched at 0x401822, 0x453138, 0x4547d1, 0x474cd4, 0x474d07, 0x474d3a and, for the file and
+    map lists' selected row (the release set it as a variable in `SOpenDialog::Init`), 0x4907de; resolved as style 2
+    always was). Found with `[Debug] TextTrace` (it logs each text's style): the build list's labels are
+    style 2, the map list's names style 8. With the stand-ins (no CD fonts) nothing changes.
+  - Not reproduced: Sherwood 18 at two places (styles 45, 46). The room already keeps those texts within the
+    release's widths; they only lose the larger size.
 
 ## Doing this for another language (German next)
 

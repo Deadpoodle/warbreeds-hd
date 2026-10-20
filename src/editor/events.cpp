@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "../fonts.h"
 #include "../game.h"
 #include "../lang.h"
 #include "../layers.h"
@@ -192,7 +193,8 @@ void FindColours() {
 
 // The toolbar, right of the panel.
 constexpr int kBarX = 252, kBarY = 12, kBarW = 196, kRowH = 15, kCharW = 6;
-constexpr int kStyle = 5, kStyleHover = 4, kStyleHint = 2;
+// On the bar's black background, without the styles' offset outline (it blurred thin letters).
+constexpr int kStyle = fonts::kNoOutline + 5, kStyleHover = fonts::kNoOutline + 4, kStyleHint = 2;
 
 struct Button {
     const char* label;
@@ -212,9 +214,18 @@ constexpr int kBarRows = 9;
 // A button's label as shown (Close: the event editor's own word, it has little room).
 const char* Label(const Button& b) { return b.cmd == kClose ? lang::tr("events", b.label) : lang::tr(b.label); }
 
+// A label's width in the bar's face (style 5: IntReg10's slot, or what stands in for it).
+int LabelWidth(const char* s) {
+    int w = fonts::TextWidth("IntReg10", s);
+    return w > 0 ? w : (int)strlen(s) * kCharW;
+}
+
 RECT ButtonRect(const Button& b) {
     int x = kBarX + b.x, y = kBarY + b.row * kRowH;
-    return {x - 3, y - 11, x + (int)strlen(Label(b)) * kCharW + 3, y + 3};  // text at y is its baseline
+    // Remove follows its row's Add, however wide that is in the language and face.
+    if (b.cmd == kRemoveEvent || b.cmd == kRemoveCondition || b.cmd == kRemoveAction)
+        x = std::max(x, kBarX + 104 + LabelWidth(lang::tr("Add")) + 8);
+    return {x - 3, y - 11, x + LabelWidth(Label(b)) + 3, y + 3};  // text at y is its baseline
 }
 
 bool In(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }

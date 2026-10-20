@@ -238,11 +238,78 @@ bool g_symbolCopies;
 // [Debug] TextTrace=1: every distinct string the game draws, with the code that
 // drew it (finds text that doesn't come from the string table).
 bool g_textTrace;
+int g_lastStyle = -1;  // the text style last resolved, for the trace
+
+// Text styles (ResolveTextStyle 0x4698c0: style -> font slot, colours). The French
+// and German releases made style 2 (the bold interface face, IntBld10's slot) the
+// regular face, and moved the places meant to stay bold to a new style 47 with style
+// 2's old look: a text at 0x401810, the AI's debug lines (0x453120), the stats rows
+// (0x4547b0), three in SAllies::Init, and the selected row of the file and map lists
+// (SOpenDialog::Init, set as a variable). The same places here use style 47 (resolved
+// as style 2 always was), and with the release's own fonts style 2 is the regular
+// face, as the 1998 game drew it: the build and pod lists' labels in Geometric 231
+// (a player's 1998 screenshots), while the map list (style 8) stays bold.
+constexpr uintptr_t kResolveStyle = 0x4698c0;
+const uintptr_t kResolveStyleCalls[] = {0x469732, 0x4697db, 0x469899};
+const uintptr_t kBoldStylePushes[] = {0x401822, 0x453138, 0x4547d1, 0x474cd4,
+                                      0x474d07, 0x474d3a, 0x4907de};  // push 2
+constexpr int kStyleReleaseBold = 47;
+
+// A thiscall that pops its five arguments (ret 0x14): taken as fastcall, edx unused.
+void __fastcall ResolveStyle(void* self, void*, int style, int* slot, int* colour, int* outline, short* flag) {
+    g_lastStyle = style;
+    if (g_textTrace && style == 2) {  // debug: who draws in style 2 (return addresses on the stack)
+        static std::map<std::string, bool> seenChains;
+        uintptr_t* sp = (uintptr_t*)&flag;
+        std::string chain;
+        for (int i = 0, n = 0; i < 96 && n < 8; ++i)
+            if (sp[i] > 0x401000 && sp[i] < 0x502000) {
+                char b[12];
+                snprintf(b, sizeof b, " %06x", (unsigned)sp[i]);
+                chain += b;
+                ++n;
+            }
+        if (seenChains.size() < 200 && seenChains.emplace(chain, true).second) g_log("style 2 from%s", chain.c_str());
+    }
+    bool plain = style >= kNoOutline;
+    if (plain) style -= kNoOutline;
+    ((void(__thiscall*)(void*, int, int*, int*, int*, short*))kResolveStyle)(
+        self, style == kStyleReleaseBold ? 2 : style, slot, colour, outline, flag);
+    if (style == 2 && g_mode == kRelease && g_releaseReal) *slot = 0;  // IntReg10's slot
+    if (plain) *flag = 0;
+}
+
+bool InstallStyles() {
+    for (uintptr_t site : kResolveStyleCalls) {
+        uint8_t* p = (uint8_t*)site;
+        if (p[0] != 0xe8 || site + 5 + *(int32_t*)(p + 1) != kResolveStyle) return false;
+    }
+    for (uintptr_t site : kBoldStylePushes)
+        if (((uint8_t*)site)[0] != 0x6a || ((uint8_t*)site)[1] != 2) return false;
+    for (uintptr_t site : kResolveStyleCalls) {
+        uint8_t* p = (uint8_t*)site;
+        DWORD old;
+        if (!VirtualProtect(p + 1, 4, PAGE_EXECUTE_READWRITE, &old)) return false;
+        *(int32_t*)(p + 1) = (int32_t)((uintptr_t)&ResolveStyle - (site + 5));
+        VirtualProtect(p + 1, 4, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p, 5);
+    }
+    for (uintptr_t site : kBoldStylePushes) {
+        uint8_t* p = (uint8_t*)site;
+        DWORD old;
+        if (!VirtualProtect(p + 1, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
+        p[1] = kStyleReleaseBold;
+        VirtualProtect(p + 1, 1, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p, 2);
+    }
+    return true;
+}
+
 void Trace(HDC dc, const char* text, int n, void* from, const RECT* box = nullptr, UINT format = 0) {
     if (!g_textTrace || !text) return;
     static std::map<std::string, bool> seen;
     std::string t = n < 0 ? std::string(text) : std::string(text, n);
-    if (seen.size() > 5000 || !seen.emplace(t, true).second) return;
+    if (seen.size() > 5000 || !seen.emplace(t + " | style " + std::to_string(g_lastStyle), true).second) return;
     char face[64] = "";
     GetTextFaceA(dc, sizeof face, face);
     TEXTMETRICA tm{};
@@ -251,8 +318,8 @@ void Trace(HDC dc, const char* text, int n, void* from, const RECT* box = nullpt
     GetObjectA(GetCurrentObject(dc, OBJ_FONT), sizeof lf, &lf);
     SIZE sz{};
     o_GetTextExtentPointA(dc, text, n < 0 ? (int)strlen(text) : n, &sz);
-    g_log("text: \"%s\" from %p: %s h%ld ave%ld lfWidth %ld extra %d width %ld rect %ld-%ld format 0x%x", t.c_str(),
-          from, face, tm.tmHeight, tm.tmAveCharWidth, lf.lfWidth, GetTextCharacterExtra(dc), sz.cx,
+    g_log("text: \"%s\" from %p style %d: %s h%ld ave%ld lfWidth %ld extra %d width %ld rect %ld-%ld format 0x%x", t.c_str(),
+          from, g_lastStyle, face, tm.tmHeight, tm.tmAveCharWidth, lf.lfWidth, GetTextCharacterExtra(dc), sz.cx,
           box ? box->left : 0, box ? box->right : 0, format);
 }
 
@@ -721,6 +788,7 @@ void Install(const char* dir, void (*log)(const char*, ...)) {
               render::HookImport(0x595670, &h_TextOutA, &o_TextOutA) &&
               render::HookImport(0x5959b8, &h_DrawTextA, &o_DrawTextA);
     if (!ok) log("fonts: hooks FAILED");
+    log("fonts: text styles %s", InstallStyles() ? "hooked (the releases' style 47)" : "FAILED (unexpected code)");
 }
 
 int TextWidth(const char* face, const char* text) {

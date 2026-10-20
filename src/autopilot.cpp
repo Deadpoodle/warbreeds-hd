@@ -2803,6 +2803,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         //   on a name that takes two lines.
         // 10: a skirmish's pod list (the pods' names).
         // 12: the skirmish setup's map list (the maps' names).
+        // 13, 14: the map editor's AI and Events tabs.
         // 9: one live language switch on Settings, then a skirmish's Shaman panel
         //   (labels the game copied at start-up must follow the switch).
         static int acted, shots, cycles;
@@ -3020,7 +3021,9 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                     quit();
                 }
             }
-        } else if (g_h.target == 3) {
+        } else if (g_h.target == 3 || g_h.target == 13 || g_h.target == 14) {
+            // 3: the editor's Things tab; 13: its AI tab; 14: its Events tab.
+            const char* tab = g_h.target == 13 ? "AI" : g_h.target == 14 ? "Events" : "Things";
             if (mainMenu && stage == 0 && in > 2500) {
                 clickCmd(0x6d);  // Map Editor
                 stage = 1;
@@ -3031,10 +3034,13 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 stage = 2;
             } else if (scene == ".?AVSGame@@" && stage == 2 && in > 5000) {
                 shot("editor");
-                if (!ClickItem("Things")) quit();
+                if (!ClickItem(tab)) quit();
                 stage = 3;
                 at = now;
-            } else if (stage == 3 && now - at > 1200) {
+            } else if (stage == 3 && g_h.target != 3 && now - at > 2500) {
+                shot(g_h.target == 13 ? "editor-ai" : "editor-events");
+                quit();
+            } else if (stage == 3 && g_h.target == 3 && now - at > 1200) {
                 shot("editor-things");
                 quit();
             }

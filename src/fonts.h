@@ -21,5 +21,8 @@ void SetFor(const std::string& language, bool orbitron);
 // Width in pixels of text in one of the game's faces (e.g. "WBLg24"), in the
 // font currently shown for it.
 int TextWidth(const char* face, const char* text);
+// A text style id plus this: the same style without its offset outline (for text
+// on a plain black background, where the outline only blurs thin letters).
+constexpr int kNoOutline = 100;
 
 }  // namespace fonts

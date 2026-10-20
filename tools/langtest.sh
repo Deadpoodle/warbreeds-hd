@@ -7,7 +7,8 @@
 #        TESTDIR=testrun-x langtest.sh ...      another hidden test copy
 # Targets: 0 menus, Settings, briefing, mission, Esc menu; 1 skirmish HUD and build list;
 #          2 live language switching; 3 map editor; 4 Gene Lab; 5 Device Lab;
-#          10 a skirmish's pod list; 11 Device Lab on a two-line name; 12 the skirmish map list.
+#          10 a skirmish's pod list; 11 Device Lab on a two-line name; 12 the skirmish map list;
+#          13, 14 the map editor's AI and Events tabs.
 # Fonts: original, orbitron, or release: the original setting with the release's
 #        own fonts from re/<lang>/disc/FONTS (tools/locale_extract.py) in the test
 #        copy's Fonts folder, as a player who copied them from the CD; removed after.
