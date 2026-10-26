@@ -115,7 +115,7 @@ WarBreeds HD can show the whole game in another language: menus, unit and device
 |---|---|
 | ![The main menu in French](docs/screenshots/lang-fr-menu.jpg) | ![A Tanu mission briefing in German](docs/screenshots/lang-de-briefing.jpg) |
 
-- **French and German come with the patch.** Their game text, map titles and messages, and unit and building names are the 1998 French and German releases' own (used with the original developers' blessing), extracted from those CDs with [tools/locale_extract.py](tools/locale_extract.py) ([re/french-version.md](re/french-version.md), [re/german-version.md](re/german-version.md)). WarBreeds HD's own text in both was drafted by machine (an AI model), so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
+- **French and German come with the patch.** Their game text, map titles and messages, and unit and building names are the 1998 French and German releases' own, extracted from those CDs with [tools/locale_extract.py](tools/locale_extract.py) ([re/french-version.md](re/french-version.md), [re/german-version.md](re/german-version.md)). WarBreeds HD's own text in both was drafted by machine (an AI model), so expect clumsy wording here and there: corrections are very welcome (open an issue, or send a fixed file).
 - **Any language can be added without changing the patch.** Each language is a plain text file in the `Lang` folder, `WarBreedsHD_<code>.txt`; the Settings page lists whatever files it finds. `Lang\README.txt` in the zip explains the format, and the game writes a ready-to-fill template into that folder each time it starts, made from your own copy (every line with its English).
 - **The font follows the language.** The 1998 French release drew its text in narrower TrueType fonts than the English bitmap faces, and its text is written for them. In French and German (both releases used the same fonts), WarBreeds HD uses those fonts if you have them: copy them from the CD's `FONTS` folder into the game's `Fonts` folder (or install them). The few text boxes the release resized for them (the Device Lab's and Gene Lab's, the briefing's) are then the release's too. Otherwise the menus use Roboto Condensed (close to the release's Bell Gothic, narrowed to the 1998 width where needed). The HUD, the labs and the headings keep the English game's own pixel fonts, which read best at those small sizes, with the few tight spots ("Construire") set a pixel tighter. The 1998 interface face was too small to read at 1080p. A language's fonts are a small file beside its text, `Lang\WarBreedsHD_<code>.fonts`, made by [tools/font_metrics.py](tools/font_metrics.py).
 - Other languages use the game's own bitmap fonts, which already hold the accented Western European letters (é, ç, ü, ß ...), in an older Mac order the patch maps to. The Orbitron font option is for English only.
@@ -281,7 +281,7 @@ The WarBreeds HD code, tools and documentation are released into the **public do
 
 Not covered:
 - **Fonts** (Orbitron, Roboto Condensed): under the SIL Open Font License.
-- **The French game text** in `lang/WarBreedsHD_fr.txt` (`[game]`, `[maps]`, `[messages]`): the 1998 French release's own, included with the original developers' blessing.
+- **The French/German game text** in `lang/WarBreedsHD_<code>.txt` (`[game]`, `[maps]`, `[messages]`)
 - **WarBreeds itself:** © 1998 Red Orb Entertainment / Broderbund. No game files are included.
 - **Widescreen menu artwork in the releases:** derived from the game's original art.
 
