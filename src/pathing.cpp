@@ -75,8 +75,9 @@ constexpr uintptr_t kHitCircle = 0x445ac0, kHitDeviceShape = 0x430c80, kDeviceSh
 constexpr uintptr_t kHitWarp = 0x457dd0, kWarpCount = 0x54c3d0, kWarpOffsets = 0x54c3cc, kWarpRadii = 0x54c3dc;
 // The Gene Lab and Gene Lab+ (AGeneLab, 0x429ac0): their own circle, and while
 // +0x1fc is 0 the second circle of their shape (0x528264 record 1). The Collector
-// (0x40ba30) calls the plain circle test.
-constexpr uintptr_t kHitGeneLab = 0x429ac0, kGeneLabShapeOff = 0x1fc, kHitCollector = 0x40ba30;
+// (0x40ba30) calls the plain circle test, and so does the Healer (0x43fd20) unless
+// asked for its shape (second argument 1, not for walking).
+constexpr uintptr_t kHitGeneLab = 0x429ac0, kGeneLabShapeOff = 0x1fc, kHitCollector = 0x40ba30, kHitHealer = 0x43fd20;
 
 // Stock collision, for the oracle test.
 constexpr uintptr_t kIsRectBlocked = 0x42eb50;  // AGrid short(ILogicalC* tl, ILogicalC* br, int flyer), ret 0xc
@@ -109,6 +110,18 @@ void LogTables() {
         n += snprintf(line + n, sizeof line - n, " %d/%d/%d", ((uint8_t*)kStepSize)[t], ((uint8_t*)kDiagStep)[t],
                       ((short*)kTurnFlag)[t]);
     g_log("%s", line);
+    for (int t = 0x2c; t <= 0x3e; ++t) {  // each building's shape circles (dx, dy, r), as creation collides them
+        n = snprintf(line, sizeof line, "pathing: shape %#x:", t);
+        for (uintptr_t table : {kDeviceShapes, (uintptr_t)0x527d94}) {
+            char* shape = *(char**)(table + (t - 0x2c) * 16);
+            int count = (int)*(uint32_t*)(table + (t - 0x2c) * 16 + 4);
+            if (table != kDeviceShapes) n += snprintf(line + n, sizeof line - n, " |");
+            for (int k = 0; k < count && k < 24 && shape; ++k)
+                n += snprintf(line + n, sizeof line - n, " %d,%d,%d", *(short*)(shape + k * 12 + 4),
+                              *(short*)(shape + k * 12 + 6), *(uint8_t*)(shape + k * 12 + 8));
+        }
+        g_log("%s", line);
+    }
 }
 
 // FNV-1a over every thing in table order (ids, types, owners by player index,
@@ -163,6 +176,10 @@ char* ThingById(int id) {
 }
 
 bool IsCreature(int type) { return type >= 0 && type <= 0x2b; }
+// The four clans' Shamans: only an AShaman has the work fields (+0x16c..+0x1a4); an
+// ACreature is 0x154 bytes, and reading them from one reads past its end (a crash
+// when it ends a heap page).
+bool IsShaman(int type) { return type == 0 || type == 9 || type == 0x12 || type == 0x1b; }
 bool IsObstacle(int type) { return type >= 0x43 && type <= 0x49; }
 bool IsDynamic(int type) { return type >= 0x2c && type <= 0x42; }  // buildings, pods, corpses
 int Radius(int type) { return ((short*)kRadius)[type] & 0xff; }
@@ -352,7 +369,7 @@ void ScanWorld() {
                 circles[n++] = {x + *(short*)(shape + 12 + 4), y + *(short*)(shape + 12 + 6), *(uint8_t*)(shape + 12 + 8)};
         } else {
             static uintptr_t s_warned[8];
-            if (hit != kHitCircle && hit != kHitCollector &&
+            if (hit != kHitCircle && hit != kHitCollector && hit != kHitHealer &&
                 std::find(std::begin(s_warned), std::end(s_warned), hit) == std::end(s_warned)) {
                 for (uintptr_t& w : s_warned)
                     if (!w) {
@@ -419,6 +436,7 @@ struct UnitRoute {
     int bestDist = 1 << 30; // its nearest distance to the goal so far (px)
     size_t progressNext = 0;
     int plannedTurn = -1;
+    int avoidId = -1, avoidUntil = 0;  // a creature it rerouted round: kept clear of its legs for a while
     bool valid = false;
 };
 std::vector<UnitRoute> g_routes(65536);
@@ -511,6 +529,15 @@ bool PlanImproved(char* c) {
         StopUnit(c);
         return true;
     }
+    // A creature it went round: its legs keep clear of it too (they are straightened
+    // by line of sight, which sees no creatures, and cut back through it).
+    char* avoid = u.thing == c && u.avoidId >= 0 && g_turn < u.avoidUntil ? ThingById(u.avoidId) : nullptr;
+    nav::Circle around{};
+    if (avoid) around = {F<short>(avoid, kX), F<short>(avoid, kY), Radius(F<int>(avoid, kType))};
+    struct TempScope {
+        explicit TempScope(const nav::Circle* c) { nav::SetTemporary(c, c ? 1 : 0); }
+        ~TempScope() { nav::SetTemporary(nullptr, 0); }
+    } temp(avoid ? &around : nullptr);
     for (int attempt = 0; attempt < 3; ++attempt) {
         bool same = u.valid && u.thing == c && u.type == type && u.waypoints == count && u.goal.x == goal.x &&
                     u.goal.y == goal.y;
@@ -540,6 +567,8 @@ bool PlanImproved(char* c) {
             u.progressTurn = sameOrder ? old.progressTurn : g_turn;
             u.bestDist = sameOrder ? old.bestDist : 1 << 30;
             u.retryTurn = sameOrder ? old.retryTurn : 0;
+            u.avoidId = sameOrder ? old.avoidId : -1;
+            u.avoidUntil = sameOrder ? old.avoidUntil : 0;
             if (!nav::FindRoute(pos.x, pos.y, goal.x, goal.y, r, hf, p, 1 << 30, u.route)) {
                 if (g_dbg.test) g_log("pathing: no route id %d from %d,%d to %d,%d", id, pos.x, pos.y, goal.x, goal.y);
                 return false;
@@ -654,6 +683,7 @@ bool Reroute(char* c, UnitRoute& u, char* blocker, bool any) {
     u.route = alt;
     u.next = 0;
     u.layerVersion = nav::LayerVersion(p);
+    u.avoidId = F<unsigned short>(blocker, kId), u.avoidUntil = g_turn + 160;
     ++g_reroutes;
     if (g_dbg.test)
         g_log("pathing: id %d reroutes round %d (%d px against %d)", F<unsigned short>(c, kId),
@@ -814,9 +844,11 @@ void __fastcall HookOnBlocked(void* creature, void*) {
         F<short>(c, kWaitTicks) = 6;
         return;
     }
-    // Following a friend going the same way (a queue): just wait for it.
+    // Following a friend going the same way (a queue): just wait for it. Only while
+    // it walks: a builder at work keeps the route it came by, and helpers waited
+    // behind it for good.
     const UnitRoute& bu = g_routes[blockerId];
-    if (PlayerOf(b) == p && bu.valid && bu.thing == b && !Idle(b)) {
+    if (PlayerOf(b) == p && bu.valid && bu.thing == b && !Idle(b) && F<int>(b, kStepCount) > 0) {
         nav::Pt mine = u.next < u.route.nodes.size() ? u.route.nodes[u.next] : u.route.end;
         nav::Pt theirs = bu.next < bu.route.nodes.size() ? bu.route.nodes[bu.next] : bu.route.end;
         int ax = mine.x - F<short>(c, kX), ay = mine.y - F<short>(c, kY);
@@ -990,27 +1022,64 @@ constexpr uintptr_t kVFollowPath = 0xb4;                 // ACreature: OrderMove
 // builder on site, and only it may create the building (the rest are held a tick
 // short). Once it stands, the others are switched to Repair (which builds it on).
 constexpr uintptr_t kWorkCounter = 0x180, kWorkStart = 0x443d10;
+constexpr uintptr_t kFailures = 0x170;  // AShaman u8: failed build attempts
 constexpr uintptr_t kRepairExec = 0x4621b0;  // stdcall (builderId, targetId): Repair, as the command runs it
 int g_helpTicks, g_joins;
 
 struct Builder {
     char* c;
-    int id, x, y, type, p, reach;  // reach: how far the building will collide
+    int id, x, y, type, p;
 };
 
-// Work spots: each builder of a site gets its own spot on a circle round it, at
-// its radius + 60 px from the centre (the work reach is radius + 64, IsAtWorkSite
-// 0x4411d0) and clear of the building's reach; spaced two radii + 8 px apart, the
-// nearest free one to the builder, kept once given. A builder routes to its spot
-// instead of the centre, so a group fans out round the building rather than
-// queueing on one side.
+// The circles a building of `type` centred at (cx, cy) collides units with as it
+// is created (CreateAt 0x446db0 -> CheckCollision 0x44e270, strict circle tests,
+// its builder included): its shape (0x528264) and its second shape (0x527d94; the
+// builder excepted), each 2 px wider; and any unit registered at its footprint's
+// top-left tile (the builder excepted): a 32 px square for a Shaman's 16 px
+// half-footprint, kept clear as a fixed 25 px circle round its centre. The Gene
+// Labs and the Warp, Summoner and Collector reach well past their footprint.
+constexpr uintptr_t kDeviceShapes2 = 0x527d94;
+int CreationCircles(int type, int cx, int cy, int p, int builder, nav::Site* out, int max) {
+    int n = 0;
+    if (type < 0x2c || type > 0x3e) return 0;
+    for (uintptr_t table : {kDeviceShapes, kDeviceShapes2}) {
+        char* shape = *(char**)(table + (type - 0x2c) * 16);
+        int m = (int)*(uint32_t*)(table + (type - 0x2c) * 16 + 4);
+        for (int k = 0; k < m && shape && n < max; ++k) {
+            int r = *(uint8_t*)(shape + k * 12 + 8);
+            if (r > 0)
+                out[n++] = {cx + *(short*)(shape + k * 12 + 4), cy + *(short*)(shape + k * 12 + 6), r + 2, p, builder, cx, cy, false};
+        }
+    }
+    int hb = ((short*)kFootprint)[type] / 2, tx = (cx - hb) >> 5, ty = (cy - hb) >> 5;
+    if (n < max) out[n++] = {tx * 32 + 32, ty * 32 + 32, 25, p, builder, cx, cy, true};
+    return n;
+}
+
+bool ClearOf(const nav::Site* circles, int n, int x, int y, int r) {
+    for (int k = 0; k < n; ++k) {
+        int dx = x - circles[k].x, dy = y - circles[k].y, reach = circles[k].fixed ? circles[k].half : circles[k].half + r;
+        if (dx * dx + dy * dy < reach * reach) return false;
+    }
+    return true;
+}
+
+// Work spots: each builder of a site gets its own spot round it, within its work
+// reach (radius + 64 px from the centre, IsAtWorkSite 0x4411d0: at most radius +
+// 60) and clear of the circles the building is created with; spaced two radii +
+// 8 px apart, the nearest free one to the builder, kept once given. A builder
+// routes to its spot instead of the centre, so a group fans out round the
+// building rather than queueing on one side, and only starts work there
+// (HookAtWorkSite).
 struct WorkSpot {
     int siteX = -1, siteY = -1;
     nav::Pt at{};
 };
 std::vector<WorkSpot> g_workSpot(65536);
 
-void AssignWorkSpots(const std::vector<const Builder*>& group, int reach) {
+// circles: what to keep clear of beyond the grid (a building yet to be created's
+// circles; a standing one is in the grid already).
+void AssignWorkSpots(const std::vector<const Builder*>& group, const nav::Site* circles, int nc) {
     std::vector<nav::Pt> taken;
     for (const Builder* b : group) {  // keep the spots already given for this site
         WorkSpot& w = g_workSpot[b->id];
@@ -1019,34 +1088,77 @@ void AssignWorkSpots(const std::vector<const Builder*>& group, int reach) {
     for (const Builder* b : group) {
         WorkSpot& w = g_workSpot[b->id];
         if (w.siteX == b->x && w.siteY == b->y) continue;
-        int r = Radius(F<int>(b->c, kType)), hf = ((short*)kFootprint)[F<int>(b->c, kType)] / 2;
-        int d = std::max(r + 60, reach + r + 4), gap = 2 * r + 8;
-        int bx = F<short>(b->c, kX), by = F<short>(b->c, kY), best = -1, bestD = 0;
+        int r = Radius(F<int>(b->c, kType)), hf = ((short*)kFootprint)[F<int>(b->c, kType)] / 2, gap = 2 * r + 8;
+        int bx = F<short>(b->c, kX), by = F<short>(b->c, kY), bestD = -1;
         nav::Pt pick{};
         nav::SetQueryUnit(b->id, b->x, b->y);
-        for (int k = 0; k < 16; ++k) {
-            nav::Pt q{b->x + kCos16[k] * d / 1000, b->y + kSin16[k] * d / 1000};
-            bool clear = nav::Passable(q.x, q.y, r, hf, b->p);
-            for (const nav::Pt& t : taken)
-                clear = clear && (q.x - t.x) * (q.x - t.x) + (q.y - t.y) * (q.y - t.y) >= gap * gap;
-            if (!clear) continue;
-            int dd = (q.x - bx) * (q.x - bx) + (q.y - by) * (q.y - by);
-            if (best < 0 || dd < bestD) best = k, bestD = dd, pick = q;
+        for (int ring = 0; ring < 4; ++ring) {  // r + 60, 50, 40, 30 px out; odd rings half a step round
+            int d = r + 60 - 10 * ring;
+            for (int k = 0; k < 16; ++k) {
+                int cx = ring & 1 ? kCos16[k] + kCos16[(k + 1) % 16] : 2 * kCos16[k];
+                int cy = ring & 1 ? kSin16[k] + kSin16[(k + 1) % 16] : 2 * kSin16[k];
+                int len = ring & 1 ? 1962 : 2000;  // |cos + cos'| = 2 cos(11.25 deg)
+                nav::Pt q{b->x + cx * d / len, b->y + cy * d / len};
+                bool clear = ClearOf(circles, nc, q.x, q.y, r) && nav::Passable(q.x, q.y, r, hf, b->p);
+                for (const nav::Pt& t : taken)
+                    clear = clear && (q.x - t.x) * (q.x - t.x) + (q.y - t.y) * (q.y - t.y) >= gap * gap;
+                if (!clear) continue;
+                int dd = (q.x - bx) * (q.x - bx) + (q.y - by) * (q.y - by);
+                if (bestD < 0 || dd < bestD) bestD = dd, pick = q;
+            }
         }
         nav::SetQueryUnit(-1);
-        if (best < 0) continue;  // no room: it heads for the centre as before
+        if (bestD < 0) continue;  // no room: it heads for the centre as before
         w.siteX = b->x, w.siteY = b->y, w.at = pick;
         taken.push_back(pick);
+        if (g_dbg.test) g_log("pathing: builder %d work spot %d,%d (site %d,%d)", b->id, pick.x, pick.y, b->x, b->y);
     }
 }
 
 // The spot a Shaman building at its site should walk to, if it has one.
 bool WorkSpotFor(char* c, nav::Pt& out) {
-    if (F<int>(c, kActivity) != 0x2e) return false;
+    if (!IsShaman(F<int>(c, kType))) return false;
+    int act = F<int>(c, kActivity);
+    if (act != 0x2e && act != 0x38 && act != 0x39) return false;
     const WorkSpot& w = g_workSpot[F<unsigned short>(c, kId)];
     if (w.siteX != F<short>(c, kSiteX) || w.siteY != F<short>(c, kSiteY)) return false;
     out = w.at;
     return true;
+}
+
+// AShaman::IsAtWorkSite (vtable +0xcc, 0x4411d0): Act 0x440e30 asks it every
+// turn while the Shaman walks to work, and it stops and starts work the moment it
+// is in reach, wherever that is on its way (inside one of the building's circles,
+// say, and the building then can't be created). Improved: a builder with a work
+// spot is at work only once it is near it (12 px) and clear of the building's
+// circles; if it can't get there (its steps are used up, or it has stood still
+// 60 turns: Act gives up the build at 100), wherever it is in reach.
+constexpr uintptr_t kSlotAtWorkSite = 0x504af8, kAtWorkSite = 0x4411d0;
+constexpr uintptr_t kStillActs = 0x19a;  // AShaman short: Acts in a row it hasn't moved
+std::vector<int> g_workBegunAt(65536, -1);  // tests: the turn the hook last let a builder with a spot start
+
+short __fastcall HookAtWorkSite(char* c, void*) {
+    short in = ((short(__thiscall*)(void*))kAtWorkSite)(c);
+    nav::Pt spot;
+    if (!g_improved || F<short>(c, kWorkCounter) != -1 || !WorkSpotFor(c, spot)) return in;
+    if (in != 1) {
+        // On its way, held up in traffic: Act gives the order up after 100 Acts
+        // standing still; while its route still makes progress (15 s), it waits on.
+        const UnitRoute& u = g_routes[F<unsigned short>(c, kId)];
+        if (u.thing == c && u.valid && g_turn - u.progressTurn < kGiveUpTurns && F<int>(c, kWaypointCount) > 0)
+            F<short>(c, kStillActs) = 0;
+        return in;
+    }
+    int x = F<short>(c, kX), y = F<short>(c, kY), dx = x - spot.x, dy = y - spot.y;
+    if (F<int>(c, kWaypointCount) == 0 || F<short>(c, kStillActs) > 60) return 1;
+    if (dx * dx + dy * dy > 12 * 12) return 0;
+    if (F<int>(c, kActivity) != 0x2e || F<short>(c, kWorkTarget) != (short)0xc01) {  // it stands already
+        g_workBegunAt[F<unsigned short>(c, kId)] = g_turn;
+        return 1;
+    }
+    nav::Site circles[48];
+    int n = CreationCircles(F<int>(c, kWorkType), F<short>(c, kSiteX), F<short>(c, kSiteY), 0, -1, circles, 48);
+    return ClearOf(circles, n, x, y, Radius(F<int>(c, kType))) ? 1 : 0;
 }
 
 void BuildTogether(std::vector<Builder>& builds, char** things, int count) {
@@ -1075,7 +1187,9 @@ void BuildTogether(std::vector<Builder>& builds, char** things, int count) {
         std::vector<const Builder*> group;
         for (const Builder& b : builds)
             if (b.p == lead0.p && b.x == lead0.x && b.y == lead0.y && b.type == lead0.type) group.push_back(&b);
-        AssignWorkSpots(group, lead0.reach);
+        nav::Site circles[48];
+        int nc = CreationCircles(lead0.type, lead0.x, lead0.y, lead0.p, -1, circles, 48);
+        AssignWorkSpots(group, circles, nc);
         if (group.size() < 2) continue;
         short start = ((short(__thiscall*)(void*))kWorkStart)(group[0]->c);
         const Builder* lead = nullptr;
@@ -1099,6 +1213,37 @@ void BuildTogether(std::vector<Builder>& builds, char** things, int count) {
     }
 }
 
+// A building that could not be created (the work tick's CreateDevice 0x447410
+// returned none, +0x170 counts it; the Shaman steps aside and tries again, up to
+// 4 times): the game's own checks, run again, say why, in the log.
+constexpr uintptr_t kCheckCollision = 0x44e270;  // World int*(type, builderId, cx, cy, ignoreUnits, player, a6)
+constexpr uintptr_t kFootprintTerrain = 0x44e5c0, kPodNearby = 0x4518c0;  // World (type, cx, cy); (tx, ty)
+std::vector<uint8_t> g_failSeen(65536);
+int g_failLogs;
+
+void LogBuildFailure(char* c) {
+    int id = F<unsigned short>(c, kId), type = F<int>(c, kWorkType), cx = F<short>(c, kSiteX), cy = F<short>(c, kSiteY);
+    void* w = *(void**)kWorld;
+    char* hit = ((char*(__thiscall*)(void*, int, int, int, int, int, int, int))kCheckCollision)(w, type, id, cx, cy, 0, 0, 0);
+    int terrain = type >= 0x2c && type <= 0x3e ? (short)((int(__thiscall*)(void*, int, int, int))kFootprintTerrain)(w, type, cx, cy) : -1;
+    int pod = type == 0x2c ? (short)((int(__thiscall*)(void*, int, int))kPodNearby)(w, (cx >> 5) & 0xff, (cy >> 5) & 0xff) : -1;
+    nav::Pt spot{-1, -1};
+    const WorkSpot& ws = g_workSpot[id];
+    if (ws.siteX == cx && ws.siteY == cy) spot = ws.at;
+    ++g_failLogs;
+    char blocker[160] = "nothing";
+    if (hit) {
+        int hx = F<short>(hit, kX), hy = F<short>(hit, kY);
+        snprintf(blocker, sizeof blocker, "thing %d type %#x of player %d at %d,%d (%d px from the centre)%s",
+                 F<unsigned short>(hit, kId), F<int>(hit, kType), PlayerOf(hit), hx, hy,
+                 ISqrtDbg((hx - cx) * (hx - cx) + (hy - cy) * (hy - cy)), hit == c ? ", the builder itself" : "");
+    }
+    g_log("pathing: building %#x at %d,%d by %d failed (attempt %d): collides with %s; footprint terrain %s%s; builder at "
+          "%d,%d, its spot %d,%d",
+          type, cx, cy, id, F<uint8_t>(c, kFailures), blocker, terrain == 1 ? "BLOCKED" : terrain == 0 ? "clear" : "n/a",
+          pod < 0 ? "" : pod ? ", a pod in reach" : ", NO pod in reach", F<short>(c, kX), F<short>(c, kY), spot.x, spot.y);
+}
+
 std::vector<nav::Site> g_siteList;
 std::vector<int> g_clearedAt(65536, -100);  // turn a unit was last walked off a site
 int g_siteClears;
@@ -1111,40 +1256,57 @@ void MoveUnit(char* c, int x, int y) {  // the unit's own move order (simulation
 
 void UpdateSites() {
     g_siteList.clear();
-    static std::vector<Builder> builds;
+    static std::vector<Builder> builds, workers;
     builds.clear();
+    workers.clear();
     int count;
     char** things = Things(count);
     for (int i = 0; i < count; ++i) {
         char* t = things[i];
-        if (!t || !IsCreature(F<int>(t, kType)) || IsFlyer(F<int>(t, kType))) continue;
+        if (!t || !IsShaman(F<int>(t, kType))) continue;
         int act = F<int>(t, kActivity), type = F<int>(t, kWorkType), p = PlayerOf(t), id = F<unsigned short>(t, kId);
-        if (p < 0 || type < 0x2c || type > 0x41) continue;
-        // How far the building will collide (CreateAt): its shape circles (0x528264), which reach past
-        // its footprint, the footprint's corners (the object grid) and its radius.
-        int half = ((short*)kFootprint)[type] / 2 * 1415 / 1000;
-        half = std::max(half, Radius(type));
-        if (type <= 0x3e) {
-            char* shape = *(char**)(kDeviceShapes + (type - 0x2c) * 16);
-            int n = (int)*(uint32_t*)(kDeviceShapes + (type - 0x2c) * 16 + 4);
-            for (int k = 0; k < n && shape; ++k) {
-                int dx = *(short*)(shape + k * 12 + 4), dy = *(short*)(shape + k * 12 + 6);
-                half = std::max(half, ISqrtDbg(dx * dx + dy * dy) + 1 + *(uint8_t*)(shape + k * 12 + 8));
-            }
+        if (p < 0) continue;
+        uint8_t failures = F<uint8_t>(t, kFailures);  // a failed creation since last turn: why
+        if (failures != g_failSeen[id]) {
+            if (failures > g_failSeen[id] && F<short>(t, kWorkTarget) == (short)0xc01 && type >= 0x2c && type <= 0x3e)
+                LogBuildFailure(t);
+            g_failSeen[id] = failures;
         }
-        half += 2;
-        if (act == 0x2e && F<short>(t, kWorkTarget) == (short)0xc01) {
-            g_siteList.push_back({F<short>(t, kSiteX), F<short>(t, kSiteY), half, p, id});
-            if (type <= 0x3e) builds.push_back({t, id, F<short>(t, kSiteX), F<short>(t, kSiteY), type, p, half});
+        // Working on a standing building (building it on, repairing, upgrading): a work spot round it too.
+        if (act == 0x38 || act == 0x39 || (act == 0x2e && F<short>(t, kWorkTarget) != (short)0xc01)) {
+            if (ThingById(F<unsigned short>(t, kWorkTarget)))
+                workers.push_back({t, id, F<short>(t, kSiteX), F<short>(t, kSiteY), -1, p});
+            continue;
         }
-        if (act == 0x2d) {
+        if (type < 0x2c || type > 0x41) continue;
+        if (act == 0x2e && F<short>(t, kWorkTarget) == (short)0xc01 && type <= 0x3e) {
+            int sx = F<short>(t, kSiteX), sy = F<short>(t, kSiteY);
+            nav::Site circles[48];
+            int n = CreationCircles(type, sx, sy, p, id, circles, 48);
+            g_siteList.insert(g_siteList.end(), circles, circles + n);
+            builds.push_back({t, id, sx, sy, type, p});
+        }
+        if (act == 0x2d) {  // pods: a circle of the pod's radius (or half its footprint's diagonal)
+            int half = std::max(((short*)kFootprint)[type] / 2 * 1415 / 1000, Radius(type)) + 2;
             char* pts = F<char*>(t, kPlantPoints);
             int n = std::min(F<int>(t, kPlantCount), 8);
-            for (int k = 0; pts && k < n; ++k)
-                g_siteList.push_back({*(short*)(pts + k * 8 + 4), *(short*)(pts + k * 8 + 6), half, p, id});
+            for (int k = 0; pts && k < n; ++k) {
+                int x = *(short*)(pts + k * 8 + 4), y = *(short*)(pts + k * 8 + 6);
+                g_siteList.push_back({x, y, half, p, id, x, y, false});
+            }
         }
     }
     BuildTogether(builds, things, count);
+    for (size_t i = 0; i < workers.size(); ++i) {  // each standing building's workers, together
+        const Builder& w0 = workers[i];
+        bool first = true;
+        for (size_t j = 0; j < i; ++j) first &= !(workers[j].p == w0.p && workers[j].x == w0.x && workers[j].y == w0.y);
+        if (!first) continue;
+        std::vector<const Builder*> group;
+        for (const Builder& w : workers)
+            if (w.p == w0.p && w.x == w0.x && w.y == w0.y) group.push_back(&w);
+        AssignWorkSpots(group, nullptr, 0);
+    }
     nav::SetSites(g_siteList);
     if (g_siteList.empty()) return;
     // Idle units of the builder's player standing on a site: off it, to the nearest side.
@@ -1157,7 +1319,7 @@ void UpdateSites() {
         nav::SetQueryUnit(id);
         for (const nav::Site& site : g_siteList) {
             if (site.player != p || site.builder == id || !nav::OnSite(x, y, r, p)) continue;
-            int out = site.half + r + 12, dx = x - site.x, dy = y - site.y, len = ISqrtDbg(dx * dx + dy * dy);
+            int out = site.half + (site.fixed ? 0 : r) + 12, dx = x - site.x, dy = y - site.y, len = ISqrtDbg(dx * dx + dy * dy);
             if (len == 0) dx = 1, dy = 0, len = 1;
             nav::Pt cand[4] = {{site.x + dx * out / len, site.y + dy * out / len},
                                {site.x - dy * out / len, site.y + dx * out / len},
@@ -1702,7 +1864,7 @@ void SpreadTest(int t) {
 // sent back right onto the site. It must stop beside it: the building goes up at
 // the first attempt (no failure counted, +0x170).
 constexpr uintptr_t kCanPlace = 0x4517e0;  // World int(player, x, y, type, ignoreUnits, skipSite, 0), ret 0x1c
-constexpr uintptr_t kFailures = 0x170;     // AShaman u8: failed build attempts
+// (kFailures, AShaman u8 +0x170: failed build attempts, is declared with the work spots)
 // Plants a pod (World 0x448100(player, type, x, y), as the plant work does) on the
 // pod soil nearest (px, py), then finds the nearest spot beside it where player p
 // may place a Refinery (CanPlace 0); `avoid`: keep away from another test site.
@@ -1864,8 +2026,322 @@ void StartTogetherTest(int t) {
     g_testDone = true;
 }
 
+// Test 15: the buildings whose shapes reach past their footprint (Gene Lab, Gene
+// Lab+, Healer, Warp, Summoner, Collector), each by one Tanu Shaman coming from
+// the east (the Gene Labs' second circle side), and a Gene Lab by three. Each has
+// power (the test switches the power check off). Every building must stand, at the first
+// attempt, and every builder must start work within its reach and clear of the
+// building's circles.
+struct OddSite {
+    int type, x = 0, y = 0, made = -1, failures = 0;  // failed attempts when it stood
+    std::vector<int> builders;
+};
+std::vector<OddSite> g_odd;
+int g_oddOrdered, g_oddBadStarts;
+std::vector<char> g_oddStarted(65536);
+
+void OddShapeTest(int t) {
+    char* me = (char*)FirstCreature();
+    if (t == 5) {
+        if (!me || !FindOpenArea(F<short>(me, kX), F<short>(me, kY), 600, 420, g_area)) {
+            g_log("pathing: test 15 FAIL (no open area)");
+            g_testDone = true;
+            return;
+        }
+        int p = PlayerOf(me);
+        // Power everywhere, for this test only: HasPower 0x44ed20 (thiscall, 4 args) returns 1.
+        static const uint8_t kAlways[] = {0x66, 0xb8, 0x01, 0x00, 0xc2, 0x10, 0x00};  // mov ax, 1; ret 0x10
+        DWORD old;
+        if (VirtualProtect((void*)0x44ed20, sizeof kAlways, PAGE_EXECUTE_READWRITE, &old)) {
+            memcpy((void*)0x44ed20, kAlways, sizeof kAlways);
+            VirtualProtect((void*)0x44ed20, sizeof kAlways, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), (void*)0x44ed20, sizeof kAlways);
+        }
+        static const int kTypes[] = {0x2d, 0x35, 0x34, 0x39, 0x3a, 0x3b, 0x2d};
+        for (int i = 0; i < 7; ++i) {
+            OddSite s;
+            s.type = kTypes[i];
+            int cx = g_area.x - 450 + (i % 4) * 300, cy = g_area.y + (i < 4 ? -200 : 200);
+            bool found = false;
+            for (int ring = 0; ring < 6 && !found; ++ring)
+                for (int k = 0; k < 8 * std::max(ring, 1) && !found; ++k) {
+                    int x = cx + (ring ? kCos16[k * 2 / std::max(ring, 1) % 16] * ring * 16 / 1000 : 0);
+                    int y = cy + (ring ? kSin16[k * 2 / std::max(ring, 1) % 16] * ring * 16 / 1000 : 0);
+                    int code = ((int(__thiscall*)(void*, int, int, int, int, int, int, int))kCanPlace)(
+                        *(void**)kWorld, p, x, y, s.type, 1, 0, 0);
+                    if (code == 0) s.x = x, s.y = y, found = true;
+                    if (ring == 0 && k == 0) g_log("pathing: test 15 site %d CanPlace %d at its centre", i, code);
+                }
+            g_log("pathing: test 15 site %d type %#x at %d,%d (%s)", i, s.type, s.x, s.y, found ? "valid" : "NONE");
+            if (!found) continue;
+            int n = i == 6 ? 3 : 1;
+            for (int k = 0; k < n; ++k) s.builders.push_back(SpawnUnit(p, 0, s.x + 170, s.y - 40 * (n - 1) / 2 + 40 * k));
+            g_odd.push_back(s);
+        }
+    }
+    if (t == 20) {
+        void* cmd = Cmd();
+        for (const OddSite& s : g_odd)
+            for (int b : s.builders)
+                ((void(__thiscall*)(void*, int, int, int, int))(*(void***)cmd)[0x5c / 4])(cmd, b, s.type, s.x, s.y);
+        g_oddOrdered = t;
+    }
+    if (t <= 20) return;
+    int count;
+    char** things = Things(count);
+    bool all = true;
+    for (OddSite& s : g_odd) {
+        nav::Site circles[48];
+        int nc = CreationCircles(s.type, s.x, s.y, 0, -1, circles, 48);
+        for (int b : s.builders) {  // where each starts work
+            char* c = ThingById(b);
+            if (!c || g_oddStarted[b] || F<short>(c, kWorkCounter) == -1 || F<int>(c, kActivity) != 0x2e) continue;
+            g_oddStarted[b] = 1;
+            int x = F<short>(c, kX), y = F<short>(c, kY), r = Radius(F<int>(c, kType));
+            int d = ISqrtDbg((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y));
+            bool clear = ClearOf(circles, nc, x, y, r);
+            g_oddBadStarts += !clear;
+            g_log("pathing: test 15 builder %d starts work on %#x at %d,%d, %d px from the centre (reach %d)%s, turn %d", b,
+                  s.type, x, y, d, r + 64, clear ? "" : ", INSIDE the building's circles", t - g_oddOrdered);
+        }
+        for (int i = 0; i < count && s.made < 0; ++i)
+            if (things[i] && F<int>(things[i], kType) == s.type && abs(F<short>(things[i], kX) - s.x) <= 2 &&
+                abs(F<short>(things[i], kY) - s.y) <= 2) {
+                s.made = t - g_oddOrdered;
+                for (int b : s.builders)
+                    if (char* c = ThingById(b)) s.failures += F<uint8_t>(c, kFailures);
+                g_log("pathing: test 15 type %#x stands after %d turns, %d failed attempts", s.type, s.made, s.failures);
+            }
+        all &= s.made >= 0;
+    }
+    if (!all && t < g_oddOrdered + 1500) return;
+    int made = 0, failures = 0;
+    for (const OddSite& s : g_odd) {
+        made += s.made >= 0;
+        failures += s.failures;
+        if (s.made < 0)
+            for (int b : s.builders) DumpUnit(15, b);
+    }
+    bool pass = g_odd.size() == 7 && made == 7 && failures == 0 && g_oddBadStarts == 0;
+    g_log("pathing: test 15 %s (odd-shaped buildings: %d of %d stand, %d failed attempts, %d builders started inside "
+          "the building's circles)",
+          pass ? "PASS" : "FAIL", made, (int)g_odd.size(), failures, g_oddBadStarts);
+    g_testDone = true;
+}
+
+// Tests 16-19: one Shaman walks 260 px to build a Refinery beside a pod, from the
+// east, south, north-east and south-east (tests 12 and 13 come from the west and
+// north). It must stand at the first attempt.
+void RefineryApproachTest(int test, int t) {
+    char* me = (char*)FirstCreature();
+    static const int kDir[4][2] = {{1000, 0}, {0, 1000}, {707, -707}, {707, 707}};
+    const int* d = kDir[test - 16];
+    if (t == 5) {
+        nav::Pt spot;
+        int type = 0;
+        if (!me || !FindOpenArea(F<short>(me, kX), F<short>(me, kY), 360, 360, g_area) ||
+            !BuildSpot(PlayerOf(me), g_area.x, g_area.y, spot, type)) {
+            g_log("pathing: test %d FAIL (no valid building spot)", test);
+            g_testDone = true;
+            return;
+        }
+        g_bt.type = type, g_bt.x = spot.x, g_bt.y = spot.y;
+        g_bt.founder = SpawnUnit(PlayerOf(me), 0, spot.x + d[0] * 260 / 1000, spot.y + d[1] * 260 / 1000);
+        g_log("pathing: test %d Refinery at %d,%d, builder %d from %d,%d", test, spot.x, spot.y, g_bt.founder,
+              spot.x + d[0] * 260 / 1000, spot.y + d[1] * 260 / 1000);
+    }
+    if (t == 20) {
+        void* cmd = Cmd();
+        ((void(__thiscall*)(void*, int, int, int, int))(*(void***)cmd)[0x5c / 4])(cmd, g_bt.founder, g_bt.type, g_bt.x,
+                                                                                    g_bt.y);
+        g_bt.ordered = t;
+    }
+    if (t <= 20) return;
+    char* f = ThingById(g_bt.founder);
+    if (!f) return;
+    static int s_lastFail = 0, s_lastCounter = -2;
+    int failures = F<uint8_t>(f, kFailures), counter = F<short>(f, kWorkCounter);
+    if ((counter == -1) != (s_lastCounter == -1) || failures != s_lastFail) {  // work starts or stops, or a failure
+        int x = F<short>(f, kX), y = F<short>(f, kY);
+        g_log("pathing: test %d builder at %d,%d (%d px from the centre), activity %#x, counter %d, failures %d, "
+              "waypoints %d, still %d",
+              test, x, y, ISqrtDbg((x - g_bt.x) * (x - g_bt.x) + (y - g_bt.y) * (y - g_bt.y)), F<int>(f, kActivity), counter,
+              failures, F<int>(f, kWaypointCount), F<short>(f, 0x19a));
+        s_lastFail = failures, s_lastCounter = counter;
+    }
+    short made = F<short>(f, kWorkTarget);
+    if ((made == (short)0xc01 || made == 0) && failures == 0 && t < g_bt.ordered + 600) return;
+    if ((made == (short)0xc01 || made == 0) && failures > 0 && failures < 4 && t < g_bt.ordered + 600) return;
+    bool pass = made != (short)0xc01 && made != 0 && failures == 0;
+    g_log("pathing: test %d %s (Refinery from another side: building %d after %d turns, %d failed attempts)", test,
+          pass ? "PASS" : "FAIL", made, t - g_bt.ordered, failures);
+    g_testDone = true;
+}
+
+// Test 20: helpers on standing buildings. Three Shamans upgrade a finished,
+// powered Gene Lab (Cmd+0x84, as a group upgrade gives it), and two help a lone
+// Shaman's Refinery once it stands (Repair), coming from behind it, in line. Every
+// one must start work (each its own spot round the building), and the Gene Lab
+// must become a Gene Lab+.
+constexpr uintptr_t kVSetUnpowered = 0x40dfe0, kBuildStep = 0x40c8a0;
+struct HelpTest {
+    int lab = -1, labX = 0, labY = 0, upgraders[3] = {-1, -1, -1};
+    int refX = 0, refY = 0, founder = -1, helpers[2] = {-1, -1}, refinery = -1, helpOrdered = -1;
+    int upgraded = -1, ordered = 0;
+} g_ht;
+
+char* MakeFinished(int p, int type, int x, int y) {  // as the autopilot does: created, built, powered
+    int before;
+    Things(before);
+    ((short(__thiscall*)(void*, short, int, short, short, short, short, short))kCreateAt)(
+        *(void**)kWorld, (short)p, type, (short)x, (short)y, 1, 1, (short)0xc01);
+    int count;
+    char** things = Things(count);
+    for (int i = before; i < count; ++i)
+        if (things[i] && F<int>(things[i], kType) == type) {
+            F<short>(things[i], 0x32) = 30000;
+            ((short(__thiscall*)(void*, int))kBuildStep)(things[i], 0);
+            ((void(__thiscall*)(void*, short))kVSetUnpowered)(things[i], 0);
+            return things[i];
+        }
+    return nullptr;
+}
+
+void HelpersTest(int t) {
+    char* me = (char*)FirstCreature();
+    if (t == 5) {
+        if (!me || !FindOpenArea(F<short>(me, kX), F<short>(me, kY), 520, 300, g_area)) {
+            g_log("pathing: test 20 FAIL (no open area)");
+            g_testDone = true;
+            return;
+        }
+        int p = PlayerOf(me);
+        static const uint8_t kAlways[] = {0x66, 0xb8, 0x01, 0x00, 0xc2, 0x10, 0x00};  // HasPower: mov ax, 1; ret 0x10
+        DWORD old;
+        if (VirtualProtect((void*)0x44ed20, sizeof kAlways, PAGE_EXECUTE_READWRITE, &old)) {
+            memcpy((void*)0x44ed20, kAlways, sizeof kAlways);
+            VirtualProtect((void*)0x44ed20, sizeof kAlways, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), (void*)0x44ed20, sizeof kAlways);
+        }
+        char* player = F<char*>(me, kOwner);
+        for (int i = 0; i < 5; ++i) F<int>(player, 0x4850 + 4 * i) = 5;  // every clan's gene level: Gene Lab+ allowed
+        g_ht.labX = g_area.x - 300, g_ht.labY = g_area.y;
+        char* lab = MakeFinished(p, 0x2d, g_ht.labX, g_ht.labY);
+        g_ht.lab = lab ? F<unsigned short>(lab, kId) : -1;
+        if (lab)
+            g_log("pathing: test 20 Gene Lab unpowered %d on %d complete %d", F<short>(lab, 0x28), F<short>(lab, 0x2a),
+                  F<short>(lab, 0x2c));
+        for (int k = 0; k < 3; ++k) g_ht.upgraders[k] = SpawnUnit(p, 0, g_ht.labX - 60 + 60 * k, g_ht.labY + 200);
+        nav::Pt spot;
+        int type = 0;
+        if (!lab || !BuildSpot(p, g_area.x + 260, g_area.y, spot, type, {g_ht.labX, g_ht.labY})) {
+            g_log("pathing: test 20 FAIL (no Gene Lab %d, or no Refinery spot)", g_ht.lab);
+            g_testDone = true;
+            return;
+        }
+        g_ht.refX = spot.x, g_ht.refY = spot.y;
+        g_ht.founder = SpawnUnit(p, 0, spot.x, spot.y - 200);
+        for (int k = 0; k < 2; ++k) g_ht.helpers[k] = SpawnUnit(p, 0, spot.x, spot.y - 260 - 45 * k);  // behind it
+        g_log("pathing: test 20 Gene Lab %d at %d,%d, Refinery site %d,%d", g_ht.lab, g_ht.labX, g_ht.labY, spot.x, spot.y);
+    }
+    // The lab has no power source here (HasPower is patched for creation only): kept powered, its
+    // energy (ADevice::GetEnergy 0x40f5f0: byte +0x3d; under 20 the upgrade stops) full, every turn.
+    if (char* lab = ThingById(g_ht.lab)) {
+        F<short>(lab, 0x28) = 0;
+        F<uint8_t>(lab, 0x3d) = 100;
+    }
+    if (t == 20) {
+        void* cmd = Cmd();
+        for (int u : g_ht.upgraders) {
+            ((void(__thiscall*)(void*, int, int))(*(void***)cmd)[0x84 / 4])(cmd, u, g_ht.lab);
+            char* c = ThingById(u);
+            g_log("pathing: test 20 upgrader %d ordered: activity %#x target %d", u, F<int>(c, kActivity), F<short>(c, kWorkTarget));
+        }
+        ((void(__thiscall*)(void*, int, int, int, int))(*(void***)cmd)[0x5c / 4])(cmd, g_ht.founder, 0x2c, g_ht.refX,
+                                                                                    g_ht.refY);
+        g_ht.ordered = t;
+    }
+    if (t <= 20) return;
+    char* f = ThingById(g_ht.founder);
+    short made = f ? F<short>(f, kWorkTarget) : (short)0xc01;
+    if (g_ht.helpOrdered < 0 && made != (short)0xc01 && made != 0) {  // the Refinery stands: the helpers repair it
+        g_ht.refinery = made;
+        for (int h : g_ht.helpers) ((void(__stdcall*)(int, int))kRepairExec)(h, made);
+        g_ht.helpOrdered = t;
+        g_log("pathing: test 20 Refinery %d stands after %d turns; 2 helpers sent", made, t - g_ht.ordered);
+    }
+    char* lab = ThingById(g_ht.lab);
+    if (g_ht.upgraded < 0 && lab && F<int>(lab, kType) == 0x35) {
+        g_ht.upgraded = t - g_ht.ordered;
+        g_log("pathing: test 20 the Gene Lab is a Gene Lab+ after %d turns", g_ht.upgraded);
+    }
+    int working = 0;
+    std::vector<int> all(std::begin(g_ht.upgraders), std::end(g_ht.upgraders));
+    all.insert(all.end(), std::begin(g_ht.helpers), std::end(g_ht.helpers));
+    // Started: the hook let it begin at its own spot (the upgrade's own checks, power and the
+    // mission's tech, may end the work at once; that is the stock game's business).
+    for (int id : all) {
+        char* c = ThingById(id);
+        if (!c || g_oddStarted[id]) {
+            working += c && g_oddStarted[id];
+            continue;
+        }
+        if (g_workBegunAt[id] < 0) continue;
+        g_oddStarted[id] = 1;
+        ++working;
+        g_log("pathing: test 20 builder %d starts work at %d,%d, turn %d", id, F<short>(c, kX), F<short>(c, kY),
+              t - g_ht.ordered);
+    }
+    if (working < 5 && t < g_ht.ordered + 1200) return;
+    if (working < 5)
+        for (int id : all)
+            if (!g_oddStarted[id]) DumpUnit(20, id);
+    bool pass = working == 5;
+    g_log("pathing: test 20 %s (helpers on standing buildings: %d of 5 started work at their own spots; Gene Lab+ %s)",
+          pass ? "PASS" : "FAIL", working, g_ht.upgraded >= 0 ? "made" : "not made (the test player's tech)");
+    g_testDone = true;
+}
+
+// Test 21: a rock dropped on a Refinery site while its Shaman walks there: the
+// creation fails, and the log must say it collides with the rock.
+int g_rock = -1;
+void FailureLogTest(int t) {
+    if (t < 50) {
+        RefineryApproachTest(16, t);  // the east approach's setup and order
+        g_testDone = false;
+        return;
+    }
+    if (t == 50) {
+        int before;
+        Things(before);
+        SpawnObject(PlayerOf((char*)FirstCreature()), 0x45, g_bt.x, g_bt.y);
+        int after;
+        char** things = Things(after);
+        g_rock = after > before ? F<unsigned short>(things[after - 1], kId) : -1;
+        g_log("pathing: test 21 rock %d dropped on the site %d,%d", g_rock, g_bt.x, g_bt.y);
+    }
+    if (g_failLogs == 0 && t < 600) return;
+    g_log("pathing: test 21 %s (a failed creation logged %d times)", g_failLogs > 0 ? "PASS" : "FAIL", g_failLogs);
+    g_testDone = true;
+}
+
 void TestTurn(int t) {
     switch (g_dbg.test) {
+    case 21:
+        FailureLogTest(t);
+        break;
+    case 20:
+        HelpersTest(t);
+        break;
+    case 16:
+    case 17:
+    case 18:
+    case 19:
+        RefineryApproachTest(g_dbg.test, t);
+        break;
+    case 15:
+        OddShapeTest(t);
+        break;
     case 1:  // baseline: nothing ordered; the hash lines compare modes and builds
         if (t == 400) {
             g_log("pathing: test 1 PASS (idle baseline)");
@@ -2175,6 +2651,7 @@ void Install(void (*log)(const char*, ...), const Debug& d) {
               PatchCall(kThinkPlanCall, kPlanNextLeg, (void*)&HookPlan);
     for (uintptr_t site : kClockResetCalls) ok = ok && PatchCall(site, kClockReset, (void*)&HookClockReset);
     for (uintptr_t slot : kSlotOnBlocked) ok = ok && PatchSlot(slot, kOnBlocked, (void*)&HookOnBlocked);
+    ok = ok && PatchSlot(kSlotAtWorkSite, kAtWorkSite, (void*)&HookAtWorkSite);
     for (uintptr_t site : kExecuteMoveCalls) ok = ok && PatchCall(site, kExecuteMove, (void*)&HookExecuteMove);
     ok = ok && PatchCall(kStanceExecCall, kStanceExec, (void*)&HookStanceExec);
     log("pathing: %s", ok ? "installed" : "FAILED (unexpected code)");

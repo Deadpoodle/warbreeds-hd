@@ -223,17 +223,19 @@ void Tick(void* sgame) {
     if (done) {
         apply(PlanFor(g_cur, factor));
         double vw = g_screenW / g_cur, vh = g_screenH / g_cur;
-        if (g_resW * factor > vw + 1 || g_resH * factor > vh + 1) {
+        // (Not the up-to-3 frame px PlanFor's width rounding adds: that frame is shown whole.
+        // Cropping it at rest, with a view a row taller than the frame, crept the camera up.)
+        if (g_resW * factor > vw + 4 * factor || g_resH * factor > vh + 1) {
             // The frame stays bigger than the view (kMinFrameH): show the view's part,
             // centred in the frame where the map allows. The game's own scrolling moves
             // the camera, and the view with it (g_viewX above).
             g_viewX = ax - fx * vw;
             g_viewY = ay - fy * vh;
-            camX = (short)lround(g_viewX - (g_resW * factor - vw) / 2);
-            camY = (short)lround(g_viewY - (g_resH * factor - vh) / 2);
+            camX = (short)lround(g_viewX - std::max(0.0, (g_resW * factor - vw) / 2));
+            camY = (short)lround(g_viewY - std::max(0.0, (g_resH * factor - vh) / 2));
             ((SGameFn)game::SGameClampCamera)(g);
-            double cx = std::clamp(g_viewX - camX, 0.0, g_resW * factor - vw);
-            double cy = std::clamp(g_viewY - camY, 0.0, g_resH * factor - vh);
+            double cx = std::clamp(g_viewX - camX, 0.0, std::max(0.0, g_resW * factor - vw));
+            double cy = std::clamp(g_viewY - camY, 0.0, std::max(0.0, g_resH * factor - vh));
             g_viewX = camX + cx;
             g_viewY = camY + cy;
             render::SetWorldCrop(true, cx / factor, cy / factor, vw / factor, vh / factor);

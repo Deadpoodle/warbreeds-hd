@@ -89,6 +89,7 @@ constexpr uintptr_t kWorldInPanel = 0x4497d0;  // World short(sx, sy): inside th
 constexpr uintptr_t kRadar = 0x5517b0, kRadarShown = 0x433e10, kRadarHit = 0x4335b0;
 constexpr uintptr_t kToWorldX = 0x47ec60, kToWorldY = 0x47ec80;  // SGame int(screen coord)
 constexpr uintptr_t kCmdRepair = 0x88;  // Commands vtable: (short builderId, short targetId)
+constexpr uintptr_t kCmdUpgrade = 0x84;   // Commands vtable: (short builderId, short deviceId)
 constexpr uintptr_t kCmdSetRally = 0x4c;  // Commands vtable: (short labId, PtList* path, IPixelC* loopPt)
 constexpr uintptr_t kComplete = 0x2c;     // ADevice short: 1 = construction finished
 
@@ -933,6 +934,30 @@ short __thiscall HookShamanUp(void* sh, int sx, int sy, int wx, int wy) {
 
 short __thiscall HookShamanDown(void* sh, int sx, int sy, int wx, int wy, int zoom) {
     int state = F<int>(sh, kShamanState);
+    if (state == 7 && InGroup(sh) && OnBattlefield((short)sx, (short)sy)) {
+        // Upgrade mode: the stock order goes to the lead alone (AShaman::ClickDown
+        // case 7, Cmd+0x84); every other selected builder gets it too, and each
+        // steps the upgrade on (WorkTick case 0x38). Gene Lab, Relay, Psi Tower, Turret.
+        short rect[4];
+        void* target = PickAt((void*)((uintptr_t*)game::Scenes)[0], (short)sx, (short)sy, rect);
+        short r = ((ShamanClick_t)kShamanDown)(sh, sx, sy, wx, wy, zoom);
+        int type = target && IsDevice(target) ? Type(target) : -1;
+        if (r == 1 && F<int>(sh, kShamanState) == 0 && (type == 0x2d || type == 0x2e || type == 0x2f || type == 0x31) &&
+            Mine(target) && F<short>(target, kComplete) == 1) {
+            int n;
+            void** sel = Selection(n);
+            int sent = 0;
+            for (int i = 0; i < n; ++i)
+                if (sel[i] != sh && IsBuilder(sel[i]) && Mine(sel[i])) {
+                    ((void(__thiscall*)(void*, int, int))Slot(kCmdUpgrade))(Cmd(), F<short>(sel[i], kId),
+                                                                            F<short>(target, kId));
+                    ++sent;
+                }
+            g_log("controls: group upgrade: building %d (type %#x) by builder %d and %d more", F<short>(target, kId), type,
+                  F<short>(sh, kId), sent);
+        }
+        return r;
+    }
     if ((state == 3 || state == 5 || state == 6) && InGroup(sh) && OnBattlefield((short)sx, (short)sy)) {
         if (state == 3 && GroupPlace(sh)) return 1;
         if (state == 5 && GroupPlant(sh, (short)wx, (short)wy)) return 1;

@@ -75,10 +75,12 @@ bool TerrainBoxBlocked(int x0, int y0, int x1, int y1);
 int Region(int x, int y, int r);
 
 // Building sites waiting for their builder: circles of radius `half` round (x, y)
-// (the building's collision reach) that player p's units keep clear of (a unit's
-// centre stays more than half + its radius away), all but the builder itself.
+// (one of the building's collision circles) that player p's units keep clear of
+// (a unit's centre stays more than half + its radius away; `fixed`: more than
+// half), all but the builder itself. (siteX, siteY): the building's centre.
 struct Site {
-    int x, y, half, player, builder;
+    int x, y, half, player, builder, siteX, siteY;
+    bool fixed;
 };
 void SetSites(const std::vector<Site>& sites);
 // The unit the following queries are for: its own site doesn't block it, nor

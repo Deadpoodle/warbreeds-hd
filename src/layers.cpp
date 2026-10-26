@@ -469,6 +469,39 @@ bool PatchTextPages() {
     return true;
 }
 
+// A selected Gene Lab's panel (AGeneLab::DrawPanel 0x429730) draws its rally path
+// and markers (World::DrawWaypointPath 0x448f10, at 0x4297f9) in battlefield
+// pixels, but in the interface phase: on the interface port they were shown at
+// the interface's scale, in the right place at one zoom only. Drawn into the back
+// buffer instead, with the battlefield. (The other two callers, placement and the
+// waypoint mode, draw in the battlefield phase already.)
+constexpr uintptr_t kRallyPathCall = 0x4297f9, kDrawWaypointPath = 0x448f10;
+
+void __fastcall RallyPath(void* world, void*, int path, int camX, int camY, int zoomed, int loop, int flag) {
+    bool swap = g_active && g_backBuffer;
+    if (swap) {
+        BackBufferHandle() = g_backBuffer;
+        SelectBackBuffer();
+    }
+    ((void(__thiscall*)(void*, int, int, int, int, int, int))kDrawWaypointPath)(world, path, camX, camY, zoomed, loop,
+                                                                                 flag);
+    if (swap) {
+        BackBufferHandle() = g_ui.handle;
+        SelectBackBuffer();
+    }
+}
+
+bool PatchRallyPath() {
+    uint8_t* p = (uint8_t*)kRallyPathCall;
+    if (p[0] != 0xe8 || kRallyPathCall + 5 + *(int32_t*)(p + 1) != kDrawWaypointPath) return false;
+    DWORD old;
+    if (!VirtualProtect(p + 1, 4, PAGE_EXECUTE_READWRITE, &old)) return false;
+    *(int32_t*)(p + 1) = (int32_t)((uintptr_t)&RallyPath - (kRallyPathCall + 5));
+    VirtualProtect(p + 1, 4, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), p, 5);
+    return true;
+}
+
 bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bool (*bottomUp)(const void* bits), bool debug) {
     g_log = log;
     g_debug = debug;
@@ -490,6 +523,7 @@ bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bo
     ok = ok && PatchMenuCursorCall();
     log("layers: %s", ok ? "installed" : "FAILED (unexpected code; interface stays in the frame)");
     if (ok) log("layers: text page backgrounds %s", PatchTextPages() ? "hooked" : "FAILED (unexpected code)");
+    if (ok) log("layers: Gene Lab rally path %s", PatchRallyPath() ? "drawn with the battlefield" : "FAILED (unexpected code)");
     return ok;
 }
 

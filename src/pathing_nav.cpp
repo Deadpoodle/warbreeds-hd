@@ -55,8 +55,8 @@ int g_queryUnit = -1, g_querySiteX = -1, g_querySiteY = -1;
 
 bool SiteHit(int x, int y, int r, int p, int margin) {
     for (const Site& s : g_sites)
-        if (s.player == p && s.builder != g_queryUnit && !(s.x == g_querySiteX && s.y == g_querySiteY)) {
-            int dx = x - s.x, dy = y - s.y, reach = s.half + r;
+        if (s.player == p && s.builder != g_queryUnit && !(s.siteX == g_querySiteX && s.siteY == g_querySiteY)) {
+            int dx = x - s.x, dy = y - s.y, reach = s.fixed ? s.half : s.half + r;
             if (dx * dx + dy * dy < reach * reach + margin) return true;
         }
     return false;
@@ -579,7 +579,8 @@ bool Passable(int x, int y, int r, int hf, int p) {
 
 void SetSites(const std::vector<Site>& sites) {
     auto same = [](const Site& a, const Site& b) {
-        return a.x == b.x && a.y == b.y && a.half == b.half && a.player == b.player && a.builder == b.builder;
+        return a.x == b.x && a.y == b.y && a.half == b.half && a.player == b.player && a.builder == b.builder &&
+               a.siteX == b.siteX && a.siteY == b.siteY && a.fixed == b.fixed;
     };
     if (sites.size() == g_sites.size() && std::equal(sites.begin(), sites.end(), g_sites.begin(), same)) return;
     g_sites = sites;

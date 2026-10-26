@@ -80,7 +80,7 @@ Callers of the factory: **`AThingRegistry::CreateThing 0x446db0`** `(short playe
 | 0x08 | Tick() | 0x445950 | per game tick; base decrements `+0x04`. ADevice 0x40d5c0 (death anim, power reconnect, anims), ACreatureBody 0x4037e0 = `Think()` (+0x84) then `Act()` (+0x88), AGeneLab 0x428f30 (breeding), AMushroom 0x444d00 (growth) (H) |
 | 0x0c | OnRemoved(short quiet) | 0x445960 | releases mouse capture; ADevice 0x40d8c0 / ACreatureBody 0x403ee0 play the "lost" voice for the local player and drop the population count (M) |
 | 0x10 | ValidateRefs() | 0x40d5b0 (empty) | clears ids of things that no longer exist: ADevice 0x40dfa0 (+0x34), AShaman 0x443500 (+0x18e) (M) |
-| 0x14 | DrawPanel(x, y, camX, camY) | 0x445a50 | info panel (title = display name). AShaman 0x442f10, AGeneLab 0x429730 (also draws the rally path), ACreature 0x4a17b0 (H) |
+| 0x14 | DrawPanel(x, y, camX, camY) | 0x445a50 | info panel (title = display name). AShaman 0x442f10, AGeneLab 0x429730 (also draws the rally path: `World::DrawWaypointPath 0x448f10` at 0x4297f9, in battlefield pixels but in the interface phase; WarBreeds HD draws it into the back buffer, `layers.cpp`. The other callers, `SGame::DrawPlacement 0x47bd95` and `SGame::DrawWorldMarkers 0x47bef6` (waypoint mode), draw in the battlefield phase), ACreature 0x4a17b0 (H) |
 | 0x18 | PanelClickDown(sx, sy, wx, wy, zoom) | 0x445a70 | AShaman 0x4419c0, AGeneLab 0x429990 (H) |
 | 0x1c | PanelClickUp(sx, sy, wx, wy) | 0x435b00 (ret 0) | AShaman 0x442230, AGeneLab 0x429a30 (H) |
 | 0x20 | MouseMove | 0x435b00 | AShaman 0x442d60 (H) |
