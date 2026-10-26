@@ -51,6 +51,20 @@ void Post(UINT msg, WPARAM wp, POINT game) {
     PostMessageA(render::GameWindow(), msg, wp, MAKELPARAM(c.x, c.y));
 }
 
+// A Shaman's work: activity, target (+0x18e) and that building's state, where it stands.
+void LogWork(char* t) {
+    char* w = *(char**)0x579278;
+    unsigned short target = *(unsigned short*)(t + 0x18e);
+    char* b = w && target < (unsigned)*(int*)(w + 0x14) ? (*(char***)(w + 0x10))[target] : nullptr;
+    g_h.log("autopilot:   Shaman %d activity %#x at %d,%d site %d,%d target %d%s type %#x hp %d progress %d complete %d "
+            "unpowered %d on %d energy %d, timer %d fails %d still %d waypoints %d",
+            *(short*)(t + 0x1c), *(int*)(t + 0xc0), *(short*)(t + 0x14), *(short*)(t + 0x16), *(short*)(t + 0x16c),
+            *(short*)(t + 0x16e), target, b ? "" : " (none)", b ? *(int*)(b + 0x18) : -1, b ? *(short*)(b + 0x24) : -1,
+            b ? *(short*)(b + 0x32) : -1, b ? *(short*)(b + 0x2c) : -1, b ? *(short*)(b + 0x28) : -1,
+            b ? *(short*)(b + 0x2a) : -1, b ? *(uint8_t*)(b + 0x3d) : -1, *(short*)(t + 0x180), *(uint8_t*)(t + 0x170),
+            *(short*)(t + 0x19a), *(int*)(t + 0xb4));
+}
+
 // Camera state of the base scene, if it is the mission scene.
 void LogView() {
     uintptr_t* scenes = (uintptr_t*)game::Scenes;
@@ -2753,6 +2767,28 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         } else if (st == 8 && game && in > 4000) {
             std::string after = state();
             g_h.log("autopilot: after  %s", after.c_str());
+            if (g_h.target == 4) {  // a player's save: each own Shaman's mode (+0x1ac), capture (+0x08), activity
+                char* w = *(char**)0x579278;
+                char* me = *(char**)0x579288;
+                char** things = w ? *(char***)(w + 0x10) : nullptr;
+                for (int i = 0; things && i < *(int*)(w + 0x14); ++i) {
+                    char* t = things[i];
+                    int ty = t ? *(int*)(t + 0x18) : -1;
+                    if (!t || *(char**)(t + 0x20) != me || !(ty == 0 || ty == 9 || ty == 0x12 || ty == 0x1b)) continue;
+                    g_h.log("autopilot:   Shaman %d mode %d capture %d activity %#x selected %d", *(short*)(t + 0x1c),
+                            *(int*)(t + 0x1ac), *(short*)(t + 0x08), *(int*)(t + 0xc0), *(short*)(t + 0x06));
+                    LogWork(t);
+                }
+                // What the build list allows: APlayer::CanBuild 0x437b50 (tech) and vtable +0x54 CanAfford.
+                char line[400];
+                int n = snprintf(line, sizeof line, "autopilot:   build list (type: can build, can afford):");
+                for (int ty = 0x2c; me && ty <= 0x3b; ++ty) {
+                    short can = ((short(__thiscall*)(void*, int))0x437b50)(me, ty);
+                    short afford = ((short(__thiscall*)(void*, int))(*(void***)me)[0x54 / 4])(me, ty);
+                    n += snprintf(line + n, sizeof line - n, " %#x:%d,%d", ty, can, afford);
+                }
+                g_h.log("%s", line);
+            }
             shot("loaded");
             // Things may differ by a few (the game ran a frame between the snapshot and the save).
             auto head = [](const std::string& s) { return s.substr(0, s.find('|')); };
@@ -2765,6 +2801,16 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             st = 9;
         } else if (st == 9 && game && in > (DWORD)(g_h.target == 0 || g_h.target == 3 || g_h.target == 4 ? 64000 : 9000)) {
             g_h.log("autopilot: a minute on: %s", state().c_str());
+            if (g_h.target == 4) {
+                char* w = *(char**)0x579278;
+                char* me = *(char**)0x579288;
+                char** things = w ? *(char***)(w + 0x10) : nullptr;
+                for (int i = 0; things && i < *(int*)(w + 0x14); ++i) {
+                    char* t = things[i];
+                    int ty = t ? *(int*)(t + 0x18) : -1;
+                    if (t && *(char**)(t + 0x20) == me && (ty == 0 || ty == 9 || ty == 0x12 || ty == 0x1b)) LogWork(t);
+                }
+            }
             shot("later");
             if (g_h.target == 1 || g_h.target == 2 || g_h.target == 4) return quit("checked");
             char* me = *(char**)0x579288;

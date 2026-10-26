@@ -772,6 +772,11 @@ void StepAside(char* b, char* c, const UnitRoute& u) {
 
 // Two units head-on with no way round: the one giving way backs off to a spot off
 // the other's path, as a waypoint pushed on top of its order (it carries on after).
+// Still on its way to the last one it was given: that waypoint is moved instead.
+// (Pushed each time, a builder giving way again and again had 38 waypoints on its
+// Repair, walked from one to the next and never reached its building.)
+std::vector<nav::Pt> g_backOffPt(65536, nav::Pt{-1, -1});
+
 bool BackOff(char* c, char* other) {
     const UnitRoute& ou = g_routes[F<unsigned short>(other, kId)];
     if (!ou.valid || ou.thing != other) return false;
@@ -780,9 +785,16 @@ bool BackOff(char* c, char* other) {
     bool found = OutOfTheWay(c, PathAhead(other, ou), clear, to);
     nav::SetQueryUnit(F<unsigned short>(c, kId));
     if (!found) return false;
-    PixelPt pt{0x5031c4, (short)to.x, (short)to.y};
-    char* stack = c + 0xac;  // IStack<IPixelC> waypoints: vtable slot 0 pushes on top
-    ((void(__thiscall*)(void*, void*))(*(void***)stack)[0])(stack, &pt);
+    int id = F<unsigned short>(c, kId), count = F<int>(c, kWaypointCount);
+    char* top = count > 0 ? F<char*>(c, kWaypoints) + (count - 1) * 8 : nullptr;
+    if (top && *(short*)(top + 4) == g_backOffPt[id].x && *(short*)(top + 6) == g_backOffPt[id].y) {
+        *(short*)(top + 4) = (short)to.x, *(short*)(top + 6) = (short)to.y;
+    } else {
+        PixelPt pt{0x5031c4, (short)to.x, (short)to.y};
+        char* stack = c + 0xac;  // IStack<IPixelC> waypoints: vtable slot 0 pushes on top
+        ((void(__thiscall*)(void*, void*))(*(void***)stack)[0])(stack, &pt);
+    }
+    g_backOffPt[id] = to;
     if (g_dbg.test) g_log("pathing: id %d backs off to %d,%d for %d", F<unsigned short>(c, kId), to.x, to.y,
                           F<unsigned short>(other, kId));
     return true;

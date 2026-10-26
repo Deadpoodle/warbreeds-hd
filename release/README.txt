@@ -202,6 +202,11 @@ Skirmish objectives
     defeated").
 
 Fixes
+  - With several builders selected, the build menu could stop working
+    after a few group builds: the panel was always the first builder's,
+    and while that one worked it showed only Cancel. It is now one that
+    isn't at work. Units giving way head-on again and again also stacked
+    up waypoints (a builder had 38) and never reached their building.
   - Esc sometimes took several presses to open the in-game menu: the game
     held the menu back until a voice line had finished, and dropped further
     presses meanwhile. The menu now opens at once and the voice stops.

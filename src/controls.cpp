@@ -130,6 +130,11 @@ void** Selection(int& count) {
 
 // Group build: two or more own builders and nothing else selected. The first
 // one leads: the panel shows its buttons and lists, and its modes are used.
+// The builder a group's panel and keys act for: one already in a mode (build
+// list, placing, planting, repair, upgrade: it keeps it), else the first one not
+// at work, else the first. A working Shaman's panel is only its Cancel button, so
+// with the first one always the lead, the group's build menu was gone while that
+// one worked, however many others stood idle.
 void* GroupLead() {
     if (!g_opt.groupBuild) return nullptr;
     int n;
@@ -137,6 +142,10 @@ void* GroupLead() {
     if (n < 2 || !sel) return nullptr;
     for (int i = 0; i < n; ++i)
         if (!sel[i] || !IsBuilder(sel[i]) || !Mine(sel[i])) return nullptr;
+    for (int i = 0; i < n; ++i)
+        if (F<int>(sel[i], kShamanState) != 0) return sel[i];
+    for (int i = 0; i < n; ++i)
+        if (((short(__thiscall*)(void*))game::ShamanWorking)(sel[i]) != 1) return sel[i];
     return sel[0];
 }
 
@@ -667,19 +676,23 @@ typedef short(__thiscall* ShamanClick_t)(void* sh, int sx, int sy, int wx, int w
 
 // The info panel, its clicks and the placement cursor treat a group of
 // builders as its lead alone: for the duration of those calls the selection
-// count reads 1 (the lead is sel[0]). Nothing in them changes the selection.
-// The panel's second page (World+0x6c, the stance page) keeps the group view.
+// count reads 1, and the lead stands first (swapped with sel[0], and back).
+// Nothing in them changes the selection. The panel's second page (World+0x6c,
+// the stance page) keeps the group view.
 void* g_shownLead;  // the lead while its panel is drawn for the group
 int g_groupCount;
 
 struct AsLead {
     void* w = nullptr;
-    int n = 0;
+    int n = 0, swapped = -1;  // where the lead stood, if not first
     explicit AsLead(bool on) {
         void* lead = on ? GroupLead() : nullptr;
         if (!lead) return;
         w = World();
         n = F<int>(w, game::WorldSelCount);
+        void** sel = F<void**>(w, 0x80);
+        for (int i = 1; i < n; ++i)
+            if (sel[i] == lead) std::swap(sel[0], sel[i]), swapped = i;
         F<int>(w, game::WorldSelCount) = 1;
         g_shownLead = lead;
         g_groupCount = n;
@@ -687,6 +700,8 @@ struct AsLead {
     ~AsLead() {
         if (!w) return;
         F<int>(w, game::WorldSelCount) = n;
+        void** sel = F<void**>(w, 0x80);
+        if (swapped > 0 && swapped < n) std::swap(sel[0], sel[swapped]);
         g_shownLead = nullptr;
     }
 };
