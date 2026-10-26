@@ -296,6 +296,29 @@ One entry per investigation, oldest first. Each says what the question was, how 
 - **Dead end:** fitting every translation into its English's width. Most text has room to spare ("Quitter" against "Quit" on a full menu row), so squeezing is opt-in per string (`~`) for the tight spots the screenshots show.
 - **Detail:** [`src/lang.cpp`](../src/lang.cpp), [`src/fonts.cpp`](../src/fonts.cpp), [`lang/README.txt`](../lang/README.txt), [`tools/lang_check.py`](../tools/lang_check.py).
 
+### 2026-10-25: Pathfinding
+
+- **Question:** can units get a whole-map planner without changing how they walk, and stay in sync in multiplayer?
+- **Found:**
+  - One place turns "next waypoint" into steps: `PlanNextLeg 0x49d130`, called from Think at `0x49c00e`. Hooking that call (and `OnBlocked`, vtable +0x90) is enough. Stepping and collision stay stock, so speeds are unchanged.
+  - Collision is two tests: an inclusive tile box of ±radius against the terrain bits, and a strict circle test against things. Three thing classes have their own multi-circle shapes (ruins, devices with shape tables such as the Summoner, and the Warp). A 16 px lattice storing each node's clearance radius, plus a margin of half a lattice diagonal, routes conservatively; every step a unit gets is checked exactly.
+  - An oracle test compares the grid with the game's own `IsRectBlocked` and `FindThingAt` at a million points. It confirmed the stale-mask bug: about 15,000 points differ on 4 Corners.
+  - The fog maps are simulation state on every machine, so "enemy buildings count once seen" stays deterministic.
+  - The multiplayer handshake rides on SetStance to thing 0xffff, which the executor ignores.
+- **Traps:**
+  - Advancing a route when steps are *given* rather than *walked*: a unit blocked halfway thought it had arrived.
+  - Clearing a unit's steps also clears its blocked flag, which the other unit of a head-on pair reads.
+  - `far` and `near` are macros in the Windows headers.
+- **Detail:** [`re/pathfinding.md`](../re/pathfinding.md) §10, [`src/pathing.cpp`](../src/pathing.cpp), [`src/pathing_nav.cpp`](../src/pathing_nav.cpp), [`tools/path_check.py`](../tools/path_check.py).
+
+### 2026-10-25: The Viper's missing body
+
+- **Found:** at some smooth-zoom steps the Viper (0x1f) was drawn as its head gizmo only. Six hovering Vipers through the zoom steps (autopilot mode 19, target 1) showed the body missing exactly when the frame width was 2 mod 4 (1066, 1270, 1678, 1930) and present when it was a multiple of 4.
+  - The body goes through the shared picture routine (`DrawBody 0x402520` → `0x4675f0`, frame `0x403510`); the gizmos use their own (`0x4032d0`, `0x409f80`).
+  - The game's ports are 8-bit DIBs with DWORD-aligned rows, and the 1998 frame sizes (640, 800, 1024) were always multiples of 4.
+- **Fix:** smooth-zoom frames (`zoom.cpp PlanFor`) and the stepped levels round the width up to a multiple of 4.
+- **Lesson:** a sprite that vanishes "at certain zooms" with no zoom trend: look at the frame size's arithmetic, not at the zoom.
+
 ## What isn't published, and why
 
 The repository publishes **addresses, names, struct layouts, notes and our own code**. These stay on the developer's machine:

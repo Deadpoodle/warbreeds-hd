@@ -216,9 +216,22 @@ Everything above still works the same unless noted. Most additions can be switch
 | Click a Shaman onto your unfinished or damaged building | It goes and finishes or repairs it (the game's Repair order). The building must be powered and switched on. |
 | Plant mode, click fogged ground | The Shaman walks there and plants. Buildings could always be placed in fog. In build or plant mode the cursor over fog shows that the Shaman will walk. |
 | Several Shamans selected (and nothing else) | The panel shows the build, plant, upgrade and repair buttons, and <kbd>B</kbd>, <kbd>P</kbd>, <kbd>R</kbd>, <kbd>U</kbd> and quick-build work. The original offered them only with exactly one Shaman. Settings → Controls → Group Build. |
-| Place a building with several Shamans | The nearest Shaman starts it. The others walk to its edge and help build it as soon as it stands. If the building can't go there, nothing happens and you stay in build mode, as with one Shaman. |
+| Place a building with several Shamans | With Pathfinding: Improved, they all walk to the site, each works at its own spot round it, and they start it together (four Shamans start it in about a quarter of the time), then all build it on. With Original, the nearest Shaman starts it and the others walk to its edge and help build it as soon as it stands. If the building can't go there, nothing happens and you stay in build mode, as with one Shaman. |
 | Place a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower | Its range ring shows at the cursor, in the same running sparks as the rings of the field buildings already built. A Refinery collects every energy pod inside it (300 px); a Relay powers buildings within 275 px, a Relay+ 400 px. A Turret picks targets by itself within about 272 px and a Plasma Cannon about 336 px (both keep firing at a target out to 400 px); an Electric Tower zaps within 226 px. Settings → Controls → Placement Range. |
 | Plant, repair or cancel with several Shamans | The nearest Shaman plants the pod. Repair sends them all. The panel's cancel stops them all. Upgrade and Get Genes act on the first Shaman only. |
+
+### Pathfinding
+
+> Settings → Controls → Pathfinding. Improved is the default; Original is the 1998 behaviour. It takes effect from the next mission. In multiplayer everyone uses the host's choice.
+
+| Order | Improved |
+|---|---|
+| Move anywhere | The unit plans its whole route around rocks, cliffs, water and buildings, instead of heading straight for the goal and getting stuck in dead ends. It replans when it sees a building in its way. |
+| Move to a spot it can't reach | It goes to the nearest spot it can reach and stops there. |
+| Move a group | Each unit gets its own spot in a loose cluster around the click. Formation moves (<kbd>Space</kbd>) are unchanged. |
+| Group build (several builders) | Every builder walks to the site and works at its own spot round it; they start the building together, then all build it on. |
+| A building site | Once a builder is on its way, your other units keep off the site; an idle one standing on it steps off. |
+| A unit in the way | An idle friend is asked to step aside. A jam: wait about a second, then go another way if it isn't much longer. Two units meeting head-on in a narrow pass: one goes round. No progress for 10 seconds: the unit stops. |
 
 ### Modern mouse scheme
 

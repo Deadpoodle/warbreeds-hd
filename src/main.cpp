@@ -27,6 +27,7 @@
 #include "headless.h"
 #include "fonts.h"
 #include "controls.h"
+#include "pathing.h"
 #include "editor/editor.h"
 #include "skirmish.h"
 #include "skirmish_save.h"
@@ -275,6 +276,15 @@ void WriteDefaultIni() {
         ";             build or repair mode); the minimap's right-click still moves there\n"
         "MouseScheme=classic\n"
         "\n"
+        "[Gameplay]\n"
+        "; How units find their way: improved (whole-map routes around walls and buildings,\n"
+        "; unreachable clicks go to the nearest reachable spot, groups spread out) or original\n"
+        "; (the 1998 behaviour). Takes effect from the next mission; multiplayer uses original.\n"
+        "Pathfinding=improved\n"
+        "; 1: a working Listener shows cloaked enemy Shadows and Reavers within about 480 px\n"
+        "; of it as blinking dots on the minimap (they stay invisible on the battlefield).\n"
+        "ListenerDetect=0\n"
+        "\n"
         "[Camera]\n"
         "; Arrow keys scroll the camera smoothly (instead of the original big jumps).\n"
         "SmoothKeys=1\n"
@@ -382,7 +392,12 @@ void ApplyControlOptions() {
     o.modernMouse = _stricmp(IniGet("Input", "MouseScheme", "classic").c_str(), "modern") == 0;
     o.groupBuild = IniInt("Input", "GroupBuild", 1) != 0;
     o.placementRange = IniInt("Input", "PlacementRange", 1) != 0;
+    o.listenerDetect = IniInt("Gameplay", "ListenerDetect", 0) != 0;
     controls::SetOptions(o);
+}
+
+void ApplyPathingOption() {
+    pathing::SetPreference(_stricmp(IniGet("Gameplay", "Pathfinding", "improved").c_str(), "original") != 0);
 }
 
 // The font follows the language: a language with its release's fonts
@@ -432,6 +447,7 @@ void ApplyLiveSettings() {
     ApplyMovieOptions();
     ApplyFontOption();
     ApplyControlOptions();
+    ApplyPathingOption();
     std::string language = IniGet("Display", "Language", "en");
     if (_stricmp(language.c_str(), lang::Current().c_str()) != 0) lang::Set(language);
     voices::Set(IniGet("Display", "Voices", "auto"), language);
@@ -483,11 +499,12 @@ void LoadConfig() {
 
     if (g_cfg.base.w <= 0 || g_cfg.base.h <= 0) g_cfg.base = DesktopSize();
 
-    // Zoom levels -> resolutions (even sizes, at least 640x480).
+    // Zoom levels -> resolutions (width a multiple of 4, height even, at least 640x480).
+    // A width that isn't a multiple of 4 loses the Viper's body (see zoom.cpp PlanFor).
     double bestDiff = 1e9;
     std::vector<std::pair<Res, double>> tmp;
     for (double m : g_cfg.levels) {
-        Res r{(int)lround(g_cfg.base.w / m) & ~1, (int)lround(g_cfg.base.h / m) & ~1};
+        Res r{((int)lround(g_cfg.base.w / m) + 3) & ~3, (int)lround(g_cfg.base.h / m) & ~1};
         r.w = std::max(r.w, 640);
         r.h = std::max(r.h, 480);
         tmp.push_back({r, m});
@@ -1018,6 +1035,14 @@ void Init(HMODULE self) {
     if (!IniInt("Debug", "NoMenu", 0)) menu::Install({Log, IniPath(), g_dir, ApplyLiveSettings});
     controls::Install(Log);
     ApplyControlOptions();
+    // [Debug] NoPathing=1: no pathing hooks at all (the baseline for Original-mode checks).
+    if (!IniInt("Debug", "NoPathing", 0)) {
+        pathing::Debug pd;
+        pd.hash = IniInt("Debug", "PathHash", 0) != 0;
+        pd.test = IniInt("Debug", "PathTest", 0);
+        pathing::Install(Log, pd);
+        ApplyPathingOption();
+    }
     editor::Install({Log, g_dir, IniInt("Debug", "Autopilot", 0) != 0});  // after controls: its mouse hooks chain
     skirmish::Install(Log);
     teams::Install(Log);

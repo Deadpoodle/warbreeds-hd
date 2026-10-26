@@ -138,8 +138,9 @@ Controls (full list in Controls.html)
   - Builders clicked onto your unfinished or damaged building finish or
     repair it.
   - Group build: with several builders selected, the build, plant and repair
-    buttons and keys still work. The nearest one starts the building and the
-    others walk over and help build it.
+    buttons and keys still work. They all build it (with Improved
+    pathfinding they start it together; with Original the nearest starts it
+    and the others help once it stands).
   - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric
     Tower shows its range ring at the cursor, like the rings of the
     Refineries and Relays already built: what a Refinery collects (every
@@ -149,6 +150,36 @@ Controls (full list in Controls.html)
   - Optional Modern mouse scheme: left-click selects, right-click gives
     orders. Classic (the original) is the default.
   - Alt+F4 quits.
+
+Pathfinding (Settings > Controls > Pathfinding: Improved, the default, or
+Original)
+  - Units plan their whole route across the map, around rocks, cliffs,
+    water and buildings, instead of walking into dead ends and jittering.
+  - They know the terrain and rocks even under fog, learn about enemy
+    buildings when they see them, and replan when one blocks the way.
+  - A click on a spot units can't reach sends them to the nearest spot they
+    can reach, where they stop.
+  - A group gets a spot each around the click. Formation moves (Space) are
+    unchanged.
+  - An idle friend in the way is asked to step aside. In a jam a unit waits
+    about a second, then goes another way if that isn't much longer. A unit
+    that makes no progress for 10 seconds stops.
+  - A building site is kept clear: the player's other units keep off it
+    once a builder is on its way, so they can't make the building fail.
+  - Group build: every selected builder walks to the site, takes its own
+    spot round it with the build animation, and they start the building
+    together (four start it in about a quarter of the time), then all build
+    it on. With Original, the others wait until its first stage is up.
+  - Unit speeds are unchanged; flyers fly as before.
+  - Also fixes the 1998 bug that misread which tiles are blocked, and the
+    one that let units and buildings onto animated water.
+  - Applies to every unit, the computer players' too, from the next
+    mission. In multiplayer everyone uses the host's choice (Original if a
+    player has an older WarBreeds HD).
+
+Skirmish objectives
+  - The Esc menu's Objectives lists every enemy to defeat, with a green
+    check beside each one you have beaten.
 
 Fixes
   - A 1998 crash in long games: the game's memory of an enemy building seen

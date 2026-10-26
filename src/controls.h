@@ -13,9 +13,15 @@
 //     orders / cancels a mode;
 //   - group build (option): with several builders (and nothing else) selected
 //     the panel and B/P/R/U keys work as for one; a placed building is started
-//     by the nearest of them and the others join it (Repair) once it stands;
+//     by the nearest of them and the others join it (Repair) once it stands
+//     (with Improved pathfinding all of them get the Build and start it
+//     together, see pathing.cpp);
 //   - placement range (option): a Refinery, Relay, Relay+, Turret, Plasma Cannon
-//     or Electric Tower being placed shows its range ring at the cursor.
+//     or Electric Tower being placed shows its range ring at the cursor;
+//   - double-click on an own unit selects every own unit of that type on screen;
+//   - right-click (Modern scheme) with a Gene Lab selected sets its rally point;
+//   - Listener (option): cloaked Shadows and Reavers within 480 px of an own
+//     working Listener blink on the minimap.
 
 namespace controls {
 
@@ -26,6 +32,7 @@ struct Options {
     bool modernMouse = false;  // left selects, right orders (Classic: left does both)
     bool groupBuild = true;    // several selected builders build together
     bool placementRange = true;  // a Refinery/Relay being placed shows its range ring
+    bool listenerDetect = false;  // cloaked enemies near an own Listener blink on the minimap
 };
 
 void Install(void (*log)(const char*, ...));

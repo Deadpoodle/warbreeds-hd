@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "game.h"
+#include "pathing.h"
 
 namespace controls {
 namespace {
@@ -24,6 +25,7 @@ constexpr uintptr_t kSlotRButtonUp = game::VtblSGame + 0x28, kRButtonUp = 0x47e6
 constexpr uintptr_t kSceneRButtonUp = 0x435a70;  // base the stock RButtonUp calls first (x, y)
 constexpr uintptr_t kSlotKeyDown = game::VtblSGame + 0x34, kKeyDown = 0x47f000;
 constexpr uintptr_t kSlotKeyUp = game::VtblSGame + 0x38, kKeyUp = 0x47fd90;
+constexpr uintptr_t kSlotDoubleClick = game::VtblSGame + 0x30, kDoubleClick = 0x47eea0;  // (x, y): replaces the 2nd LDown
 
 constexpr uintptr_t kWorld = 0x579278;     // World*
 constexpr uintptr_t kCommands = 0x579260;  // every gameplay order goes through this object
@@ -87,12 +89,26 @@ constexpr uintptr_t kWorldInPanel = 0x4497d0;  // World short(sx, sy): inside th
 constexpr uintptr_t kRadar = 0x5517b0, kRadarShown = 0x433e10, kRadarHit = 0x4335b0;
 constexpr uintptr_t kToWorldX = 0x47ec60, kToWorldY = 0x47ec80;  // SGame int(screen coord)
 constexpr uintptr_t kCmdRepair = 0x88;  // Commands vtable: (short builderId, short targetId)
+constexpr uintptr_t kCmdSetRally = 0x4c;  // Commands vtable: (short labId, PtList* path, IPixelC* loopPt)
+constexpr uintptr_t kComplete = 0x2c;     // ADevice short: 1 = construction finished
 
 template <typename T>
 T& F(void* p, uintptr_t off) {
     return *(T*)((char*)p + off);
 }
+struct Pt {
+    uint32_t vtbl;
+    short x, y;
+};
+struct PtList {
+    uint32_t vtbl;
+    Pt* data;
+    uint32_t count, cap;
+};
+
 void* World() { return *(void**)kWorld; }
+void* Cmd() { return *(void**)kCommands; }
+void* Slot(uintptr_t off) { return (*(void***)Cmd())[off / 4]; }
 void* LocalPlayer() { return ((void* (*)())kLocalPlayer)(); }
 int Type(void* t) { return F<int>(t, kType); }
 bool Mine(void* t) { return F<void*>(t, kOwner) == LocalPlayer(); }
@@ -411,6 +427,20 @@ short __thiscall HookRButtonUp(void* sg, int x, int y) {
     void* obj = PickAt(sg, x, y, rect);
     int n;
     void** sel = Selection(n);
+    // One own Gene Lab or Gene Lab+ selected: the right-click sets its rally point
+    // (the stock order for a building does nothing; Classic's left-click and Tab
+    // set it through Cmd+0x4c SetRallyPoint(labId, path, loop point)).
+    if (n == 1 && sel[0] && Mine(sel[0]) && (Type(sel[0]) == 0x2d || Type(sel[0]) == 0x35) &&
+        F<short>(sel[0], kComplete) == 1) {
+        Pt pt{0x5031c4, (short)((int(__thiscall*)(void*, int))kToWorldX)(sg, (short)x),
+              (short)((int(__thiscall*)(void*, int))kToWorldY)(sg, (short)y)};
+        PtList path{0x5033d4, &pt, 1, 1};
+        Pt loop{0x5031c4, -1, -1};  // no patrol loop
+        ((void(__thiscall*)(void*, int, PtList*, Pt*))Slot(kCmdSetRally))(Cmd(), F<short>(sel[0], kId), &path, &loop);
+        ((void(__cdecl*)())kClickSound)();
+        g_log("controls: rally point of Gene Lab %d set to %d,%d (right-click)", F<short>(sel[0], kId), pt.x, pt.y);
+        return 1;
+    }
     int kind = ((int(__thiscall*)(void*))kWorldSelKind)(w);
     if (obj && IsDevice(obj) && Mine(obj) && (Type(obj) == 0x34 || Type(obj) == 0x39) && kind >= 1 && kind <= 3) {
         WorldClick(sg, rect, x, y, 0);  // the stock "enter" order
@@ -453,7 +483,96 @@ bool ShiftBox(void* sg, int x, int y) {
     return true;
 }
 
+// Double-click on an own unit: every own unit of that type on screen is selected
+// (both schemes). The double-click replaces the second button-down; the
+// button-up after it would select the clicked unit alone again, so it is skipped.
+bool g_skipNextUp;
+
+// --- Listener: cloaked enemies on the minimap --------------------------------
+// The Shadow (0x1c) and Reaver (0x1e) cloak (ACreatureBody +0x40 = 0; vtbl+0x60
+// IsCloaked), and the minimap colour (World 0x4340c0(id), its one call 0x433c8c)
+// is then 0: terrain. Within 480 px of one of the local player's working
+// Listeners (complete, switched on, powered) such a unit blinks on the minimap
+// in the colour it would have uncloaked. Display only: nothing on the battlefield.
+constexpr uintptr_t kMinimapColourCall = 0x433c8c, kMinimapColour = 0x4340c0;
+constexpr uintptr_t kGameTurn = 0x4708b0;  // cdecl int(): the game turn
+constexpr int kListenerReach = 480;
+
+struct Listener {
+    short x, y;
+};
+Listener g_listeners[32];
+int g_listenerCount, g_listenerTurn = -1;
+
+void FindListeners(void* w, int turn) {
+    g_listenerTurn = turn;
+    g_listenerCount = 0;
+    void** things = F<void**>(w, 0x10);
+    int count = F<int>(w, 0x14);
+    for (int i = 0; i < count && g_listenerCount < 32; ++i) {
+        void* t = things[i];
+        if (!t || Type(t) != 0x33 || !Mine(t)) continue;
+        if (F<short>(t, 0x2c) != 1 || F<short>(t, kSwitchedOn) != 1 || F<short>(t, kUnpowered) != 0) continue;
+        g_listeners[g_listenerCount++] = {F<short>(t, 0x14), F<short>(t, 0x16)};
+    }
+}
+
+uint8_t __fastcall HookMinimapColour(void* w, void*, int id) {
+    typedef uint8_t(__thiscall * Colour_t)(void*, int);
+    uint8_t c = ((Colour_t)kMinimapColour)(w, id);
+    if (c || !g_opt.listenerDetect) return c;
+    unsigned short i = (unsigned short)id;
+    if (i >= (unsigned)F<int>(w, 0x14)) return c;
+    char* t = F<char**>(w, 0x10)[i];
+    if (!t || (Type(t) != 0x1c && Type(t) != 0x1e) || Mine(t)) return c;
+    if (((short(__thiscall*)(void*))(*(void***)t)[0x60 / 4])(t) != 1) return c;  // not cloaked: fogged, say
+    int turn = ((int (*)())kGameTurn)();
+    if (turn != g_listenerTurn) FindListeners(w, turn);
+    if (!(turn >> 3 & 1)) return c;  // the off half of the blink
+    for (int k = 0; k < g_listenerCount; ++k) {
+        int dx = F<short>(t, 0x14) - g_listeners[k].x, dy = F<short>(t, 0x16) - g_listeners[k].y;
+        if (dx * dx + dy * dy > kListenerReach * kListenerReach) continue;
+        uint8_t timer = F<uint8_t>(t, 0x40);  // the colour it would have uncloaked
+        F<uint8_t>(t, 0x40) = 1;
+        c = ((Colour_t)kMinimapColour)(w, id);
+        F<uint8_t>(t, 0x40) = timer;
+        return c;
+    }
+    return c;
+}
+
+short __thiscall HookDoubleClick(void* sg, int x, int y) {
+    void* w = World();
+    short rect[4];
+    bool world = w && F<short>(sg, kInputOff) != 1 && !OnMinimap((short)x, (short)y) &&
+                 ((short(__thiscall*)(void*, int, int))kWorldInPanel)(w, (short)x, (short)y) != 1;
+    void* obj = world ? PickAt(sg, x, y, rect) : nullptr;
+    if (!obj || !IsCreature(obj) || !Mine(obj)) return ((Handler_t)kDoubleClick)(sg, x, y);
+    int type = Type(obj), picked = 0;
+    ClearSelection();
+    void** things = F<void**>(w, 0x10);
+    int count = F<int>(w, 0x14);
+    for (int i = 0; i < count; ++i) {
+        void* t = things[i];
+        if (!t || Type(t) != type || !Mine(t)) continue;
+        short tx = F<short>(t, 0x14), ty = F<short>(t, 0x16);
+        if (tx < rect[0] || ty < rect[1] || tx > rect[2] || ty > rect[3]) continue;  // the visible world rect
+        ((void(__thiscall*)(void*, void*))kWorldSelect)(w, t);
+        ++picked;
+    }
+    ((void(__thiscall*)(void*, int))kWorldAck)(w, 0);
+    g_skipNextUp = true;
+    g_log("controls: double-click selected %d own units of type %#x on screen", picked, type);
+    return 1;
+}
+
 short __thiscall HookLButtonUp(void* sg, int x, int y) {
+    if (g_skipNextUp) {  // the button-up of a double-click that selected a unit type
+        g_skipNextUp = false;
+        ((Handler_t)kSceneLButtonUp)(sg, x, y);
+        F<short>(sg, kClickPending) = 0;
+        return 1;
+    }
     if (ShiftBox(sg, x, y)) return 1;
     if (g_opt.modernMouse) {
         if (ModernLeftUp(sg, x, y)) return 1;
@@ -503,15 +622,6 @@ bool OnBattlefield(int sx, int sy) {
     return true;
 }
 
-struct Pt {
-    uint32_t vtbl;
-    short x, y;
-};
-struct PtList {
-    uint32_t vtbl;
-    Pt* data;
-    uint32_t count, cap;
-};
 
 typedef short(__thiscall* ShamanClick_t)(void* sh, int sx, int sy, int wx, int wy, int zoom);
 
@@ -589,8 +699,6 @@ struct IdList {
     uint32_t count, cap;
 };
 
-void* Cmd() { return *(void**)kCommands; }
-void* Slot(uintptr_t off) { return (*(void***)Cmd())[off / 4]; }
 
 void MoveTo(void* unit, short x, short y) {
     Pt pt{0x5031c4, x, y};
@@ -651,6 +759,22 @@ int g_buildCount;
 void StartGroupBuild(void* founder, int type, short x, short y) {
     int n;
     void** sel = Selection(n);
+    // Improved pathfinding: every builder gets the same Build order. They all walk
+    // to the site, work at their own spots round it with the build animation, and
+    // start it together; the game turn (pathing.cpp) pools their work and has the
+    // others repair (build) it once it stands.
+    if (pathing::Improved()) {
+        int sent = 0;
+        for (int i = 0; i < n; ++i)
+            if (sel[i] != founder && IsBuilder(sel[i]) && Mine(sel[i])) {
+                ((void(__thiscall*)(void*, int, int, int, int))Slot(game::CmdBuild))(Cmd(), F<short>(sel[i], kId), type, x,
+                                                                                    y);
+                ++sent;
+            }
+        g_log("controls: group build together: type %#x at %d,%d by builder %d and %d more", type, x, y,
+              F<short>(founder, kId), sent);
+        return;
+    }
     if (g_buildCount == 8) g_builds[0] = g_builds[--g_buildCount];  // drop the oldest
     GroupBuild& b = g_builds[g_buildCount++];
     b = GroupBuild{};
@@ -973,6 +1097,7 @@ void Install(void (*log)(const char*, ...)) {
               PatchSlot(kSlotKeyUp, kKeyUp, (void*)&HookKeyUp) &&
               PatchSlot(kSlotLButtonUp, kLButtonUp, (void*)&HookLButtonUp) &&
               PatchSlot(kSlotRButtonUp, kRButtonUp, (void*)&HookRButtonUp) &&
+              PatchSlot(kSlotDoubleClick, kDoubleClick, (void*)&HookDoubleClick) &&
               PatchSlot(kSlotShamanDown, kShamanDown, (void*)&HookShamanDown) &&
               PatchSlot(kSlotShamanCursor, kShamanCursor, (void*)&HookShamanCursor);
     log("controls: %s", ok ? "installed" : "FAILED (unexpected SGame vtable)");
@@ -988,6 +1113,8 @@ void Install(void (*log)(const char*, ...)) {
     log("controls: placement range %s", range ? "installed" : "FAILED (unexpected code)");
     bool memory = PatchSlot(kSlotMemoryTick, kMemoryTick, (void*)&HookMemoryTick);
     log("controls: building memory guard %s", memory ? "installed" : "FAILED (unexpected vtable)");
+    bool listener = PatchCall(kMinimapColourCall, kMinimapColour, (void*)&HookMinimapColour);
+    log("controls: Listener minimap detection %s", listener ? "installed" : "FAILED (unexpected code)");
 }
 
 void SetOptions(const Options& o) { g_opt = o; }

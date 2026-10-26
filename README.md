@@ -8,6 +8,7 @@ An unofficial patch that makes **WarBreeds** (Red Orb Entertainment, 1998) run w
 - working cutscenes;
 - a Settings page;
 - modern controls;
+- units that find their way round walls, buildings and each other (improved pathfinding, or the original);
 - the official map editor, built into the game;
 - allied teams and colour choice in skirmish, and saving a skirmish;
 - campaign progress that survives quitting;
@@ -102,6 +103,8 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Saving a skirmish.** The Esc menu in a skirmish now has Load Game and Save Game, as in a campaign. The original game could save a skirmish all along but left the two buttons out, and a saved skirmish would have come back under campaign rules: the first player as you, clan colours instead of the ones you chose, and the result screen leading to the main menu. WarBreeds HD writes a small `<name>.wbs.hd` beside each skirmish save (who you were, the skirmish setup and where you were looking), and a skirmish save loads as a skirmish, teams and all, from the Esc menu or the main menu. The `.wbs` itself is the game's own format. Keep the two files together (copying a save to another PC, for instance): without its `.hd`, a skirmish save loads as the original game would load it. While you watch an ally after your own defeat, Save Game isn't available.
 
+**Skirmish objectives.** The Esc menu's Objectives lists every enemy to defeat ("Defeat the Kelika"), with a green check beside each one you have beaten. The original showed "no explicit objectives".
+
 **Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
 ## Languages
@@ -192,11 +195,23 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Shift+drag adds a box of units to the selection.
 - Quick-build: B, then a letter (R Refinery, T Turret, …); P, then 1–3 for pods.
 - Builders clicked onto your own unfinished or damaged building go and finish or repair it.
-- Group build: with several builders selected, the build, plant and repair buttons and keys still work. The nearest builder starts the building and the others walk over and help build it.
+- Group build: with several builders selected, the build, plant and repair buttons and keys still work. They all build it: with Improved pathfinding they start it together; with Original the nearest starts it and the others help once it stands.
 - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower shows its range ring at the cursor, in the game's own style: what a Refinery collects, what a Relay powers, how far a turret picks targets by itself. Settings > Controls > Placement Range.
 - Pods can be planted in fog: the Shaman walks there and plants.
 - An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default.
 - Alt+F4 quits.
+
+**Pathfinding** (Settings > Controls > Pathfinding: Improved, the default, or Original)
+- Units plan their whole route across the map, around rocks, cliffs, water and buildings. The 1998 planner only looked a few tiles ahead, so units walked into U- and C-shaped dead ends and jittered there.
+- Units know the map's terrain and rocks even under fog. They learn about enemy buildings when they see them, and replan as soon as one blocks the way.
+- A click on a spot units can't reach (rocks, water, inside a building, an island) sends them to the nearest spot they can reach, where they stop. The original kept them trying, and loosened what counted as "arrived" until they gave up.
+- A group gets a spot each, in a loose cluster around the click, instead of all fighting over one point. Formation moves (Space) are unchanged.
+- Traffic: a unit asks an idle friend in its way to step aside. In a jam it waits about a second, then goes another way if that isn't much longer. Two units meeting head-on in a narrow pass don't deadlock: one goes round. A unit that makes no progress for 10 seconds stops.
+- Building sites: once a builder is on its way to build, the player's other units keep off the site, so a unit standing in the way can't make the building fail. An idle unit already on it steps off.
+- Group build together: with several builders selected, every one of them walks to the site, takes its own spot round it with the build animation, and they start the building together (four builders start it in about a quarter of the time). When it stands they all build it on. With Original, the others wait beside the site until the first stage is up, as before.
+- Units walk at their original speeds; only the routes change. Flyers fly as before.
+- Also fixes the 1998 collision bug that misread which tiles are blocked (a stale value on every other row of tiles), and the one that let units and buildings onto animated water.
+- Applies to every unit, the computer players' too. Takes effect from the next mission. In multiplayer everyone uses the host's choice; if any player has an older WarBreeds HD, the game uses Original.
 
 **Fixes**
 - Pins the game to one CPU core. The 1998 timer code hangs on multi-core CPUs, and GOG's build does the same. Each running copy takes a core of its own, so two copies on one PC don't slow each other down.
@@ -243,7 +258,7 @@ The game imports `WSOCK32.dll`, so a proxy `wsock32.dll` in the game folder is l
 
 | Path | What's there |
 |---|---|
-| `src/` | The patch: renderer (`render/`), zoom, interface layers, menu and Settings page, controls, fonts, cutscene player (`movie/`), map editor (`editor/`), skirmish teams and AI settings, campaign progress, the multiplayer fix |
+| `src/` | The patch: renderer (`render/`), zoom, interface layers, menu and Settings page, controls, the improved pathfinding (`pathing.cpp`, `pathing_nav.cpp`), fonts, cutscene player (`movie/`), map editor (`editor/`), skirmish teams and AI settings, campaign progress, the multiplayer fix |
 | `tools/` | The headless test harness (`autotest.sh`, `mptest.sh`, `smoke.ps1` and the `*_check.py` checkers), the Ghidra scripts (`ghidra/`), the disassembly helper (`wbre.py`), Mohawk `.MHK` image extraction (`mhkimg.py`), the map file reader (`wbm.py`), the menu-art pipeline, packaging |
 | `re/` | Reverse-engineering reports, indexed by [re/subsystems.md](re/subsystems.md), and the name and type databases (`names.tsv`, `types.tsv`) |
 | `docs/` | The [reverse-engineering guide and log](docs/reverse-engineering.md), the controls reference, the [nice-to-have list](docs/nice-to-have.md) and screenshots |

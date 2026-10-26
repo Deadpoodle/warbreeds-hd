@@ -273,8 +273,18 @@ void __fastcall ResolveStyle(void* self, void*, int style, int* slot, int* colou
     }
     bool plain = style >= kNoOutline;
     if (plain) style -= kNoOutline;
+    // The green style: style 1's face, in text colour 30, whose record (0x550910[30]:
+    // the palette index at +4) points at the palette's bright green 0xf9 only while a
+    // green text draws; every other style puts its own dark green (0xfc) back.
+    bool green = style == kStyleGreen;
+    if (green) style = 1;
+    uint16_t* rec30 = ((uint16_t**)0x550910)[30];
+    static uint16_t s_original;
+    if (rec30 && !s_original && rec30[2] != 0xf9) s_original = rec30[2];
+    if (rec30 && s_original) rec30[2] = green ? 0xf9 : s_original;
     ((void(__thiscall*)(void*, int, int*, int*, int*, short*))kResolveStyle)(
         self, style == kStyleReleaseBold ? 2 : style, slot, colour, outline, flag);
+    if (green) *colour = 30;
     if (style == 2 && g_mode == kRelease && g_releaseReal) *slot = 0;  // IntReg10's slot
     if (plain) *flag = 0;
 }

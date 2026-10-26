@@ -5,6 +5,7 @@
 // touched (combine with [Debug] Headless=1 to keep the window off-screen).
 #include "autopilot.h"
 #include "controls.h"
+#include "pathing.h"
 
 #include <windows.h>
 
@@ -59,6 +60,21 @@ void LogView() {
     g_h.log("autopilot:   camera %d,%d view %dx%d zoomedOut %d screen %dx%d", sh(game::SGameCameraX),
             sh(game::SGameCameraY), sh(game::SGameViewW), sh(game::SGameViewH), sh(game::SGameZoomedOut),
             game::at<short>(game::ScreenRight), game::at<short>(game::ScreenBottom));
+    // Mode 19 (flyers): where each own flyer is, and its drawing state.
+    if (g_h.mode == 19) {
+        char* w = *(char**)0x579278;
+        void* me = ((void* (*)())0x46f8e0)();
+        char** things = *(char***)(w + 0x10);
+        int count = *(int*)(w + 0x14);
+        for (int i = 0; i < count; ++i) {
+            char* t = things[i];
+            int ty = t ? *(int*)(t + 0x18) : -1;
+            if (!t || *(void**)(t + 0x20) != me || !(ty == 4 || ty == 0xd || ty == 0x1f)) continue;
+            g_h.log("autopilot:   flyer id %d type %#x at %d,%d top-left %d,%d facing %d anim %d frame %d", *(short*)(t + 0x1c), ty,
+                    *(short*)(t + 0x14), *(short*)(t + 0x16), *(short*)(t + 0xa), *(short*)(t + 0xc), *(uint8_t*)(t + 0x48),
+                    *(int*)(t + 0x88), *(uint8_t*)(t + 0x8c));
+        }
+    }
     // Mode 12 (group build): every own builder, selected or not.
     if (g_h.mode == 12) {
         char* w = *(char**)0x579278;
@@ -3246,8 +3262,34 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             int turn = ((int (*)())0x4708b0)();
             Save(("mp" + std::to_string(g_h.target) + "-in-game-" + std::to_string(acted)).c_str());
             g_h.log("autopilot: multiplayer: in a game as player %d, turn %d", me ? *(short*)(me + 4) : -1, turn);
+            if (acted == 2 && me) {  // every own creature sent to the map's middle (the networked Move), for the pathing
+                char* w = *(char**)0x579278;
+                char** things = *(char***)(w + 0x10);
+                std::vector<short> ids;
+                for (int i = 0; i < *(int*)(w + 0x14); ++i)
+                    if (things[i] && *(char**)(things[i] + 0x20) == me && *(int*)(things[i] + 0x18) <= 0x2b)
+                        ids.push_back(*(short*)(things[i] + 0x1c));
+                struct {
+                    uint32_t vtbl;
+                    short x, y;
+                } pt{0x5031c4, (short)(*(uint8_t*)0x566db4 * 16), (short)(*(uint8_t*)0x566db5 * 16)};
+                struct {
+                    uint32_t vtbl;
+                    void* data;
+                    uint32_t count, cap;
+                } pts{0x5033d4, &pt, 1, 1};
+                struct {
+                    uint32_t vtbl;
+                    short* data;
+                    uint32_t count, cap;
+                } list{0x5030dc, ids.data(), (uint32_t)ids.size(), (uint32_t)ids.size()};
+                void* cmd = *(void**)0x579260;
+                if (!ids.empty())
+                    ((void(__thiscall*)(void*, void*, void*, int))(*(void***)cmd)[0x34 / 4])(cmd, &list, &pts, 0);
+                g_h.log("autopilot: multiplayer: %d own units sent to %d,%d", (int)ids.size(), pt.x, pt.y);
+            }
             ++acted;
-        } else if (scene == ".?AVSGame@@" && in > 42000 && acted == 4) {
+        } else if (scene == ".?AVSGame@@" && in > 100000 && acted == 4) {
             g_h.log("autopilot: done, quitting");
             PostQuitMessage(0);
             acted = 5;
@@ -3339,6 +3381,49 @@ void Tick(const std::string& scene, int frameW, int frameH) {
     } else if (scene == ".?AVSMultiSetup@@") {
         if (g_step == 0 && t > 2000) { Click({437, 457}); ++g_step; }  // Start
     } else if (scene == ".?AVSGame@@") {
+        // Mode 26, the pathing tests: [Debug] PathTest picks the scenario, which runs in
+        // the game turn (pathing.cpp) and logs its own results; quit once it is done.
+        if (g_h.mode == 26 && g_h.target == 5) {  // the skirmish Objectives: Esc menu, Objectives, a shot
+            if (g_step == 0 && t > 4000) {
+                // One computer player defeated first (APlayerRegistry::DeletePlayer 0x43abf0(id, notify,
+                // removeThings), as a defeat does), so its line gets the check mark.
+                char* reg = *(char**)0x57927c;
+                void* me = ((void* (*)())0x46f8e0)();
+                for (int i = 0; i < 8 && reg; ++i) {
+                    char* p = *(char**)(reg + 4 + 4 * i);
+                    if (!p || p == me) continue;
+                    g_h.log("autopilot: defeating player %d", *(unsigned short*)(p + 4));
+                    ((void(__thiscall*)(void*, int, int, int))0x43abf0)(reg, *(unsigned short*)(p + 4), 1, 1);
+                    break;
+                }
+                Key(VK_ESCAPE);
+                ++g_step;
+            } else if (g_step == 1 && t > 6000) {
+                short top = game::at<short>(game::SceneTop);
+                char* menu = top >= 0 ? (&game::at<char*>(game::Scenes))[top] : nullptr;
+                char* button = menu ? *(char**)(menu + 0x54) : nullptr;
+                g_h.log("autopilot: Esc menu %s, Objectives button %p", g_h.topScene(), (void*)button);
+                // What its click does (SMenu::OnCommand 0x489830, through its vtable slot).
+                if (button) ((void(__thiscall*)(void*, void*))(*(uintptr_t*)0x5079a0))(menu, button);
+                ++g_step;
+            } else if (g_step == 2 && t > 8500) {
+                Save("objectives");
+                ++g_step;
+            } else if (g_step == 3 && t > 9500) {
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+                ++g_step;
+            }
+            return;
+        }
+        if (g_h.mode == 26) {
+            if (pathing::TestDone() && g_step == 0) {
+                ++g_step;
+                g_h.log("autopilot: done, quitting");
+                PostQuitMessage(0);
+            }
+            return;
+        }
         const Step* script = g_h.mode == 8    ? kControls
                              : g_h.mode == 9  ? kModern
                              : g_h.mode == 10 ? kRecord
@@ -3416,6 +3501,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             g_gliding = true;
             break;
         case ClickHere:
+            if (g_h.mode == 19 && g_h.target == 1) break;  // the Vipers stay where they are
             if (g_h.mode == 8) {  // debug: would the Shaman's plant check accept this point?
                 uintptr_t g = ((uintptr_t*)game::Scenes)[0];
                 char* w = *(char**)0x579278;
@@ -3576,7 +3662,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                             made ? "made" : "failed", before, *(int*)(w + 0x14));
                     if (!made) continue;
                     *(short*)(made + 0x32) = 30000;
-                    short done = ((short(__thiscall*)(void*))0x40c8a0)(made);
+                    short done = ((short(__thiscall*)(void*, int))0x40c8a0)(made, 0);  // one construction step (ret 4; callers pass 0)
                     ((void(__thiscall*)(void*, short))0x40dfe0)(made, 0);  // ADevice::SetUnpowered(0): powered
                     g_h.log("autopilot:   finished %d, id %d, unpowered %d, on %d", done, *(short*)(made + 0x1c),
                             *(short*)(made + 0x28), *(short*)(made + 0x2a));
@@ -3621,8 +3707,10 @@ void Tick(const std::string& scene, int frameW, int frameH) {
             if (!first) break;
             typedef unsigned short(__thiscall * Place_t)(void*, int, int, int, int, int, int, int, int);
             static const int kAir[] = {4, 0xd, 0x1f, 4, 0xd, 0x1f};
+            // AutopilotTarget=1: six Vipers, left hovering (no orders), for drawing checks.
+            const bool vipers = g_h.mode == 19 && g_h.target == 1;
             for (int n = 0; n < 6; ++n) {
-                unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), kAir[n], *(short*)(first + 0x14) + 120 + (n % 3) * 90,
+                unsigned short id = ((Place_t)0x4472d0)(w, *(short*)(me + 4), vipers ? 0x1f : kAir[n], *(short*)(first + 0x14) + 120 + (n % 3) * 90,
                                                         *(short*)(first + 0x16) + (n / 3) * 90, 1, 4, 1, 100);
                 g_h.log("autopilot: flyer type %#x: id %#x", kAir[n], id);
             }

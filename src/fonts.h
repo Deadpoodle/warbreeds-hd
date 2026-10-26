@@ -24,5 +24,7 @@ int TextWidth(const char* face, const char* text);
 // A text style id plus this: the same style without its offset outline (for text
 // on a plain black background, where the outline only blurs thin letters).
 constexpr int kNoOutline = 100;
+// Style 1 (the message box's text) in green: a check mark (skirmish Objectives).
+constexpr int kStyleGreen = 90;
 
 }  // namespace fonts

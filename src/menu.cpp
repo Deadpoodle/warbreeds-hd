@@ -144,6 +144,9 @@ std::vector<Setting>& Settings() {
         {"Quick-Build Keys", "Input", "QuickBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
         {"Group Build", "Input", "GroupBuild", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
         {"Placement Range", "Input", "PlacementRange", "1", {{"On", "1"}, {"Off", "0"}}, kControls},
+        {"Pathfinding", "Gameplay", "Pathfinding", "improved", {{"Improved", "improved"}, {"Original", "original"}},
+         kControls},
+        {"Listener Finds Cloaked", "Gameplay", "ListenerDetect", "0", {{"Off", "0"}, {"On", "1"}}, kControls},
         // Interface
         {"Menu Art", "Display", "MenuArt", "widescreen", {{"Widescreen", "widescreen"}, {"Original", "original"}},
          kInterface},
@@ -303,8 +306,9 @@ void Place(void* b, RECT r) {
 }
 
 // Styles (resolved by 0x4698c0): 0x10/0x11 = the menu's WBLg24, white/yellow;
-// 25 = WBMd14 white, the same typeface smaller.
-constexpr int kStyleMenu = 0x10, kStyleMenuHover = 0x11, kStyleSmall = 25;
+// 25/0x1b = WBMd14 white/yellow, the same typeface smaller. Small text lights up
+// in the small yellow: the large one is wider than its box and was clipped.
+constexpr int kStyleMenu = 0x10, kStyleMenuHover = 0x11, kStyleSmall = 25, kStyleSmallHover = 0x1b;
 
 void* AddButton(void* scene, const char* text, short cmd, char hotkey, RECT r, int style = kStyleMenu,
                 int hoverStyle = kStyleMenuHover) {
@@ -598,7 +602,7 @@ void AddEditorPages(void* scene) {
         const char* text = c == kCmdMapAbove ? "More above" : "More below";
         int w = fonts::TextWidth("WBMd14", text);
         RECT r = RowRect(c == kCmdMapAbove ? 2 : 2 + kMapRows - 1);
-        if (void* b = AddButton(scene, text, c, 0, {622 - w, r.top + 3, 640, r.bottom}, kStyleSmall, kStyleMenuHover)) Show(b, false);
+        if (void* b = AddButton(scene, text, c, 0, {622 - w, r.top + 3, 640, r.bottom}, kStyleSmall, kStyleSmallHover)) Show(b, false);
     }
     if (void* b = AddButton(scene, "Back", kCmdMapBack, 'B', ActionRect(14))) Show(b, false);
     if (void* b = AddButton(scene, "Built-in maps are always saved under a new name", kCmdMapHint, 0, {kLeft, 452, 450, 468},
@@ -648,8 +652,8 @@ short __thiscall HookInit(void* scene) {
         if (b) Show(b, false);
     }
     // Scroll indicators, right of the first and last setting rows (placed by Layout).
-    if (void* b = AddButton(scene, "More above", kCmdMoreAbove, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
-    if (void* b = AddButton(scene, "More below", kCmdMoreBelow, 0, {0, 0, 0, 0}, kStyleSmall, kStyleMenuHover)) Show(b, false);
+    if (void* b = AddButton(scene, "More above", kCmdMoreAbove, 0, {0, 0, 0, 0}, kStyleSmall, kStyleSmallHover)) Show(b, false);
+    if (void* b = AddButton(scene, "More below", kCmdMoreBelow, 0, {0, 0, 0, 0}, kStyleSmall, kStyleSmallHover)) Show(b, false);
     // Reset and Back sit half a row below the settings, so the (scrolling) list reads as separate.
     if (void* reset = AddButton(scene, kResetText, kCmdReset, 'R', ActionRect(13))) Show(reset, false);
     if (void* back = AddButton(scene, "Back", kCmdBack, 'B', ActionRect(14))) Show(back, false);

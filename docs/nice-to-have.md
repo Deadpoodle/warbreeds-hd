@@ -5,7 +5,7 @@ Ideas that were considered for WarBreeds HD and left out of the current plan. Th
 **Current plan:**
 1. Done in v0.14.0: allied teams and colour choice in skirmish, and campaign progress kept between sessions.
 2. Done in v0.19.0: saving and loading skirmishes.
-3. Pathfinding overhaul.
+3. Done in v0.20.0: the pathfinding overhaul (Settings > Controls > Pathfinding).
 4. Last, the remaining bug reports: the long-skirmish crash involving the Blue Leviathan or Yellow Ophidian, gene gathering freezing input, and several Tab rally points on one Gene Pool.
 
 ## For a future version

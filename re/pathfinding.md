@@ -394,3 +394,44 @@ which clears and copies into the +0x90 step stack. `need` = 1 step, or 2 when `(
 - How often `GameTurn` runs relative to the movement tick, and therefore the real time to finish
   `ProcessLinks` after "graph generate" (not traced; see the main-loop topic).
 - `g_PathBudget` source in multiplayer (the meaning of the message payload) (L).
+
+## 10. Findings from the Improved planner (src/pathing.cpp, 0.20.0)
+
+Answers to the open questions above. All are confirmed in game by the pathing tests (`[Debug] PathTest`, autopilot mode 26; oracle = test 2), H unless marked.
+
+- **Turn structure.** `GameTurn 0x463080`: `inc [cmd+0x238]`; `call 0x462550` (deferred moves, hooked at `0x463086` as the start of every turn); players; effects; things `0x449ab0` (one step per creature per turn); `AGrid::Tick 0x42dcf0`; `jmp 0x449f90`. Called from `0x45bc90` (multiplayer network turn) and `0x4603d0` (single player). Single-player turns run at about 20 a second (50 turns ≈ 2.43 s).
+- **Clock writes** (used as the mission-start signal): reset `0x4630e0` from `0x48066e` and `0x481c6f`; set `0x4630f0(turn)` from `0x481d4d` (save load).
+- **TestMoveTo 0x4020b0.** First `FindThingAt(selfId, x, y, radius, footprint/2, flyer)`, then terrain `IsRectBlocked` over tiles `[(x-r)>>5, (x+r)>>5] × [(y-r)>>5, (y+r)>>5]`, inclusive (a negative coordinate gives -1, which is blocked).
+- **IsRectBlocked 0x42eb50** (thiscall on AGrid; `(ILogicalC* tl, ILogicalC* br, int flyer)`, `ret 0xc`).
+  - Off the map is blocked; `flyer == 1` is free.
+  - Mask bytes: byte0 = (even x, even y), byte1 = (odd x, even y), byte2 = (even x, odd y), byte3 = (odd x, odd y); bit 0 = blocked.
+  - Even rows reload the mask at even x only. Odd rows never reload it.
+  - Ids ≥ the table count (animated water 0x1a2..0x1a7) give mask 0, so they read as open.
+  - A C++ emulation agrees with it at every sampled point. The fixed rule differs from stock at about 15,000 of a million sampled points on 4 Corners.
+- **FindThingAt 0x44db90** (`self, x, y, r, halfFoot, layer`, `ret 0x18`).
+  1. A thing registered (by its top-left, +0xa/+0xc) at the tile of `(x - halfFoot, y - halfFoot)` is a hit outright.
+  2. Then it scans the tiles `[(x-r)>>5 - 2, (x+r)>>5] × [(y-r)>>5 - 2, (y+r)>>5]`. With the World "large thing" flag at the probe tile, the box is -6/-4 and +2/+1 instead.
+  3. Each thing found is tested with its hit test, vtable +0x2c.
+- **Hit tests (vtable +0x2c, `ICircle*` probe, strict `d² < (R + r)²`, exact in x87):**
+  - `0x445ac0`: one circle of `g_ThingRadius[type]`.
+  - `0x434df0` (AObstacle): type 0x43 ruins use circles per variant (+0x28 byte) at `[0x53df9c + v*16]` (12-byte records: dx +4, dy +6, r +8), count at +4. Other obstacles use the base test.
+  - `0x430c80` (vtable 0x50437c, e.g. the Summoner): circles per device type at `[0x528264 + (type-0x2c)*16]`, same records.
+  - `0x457dd0` (the Warp, vtable 0x504e14): its own circle, plus `[0x54c3d0]` extra circles at `[0x54c3cc] + i*8` (dx +4, dy +6), radii `[0x54c3dc] + i*2`. These reach about 170 px from the centre.
+  - Corpses (0x42) and pods collide like buildings.
+- **Fog (APlayer).** 64 px cells, 96 per row. +0x2426 byte: 1 = never seen. +0x26 byte: count of own units seeing the cell. +0x484c short: fog on. Visible = (explored) and (fog off, or count non-zero): `0x4a35e0`. Hidden = fog on and never seen: `0x4a3620`.
+- **Step records.** `IStack<tPathStep>` at +0x90 is {vtbl, data +0x94, count +0x98, cap +0x9c}. tPathStep (16 bytes) is {vtbl 0x5031b4, IPixelC {vtbl 0x5031c4, x +8, y +0xa}, dir +0xc}.
+  - `SetPath 0x404750` clears the blocked and follow fields (`0x4041e0`), then copies x, y, dir from the source stack (`0x40a420`, which only reads it).
+  - The stack top (last entry) is the next step.
+- **Facing** (StraightPath 0x49e4d0, table 0x503210 = {3,2,1,0,4,5,6,7}): `a = 2dx < dy`, `c = -dx > 2dy`, `d = (a^c) ? 2dx < -dy : dx > 2dy`, dir = `table[a*4 + c*2 + d]` (0 = north, clockwise).
+- **OnBlocked** (vtable +0x90: ACreature `0x5093a4`, AShaman `0x504abc`, both `0x49bab0`) is `thiscall()`. **OnBumped** (+0xc4, `0x49ff70`) is `thiscall(bumper*)`, `ret 4`, called on the bumped unit. The wait counter +0x140 is a short. +0x148 is the building being entered (EnterBuilding 0x49f320), 0xc01 = none.
+- **ExecuteMove 0x461b00** (`IdList*, PtList*, short tol`, `ret 0xc`). Fewer than 3 units: each creature's vtable +0xb4 (OrderMove) at once. 3 or more: the stagger queue. Fresh callers: `0x46045a`, `0x45ad24`, `0x4b014b`, `0x4bb21f`.
+- **SetStance executor 0x462e20** (`stdcall(id, stance)`) ignores ids past the thing table. The multiplayer Execute calls it at `0x45bcb7`, with the stance as a sign-extended 16-bit word. The Improved mode's multiplayer hello uses it with id 0xffff.
+- **Synced random state:** index byte `0x5792b4`, counter word `0x5792ac`. NewRandomSeed (`0x461430`) seeds the C runtime's `srand 0x4eccb0` from the time. Tests pin all three; two pinned runs give identical state hashes.
+- **Building (AShaman).** Build (activity 0x2e) stores its site at +0x16c/+0x16e, its type at +0x184, and the building id at +0x18e (0xc01 until it exists).
+  - The work counter +0x180 (short) is set to S = `0x443d10()` = `0x54c670[type]` when work starts, about 1200. It is -1 before then, and is decremented once per work tick (`0x4436b0`).
+  - The building is created (`0x447410`) when `S - counter == 0x40`. If that fails, +0x170 counts the failure and the Shaman retries.
+  - The Shaman works from where it stops, at its radius + 64 px from the site (IsAtWorkSite), on its approach side, facing the site. A working Shaman's animation state +0x88 stays 0: the build pose comes from the Shaman's own activity.
+  - Creation collides with every object but the builder, using the device's shape circles (`0x528264`), which reach past its footprint.
+  - The stock Build order clears the site of units standing on it when it is given; units arriving later still block it.
+- **Repair executor** `0x4621b0` is `stdcall(builderId, targetId)`, `ret 8` (→ AShaman `0x441660`). Improved switches a group's other builders to it as soon as the lead's building stands.
+- **ADevice construction step** `0x40c8a0` is `thiscall(int)`, `ret 4`; its callers pass 0. The autopilot used to call it without the argument, which unbalanced its stack (fixed in 0.20.0).

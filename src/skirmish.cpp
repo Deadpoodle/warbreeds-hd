@@ -1,4 +1,5 @@
-// Skirmish: a map made in the editor keeps its own Global AI settings.
+// Skirmish: a map made in the editor keeps its own Global AI settings, and the
+// Esc menu's Objectives lists the enemies to defeat.
 //
 // Every computer player carries squad aggression, base, scouting and AI
 // influence (AIComputerPlayer +0x4d84..+0x4d90, with a fifth float at +0x4d80),
@@ -18,8 +19,13 @@
 
 #include <string>
 
+#include <algorithm>
+#include <vector>
+
 #include "editor/mapfile.h"
 #include "game.h"
+#include "fonts.h"
+#include "lang.h"
 #include "skirmish_teams.h"
 
 namespace skirmish {
@@ -65,6 +71,8 @@ std::string MapBaseName() {
     return dot == std::string::npos ? base : base.substr(0, dot);
 }
 
+void StartObjectives();
+
 void __fastcall HookSetupSkirmish(void* registry) {
     g_registry = registry;
     g_map = MapBaseName();
@@ -78,6 +86,111 @@ void __fastcall HookSetupSkirmish(void* registry) {
     ((void(__thiscall*)(void*))kSetupSkirmish)(registry);
     teams::Apply(registry);  // allied teams chosen on the setup screen
     g_registry = nullptr;
+    StartObjectives();
+}
+
+// --- Objectives -------------------------------------------------------------
+// A skirmish has no objectives: the Esc menu's Objectives (SMenu::OnCommand,
+// g_Campaign == 0) shows the stock "No Objectives" box, ShowDialog 0x471950(613
+// title, 612 text, 612, 0, 0x1f) at 0x4898ce, which loads its strings through
+// LoadStringA. In a skirmish it says instead whom to defeat: every player not
+// allied with you, by clan, each marked once defeated. Defeated players are
+// deleted from the registry, so the enemies are noted when the skirmish starts
+// (after the teams are applied) and again whenever the box opens (a loaded game).
+constexpr uintptr_t kObjectivesCall = 0x4898ce, kShowDialog = 0x471950;
+constexpr uintptr_t kRegistry = 0x57927c, kLocalPlayer = 0x46f8e0, kIsSkirmish = 0x46f960;
+constexpr uintptr_t kPlayerId = 4, kAllyMask = 0x18, kClan = 0x4878, kAlive = 0x48f6;
+constexpr int kTitleId = 613, kTextId = 612;
+
+struct Foe {
+    int id, clan;
+};
+std::vector<Foe> g_foes;
+
+char* RegistryPlayer(int i) {
+    char* reg = *(char**)kRegistry;
+    return reg ? *(char**)(reg + 4 + 4 * i) : nullptr;
+}
+
+// Not on your side: either of you doesn't count the other an ally.
+bool Enemy(char* me, char* p) {
+    int a = *(uint16_t*)(me + kPlayerId) & 7, b = *(uint16_t*)(p + kPlayerId) & 7;
+    return !((*(uint8_t*)(me + kAllyMask) >> b & 1) && (*(uint8_t*)(p + kAllyMask) >> a & 1));
+}
+
+void NoteFoes() {
+    char* me = ((char* (*)())kLocalPlayer)();
+    if (!me) return;
+    for (int i = 0; i < 8; ++i) {
+        char* p = RegistryPlayer(i);
+        if (!p || p == me || !*(uint16_t*)(p + kAlive)) continue;
+        int id = *(uint16_t*)(p + kPlayerId);
+        bool known = false;
+        for (const Foe& f : g_foes) known |= f.id == id;
+        if (!known && Enemy(me, p)) g_foes.push_back({id, *(int*)(p + kClan)});
+    }
+}
+
+void StartObjectives() {  // a new skirmish: its enemies, once the teams are set
+    g_foes.clear();
+    NoteFoes();
+}
+
+const char* ClanName(int clan) {
+    static const char* const kNames[] = {"Tanu", "Sen-Soth", "Kelika", "Magha"};
+    return clan >= 0 && clan < 4 ? kNames[clan] : "Yedda";
+}
+
+// The message box (SDialog, static 0x5674e8; ShowDialog's text ids are a range,
+// first to last, one text line per id: 0x478040) and its widgets.
+constexpr uintptr_t kDialog = 0x5674e8, kDialogLines = 0x44, kDialogLineCount = 0x48;
+constexpr uintptr_t kAddText = 0x495950, kSetStyle = 0x499fb0;  // Scene::AddText(text); WText::SetStyle(style)
+constexpr uintptr_t kVSetPosition = 0x10;                       // Widget (x, y)
+constexpr int kFirstLineId = 900;  // spare string ids for the lines
+
+void __cdecl HookObjectives(int title, int text, int text2, int a4, int a5) {
+    typedef void(__cdecl * ShowDialog_t)(int, int, int, int, int);
+    if (!((short (*)())kIsSkirmish)()) {
+        ((ShowDialog_t)kShowDialog)(title, text, text2, a4, a5);
+        return;
+    }
+    NoteFoes();
+    std::vector<std::string> lines;
+    std::vector<bool> done;
+    char* me = ((char* (*)())kLocalPlayer)();
+    for (size_t k = 0; k < g_foes.size(); ++k) {
+        const Foe& f = g_foes[k];
+        // Two enemies of one clan: numbered.
+        int same = 0, nth = 0;
+        for (size_t j = 0; j < g_foes.size(); ++j)
+            if (g_foes[j].clan == f.clan) ++same, nth += j <= k;
+        std::string name = ClanName(f.clan);
+        if (same > 1) name += " " + std::to_string(nth);
+        char* p = nullptr;
+        for (int i = 0; i < 8; ++i)
+            if (RegistryPlayer(i) && *(uint16_t*)(RegistryPlayer(i) + kPlayerId) == f.id) p = RegistryPlayer(i);
+        bool alive = p && *(uint16_t*)(p + kAlive);
+        if (alive && me && !Enemy(me, p)) continue;  // now an ally
+        lines.push_back(lang::trf("Defeat the {1}", {name}));
+        done.push_back(!alive);
+    }
+    if (lines.empty()) lines.push_back(lang::tr("No enemies are left.")), done.push_back(false);
+    lang::OverrideString(kTitleId, lang::tr("Objectives"));
+    for (size_t i = 0; i < lines.size(); ++i) lang::OverrideString(kFirstLineId + (int)i, lines[i]);
+    ((ShowDialog_t)kShowDialog)(title, kFirstLineId, kFirstLineId + (int)lines.size() - 1, a4, a5);
+    lang::ClearOverrides();
+    // A green check mark at the right of each defeated enemy's line.
+    char** widgets = *(char***)(kDialog + kDialogLines);
+    uint32_t count = *(uint32_t*)(kDialog + kDialogLineCount);
+    for (size_t i = 0; i < lines.size() && i < count && widgets; ++i) {
+        if (!done[i]) continue;
+        short* r = (short*)(widgets[i] + 0xc);  // left, top, right, bottom
+        char* tick = ((char*(__thiscall*)(void*, const char*))kAddText)((void*)kDialog, "\xC3");  // Mac Roman: a check (square root)
+        if (!tick) continue;
+        ((void(__thiscall*)(void*, int))kSetStyle)(tick, fonts::kStyleGreen);
+        ((void(__thiscall*)(void*, int, int))(*(void***)tick)[kVSetPosition / 4])(tick, r[0] + 2 * 0x9c - 14, r[1]);
+    }
+    g_log("skirmish: objectives: %d enemies, %d defeated", (int)lines.size(), (int)std::count(done.begin(), done.end(), true));
 }
 
 // ConfigureAI is a thiscall on the registry with the player on the stack (it
@@ -101,6 +214,8 @@ void Install(void (*log)(const char*, ...)) {
     bool ok = PatchCall(kSetupSkirmishCall, kSetupSkirmish, (void*)&HookSetupSkirmish) &&
               PatchCall(kConfigureAICall, kConfigureAI, (void*)&HookConfigureAI);
     log("skirmish: map AI settings hooks %s", ok ? "installed" : "FAILED (unexpected code)");
+    bool objectives = PatchCall(kObjectivesCall, kShowDialog, (void*)&HookObjectives);
+    log("skirmish: objectives %s", objectives ? "installed" : "FAILED (unexpected code)");
 }
 
 }  // namespace skirmish

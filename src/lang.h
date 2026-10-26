@@ -47,6 +47,11 @@ const char* DrawnTranslation(const char* text, int n);
 std::wstring Wide(const char* text, int n);
 bool HasHigh(const char* text, int n);
 
+// What the game's LoadStringA returns for string `id` until ClearOverrides (for a
+// dialog the game builds from string ids, given WarBreeds HD's own text; Mac Roman).
+void OverrideString(int id, const std::string& text);
+void ClearOverrides();
+
 // Lang\WarBreedsHD_template.txt from this copy of the game (written at every start).
 void WriteTemplate();
 

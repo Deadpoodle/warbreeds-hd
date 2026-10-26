@@ -66,7 +66,9 @@ Plan PlanFor(double m, int currentFactor) {
         // Grown to the minimum size in the screen's shape, so a crop of it fills the screen.
         double w = g_screenW / (m * f), h = g_screenH / (m * f);
         double grow = std::max({1.0, kMinFrameW / w, kMinFrameH / h});
-        p.w = (int)lround(w * grow) & ~1;
+        // Width a multiple of 4: the game's body blitter (the Viper's wings, ...) draws
+        // nothing on a frame whose rows aren't whole DWORDs; 1998 sizes always were.
+        p.w = ((int)lround(w * grow) + 3) & ~3;
         p.h = (int)lround(h * grow) & ~1;
         // Hysteresis: once half-scale, stay there until comfortably under budget.
         double budget = (double)g_s.maxPixels * (currentFactor == 2 ? 0.8 : 1.0);

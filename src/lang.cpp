@@ -243,7 +243,18 @@ bool Parse(const std::string& path, Table* t, std::string* name) {
 
 // --- hooks --------------------------------------------------------------------
 
+std::map<int, std::string> g_override;  // OverrideString
+
 int WINAPI h_LoadStringA(HINSTANCE inst, UINT id, LPSTR buf, int max) {
+    if ((inst == nullptr || inst == g_exe) && buf && max > 0 && !g_override.empty()) {
+        auto it = g_override.find((int)id);
+        if (it != g_override.end()) {
+            int n = std::min((int)it->second.size(), max - 1);
+            memcpy(buf, it->second.data(), n);
+            buf[n] = 0;
+            return n;
+        }
+    }
     if ((inst == nullptr || inst == g_exe) && buf && max > 0 && !Protected((int)id)) {
         auto it = g_t.game.find((int)id);
         if (it != g_t.game.end()) {
@@ -674,5 +685,8 @@ void WriteTemplate() {
     fclose(f);
     g_log("lang: wrote %s", path.c_str());
 }
+
+void OverrideString(int id, const std::string& text) { g_override[id] = text; }
+void ClearOverrides() { g_override.clear(); }
 
 }  // namespace lang
