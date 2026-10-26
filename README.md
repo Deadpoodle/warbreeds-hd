@@ -174,6 +174,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Teams: allied sides chosen on the setup screen, for you and the computer players. Teammates start together and win together.
 - Colours: choose each player's colour; right-click for automatic.
 - Load Game and Save Game on the Esc menu; a saved skirmish loads as a skirmish.
+- Objectives on the Esc menu lists the enemies to defeat, with a green check beside each one beaten.
 
 **Campaign**
 - Progress is kept between sessions: a campaign you've started offers Continue or Start Over.
@@ -193,12 +194,14 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Arrow keys scroll smoothly. Optional WASD.
 - Unit groups: double-tap a number to centre on the group; Shift+number adds the group to the selection.
 - Shift+drag adds a box of units to the selection.
+- Double-click one of your units to select every unit of yours of that type on screen.
 - Quick-build: B, then a letter (R Refinery, T Turret, …); P, then 1–3 for pods.
 - Builders clicked onto your own unfinished or damaged building go and finish or repair it.
 - Group build: with several builders selected, the build, plant and repair buttons and keys still work. They all build it: with Improved pathfinding they start it together; with Original the nearest starts it and the others help once it stands.
 - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower shows its range ring at the cursor, in the game's own style: what a Refinery collects, what a Relay powers, how far a turret picks targets by itself. Settings > Controls > Placement Range.
 - Pods can be planted in fog: the Shaman walks there and plants.
-- An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default.
+- An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default. With Modern, right-click with a Gene Lab or Gene Lab+ selected sets its rally point (with Classic, left-click does, as it always has).
+- Optional: a working Listener shows cloaked enemy Shadows and Reavers within about 480 px of it as blinking dots on the minimap. They stay invisible on the battlefield. Settings > Controls > Listener Finds Cloaked, off by default.
 - Alt+F4 quits.
 
 **Pathfinding** (Settings > Controls > Pathfinding: Improved, the default, or Original)
@@ -206,7 +209,7 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Units know the map's terrain and rocks even under fog. They learn about enemy buildings when they see them, and replan as soon as one blocks the way.
 - A click on a spot units can't reach (rocks, water, inside a building, an island) sends them to the nearest spot they can reach, where they stop. The original kept them trying, and loosened what counted as "arrived" until they gave up.
 - A group gets a spot each, in a loose cluster around the click, instead of all fighting over one point. Formation moves (Space) are unchanged.
-- Traffic: a unit asks an idle friend in its way to step aside. In a jam it waits about a second, then goes another way if that isn't much longer. Two units meeting head-on in a narrow pass don't deadlock: one goes round. A unit that makes no progress for 10 seconds stops.
+- Traffic: an idle friend in the way walks off the path (out of a corridor, if it has to). A unit following a friend going the same way waits behind it. In a jam it waits about a second, then goes another way if that isn't much longer. Two units meeting head-on in a narrow pass don't deadlock: one goes round, or backs out of the way and then carries on. A unit that gets no closer to where it's going for 15 seconds stops.
 - Building sites: once a builder is on its way to build, the player's other units keep off the site, so a unit standing in the way can't make the building fail. An idle unit already on it steps off.
 - Group build together: with several builders selected, every one of them walks to the site, takes its own spot round it with the build animation, and they start the building together (four builders start it in about a quarter of the time). When it stands they all build it on. With Original, the others wait beside the site until the first stage is up, as before.
 - Units walk at their original speeds; only the routes change. Flyers fly as before.
@@ -220,6 +223,8 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - A mission, and a loaded game, starts centred on your base (it used to sit up and to the left at HD sizes).
 - Loading a campaign save from inside a skirmish no longer sets the loaded game up as a skirmish.
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
+- The Viper (the Magha flyer) no longer loses its body at some zoom levels, leaving only its head gizmo. The game's routine for drawing unit bodies draws nothing on a frame whose width isn't a multiple of 4, so every frame width is now one.
+- In Settings, "More above" and "More below" light up at their own size when you point at them; they used to switch to the large font and be cut off.
 
 **Fonts**
 - An optional modern font for English, Orbitron, which switches live. Text that would run wider than the original font is narrowed to fit, so titles stay inside their bars. It isn't meant for translations: in other languages the font follows the language (see Languages).

@@ -133,6 +133,8 @@ Controls (full list in Controls.html)
   - Unit groups: double-tap a number to jump to the group, Shift+number adds
     it to your selection (Ctrl+number and number work as before).
   - Shift+drag adds a box of units to the selection.
+  - Double-click one of your units to select every unit of yours of that
+    type on screen.
   - Quick-build: B then a letter (R Refinery, T Turret ...); P then 1-3 for
     pods.
   - Builders clicked onto your unfinished or damaged building finish or
@@ -148,7 +150,12 @@ Controls (full list in Controls.html)
     by itself. Settings > Controls > Placement Range.
   - Pods can be planted in fog: the Shaman walks there and plants.
   - Optional Modern mouse scheme: left-click selects, right-click gives
-    orders. Classic (the original) is the default.
+    orders. Classic (the original) is the default. With Modern, right-click
+    with a Gene Lab or Gene Lab+ selected sets its rally point.
+  - Optional: a working Listener shows cloaked enemy Shadows and Reavers
+    near it as blinking dots on the minimap (they stay invisible on the
+    battlefield). Settings > Controls > Listener Finds Cloaked, off by
+    default.
   - Alt+F4 quits.
 
 Pathfinding (Settings > Controls > Pathfinding: Improved, the default, or
@@ -161,9 +168,11 @@ Original)
     can reach, where they stop.
   - A group gets a spot each around the click. Formation moves (Space) are
     unchanged.
-  - An idle friend in the way is asked to step aside. In a jam a unit waits
-    about a second, then goes another way if that isn't much longer. A unit
-    that makes no progress for 10 seconds stops.
+  - An idle friend in the way walks off the path. A unit following a friend
+    going the same way waits behind it. In a jam a unit waits about a
+    second, then goes another way if that isn't much longer. Two units
+    meeting head-on in a narrow pass: one goes round or backs out. A unit
+    that gets no closer for 15 seconds stops.
   - A building site is kept clear: the player's other units keep off it
     once a builder is on its way, so they can't make the building fail.
   - Group build: every selected builder walks to the site, takes its own
@@ -189,6 +198,8 @@ Fixes
     multi-core CPUs (the GOG release does the same).
   - The in-mission Game Options resolution slider is removed: resolution is
     set from the main menu now.
+  - The Viper (the Magha flyer) no longer loses its body at some zoom
+    levels, leaving only its head gizmo.
   - The whole battlefield is redrawn every frame: fast flying units no longer
     leave trails ([Render] FullRedraw=0 in WarBreedsHD.ini restores the
     original behaviour).

@@ -175,6 +175,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | Click a row's colour | Choose the next free colour. |
 | Right-click a row's colour | Back to the automatic colour. |
 | Click a campaign you've started | Continue from the mission you reached, Start Over, or Back. |
+| Esc menu > Objectives, in a skirmish | Lists every enemy to defeat, with a green check beside each one you have beaten. |
 | Settings > Interface > Language | Show the game in another language, at once (files in the `Lang` folder). |
 
 ### Camera
@@ -193,6 +194,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | <kbd>0</kbd>–<kbd>9</kbd> twice quickly | Select the group and centre the camera on it. |
 | <kbd>Shift</kbd>+<kbd>0</kbd>–<kbd>9</kbd> | Add the group to the current selection. |
 | <kbd>Shift</kbd>+drag | Add the units in the box to the selection (the original treated it as a click). |
+| Double-click one of your units | Select every unit of yours of that type on screen. |
 
 ### Quick-build
 
@@ -220,6 +222,13 @@ Everything above still works the same unless noted. Most additions can be switch
 | Place a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower | Its range ring shows at the cursor, in the same running sparks as the rings of the field buildings already built. A Refinery collects every energy pod inside it (300 px); a Relay powers buildings within 275 px, a Relay+ 400 px. A Turret picks targets by itself within about 272 px and a Plasma Cannon about 336 px (both keep firing at a target out to 400 px); an Electric Tower zaps within 226 px. Settings → Controls → Placement Range. |
 | Plant, repair or cancel with several Shamans | The nearest Shaman plants the pod. Repair sends them all. The panel's cancel stops them all. Upgrade and Get Genes act on the first Shaman only. |
 
+### Buildings
+
+| Control | Action |
+|---|---|
+| A working Listener | With Settings → Controls → Listener Finds Cloaked on (off by default), cloaked enemy Shadows and Reavers within about 480 px of it blink on the minimap. They stay invisible on the battlefield. |
+| A Gene Lab or Gene Lab+ selected | Its rally point: left-click the ground (Classic), right-click (Modern), or Tab and clicks for a route. |
+
 ### Pathfinding
 
 > Settings → Controls → Pathfinding. Improved is the default; Original is the 1998 behaviour. It takes effect from the next mission. In multiplayer everyone uses the host's choice.
@@ -231,7 +240,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | Move a group | Each unit gets its own spot in a loose cluster around the click. Formation moves (<kbd>Space</kbd>) are unchanged. |
 | Group build (several builders) | Every builder walks to the site and works at its own spot round it; they start the building together, then all build it on. |
 | A building site | Once a builder is on its way, your other units keep off the site; an idle one standing on it steps off. |
-| A unit in the way | An idle friend is asked to step aside. A jam: wait about a second, then go another way if it isn't much longer. Two units meeting head-on in a narrow pass: one goes round. No progress for 10 seconds: the unit stops. |
+| A unit in the way | An idle friend walks off the path (out of a corridor, if it has to). Following a friend going the same way: wait behind it. A jam: wait about a second, then go another way if it isn't much longer. Two units meeting head-on in a narrow pass: one goes round, or backs out and then carries on. No closer to the goal for 15 seconds: the unit stops. |
 
 ### Modern mouse scheme
 
@@ -242,6 +251,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | Left-click | Select only. Empty ground clears the selection; <kbd>Shift</kbd> adds or removes your units; box selection as before. |
 | Right-click | Give the order the cursor shows: move, attack, harvest, enter. Builders onto your unfinished or damaged building repair it. |
 | Right-click in a mode | Cancel build, plant, repair or upgrade, keeping the Shaman selected. |
+| Right-click with a Gene Lab or Gene Lab+ selected | Set its rally point (with Classic, a left-click does, as in the original). |
 | Right-click the minimap | Move there, as before. |
 | Hold a key and left-click | Unchanged: <kbd>A</kbd>, <kbd>Tab</kbd>, <kbd>Space</kbd>, <kbd>G</kbd> and the others still use the left button. |
 
