@@ -758,9 +758,41 @@ bool NearestReachable(int sx, int sy, int gx, int gy, int r, int hf, int p, Pt& 
             }
     }
     int bi, bj;
-    if (!NearestNode(gx, gy, MaxRing(), bi, bj,
-                     [&](int i, int j) { return NodeFree(i, j, r, hf, p) && RegionOfNode(i, j, r) == region; }))
-        return false;
+    auto inRegion = [&](int i, int j) { return NodeFree(i, j, r, hf, p) && RegionOfNode(i, j, r) == region; };
+    // Rings round the goal, out to 48 (768 px); then, rather than ringing out across the
+    // map (a unit shut in among pods, ordered far away: 10 ms a search), the unit's own
+    // region flooded from where it stands, its node nearest the goal (up to 50,000 nodes).
+    if (NearestNode(gx, gy, 48, bi, bj, inRegion)) {
+        out = {bi * kLattice, bj * kLattice};
+        return true;
+    }
+    {
+        static std::vector<uint32_t> seen;
+        static uint32_t gen;
+        static std::vector<int> queue;
+        if ((int)seen.size() != g_lw * g_lh) seen.assign(g_lw * g_lh, 0), gen = 0;
+        if (++gen == 0) std::fill(seen.begin(), seen.end(), 0), gen = 1;
+        queue.assign(1, sj * g_lw + si);
+        seen[sj * g_lw + si] = gen;
+        int64_t best = -1;
+        for (size_t q = 0; q < queue.size() && queue.size() < 50000; ++q) {
+            int n = queue[q], i = n % g_lw, j = n / g_lw;
+            int64_t dx = i * kLattice - gx, dy = j * kLattice - gy, d2 = dx * dx + dy * dy;
+            if (best < 0 || d2 < best) best = d2, bi = i, bj = j;
+            for (int d = 0; d < 8; ++d) {
+                int ni = i + kDx[d], nj = j + kDy[d];
+                if (ni < 0 || nj < 0 || ni >= g_lw || nj >= g_lh || seen[nj * g_lw + ni] == gen) continue;
+                if (!inRegion(ni, nj)) continue;
+                seen[nj * g_lw + ni] = gen;
+                queue.push_back(nj * g_lw + ni);
+            }
+        }
+        if (queue.size() < 50000 && best >= 0) {  // the whole region seen: its nearest node
+            out = {bi * kLattice, bj * kLattice};
+            return true;
+        }
+    }
+    if (!NearestNode(gx, gy, MaxRing(), bi, bj, inRegion)) return false;  // a large region: rings after all
     out = {bi * kLattice, bj * kLattice};
     return true;
 }

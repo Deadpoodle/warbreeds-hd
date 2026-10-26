@@ -107,6 +107,8 @@ Callers of the factory: **`AThingRegistry::CreateThing 0x446db0`** `(short playe
 | 0x74 | GetAnimRate() | 0x401a10 (0x10000) | creatures 0x409e80: by `g_BodySize` 0/1/2 → 0x11000/0x10000/0xf000, ±0x800 jitter (H) |
 | 0x78 | (unknown) | 0x412ca0 (ret 0) | AElectricTower, AMine: 0x4107d0 (ret 1) (L) |
 
+- **Decay (H):** `0x40d700`, from the device tick, every 8 turns: a finished device (+0x2c) that is switched off (+0x2a == 0), unpowered (+0x28) or paused (+0x2e) takes `TakeDamage(0, 0, 1 or 2, none)`: 2 when switched off, which `ADevice::TakeDamage` doubles again for a switched-off device's `extra`, net 2 hp per 8 turns in practice (a player's Gene Lab+ lost 52 hp per 5 s). Switched off by a double-click and forgotten, it collapses in a few minutes with no enemy near. Its panel then shows only the basic device panel (`AGeneLab::DrawPanel` needs on, powered, complete, not paused).
+
 #### 1.4 ADevice extra slots (vtable 0x5033ec)
 0x7c 0x410990 (empty, ret 0xc; ARefinery 0x43e060, ARelay 0x43f1a0: power-client bookkeeping, L) · 0x80 empty (ARefinery 0x43e0d0, ARelay 0x43f210, L) · **0x84 DyingTick 0x40d790** (collapse animation, removes the thing at the last frame; +0x2e counts frames, M) · **0x88 SwitchOn 0x40e1d0** (`+0x2a = +0x28 = 1`, then 0x90) · **0x8c SwitchOff 0x40e1f0** · **0x90 ConnectPower 0x40e020** (`World 0x44eac0` finds a provider, else unpowered) · **0x94 AttachToProvider(id) 0x40e130** · **0x98 DetachPower 0x40e1b0** · 0x9c NotifyOwnerPower(flag) 0x40e310 (owner vtbl+0x24) · **0xa0 OnCompleted 0x40de70** ("X complete" voice; AGeneLab 0x428d40 also resets the rally point) · 0xa4 empty · **0xa8 SetOn(short) 0x40e2a0** (the double-click / `Cmd+0x50` toggle). ARefinery has one more slot 0xac (0x43e310). (H unless marked)
 

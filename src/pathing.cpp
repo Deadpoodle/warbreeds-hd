@@ -411,7 +411,7 @@ void ScanWorld() {
 
 constexpr uintptr_t kSetPath = 0x404750;  // ACreatureBody (IStack<tPathStep>*), ret 4: copies x, y, dir
 constexpr int kTurnBudget = 12000;        // A* expansions per turn (one search may overrun it): about 5 ms
-constexpr int kSearchCap = 40000;         // per search: beyond it, the route leads as near as it got
+constexpr int kSearchCap = 16000;         // per search (about 7 ms): beyond it, the route leads as near as it got
 constexpr int kLookahead = 24;            // route nodes considered for the next straight leg
 // Steps per leg: 8 (about 100-150 px, inside every unit's sight), so a building
 // coming into view is known before the unit commits to walking into it.
@@ -500,7 +500,7 @@ int g_mismatches, g_giveUps, g_reroutes, g_asks;
 
 void StopUnit(char* c) { ((void(__thiscall*)(void*))(*(void***)c)[kVStop / 4])(c); }
 
-std::vector<int> g_deferredAt(65536, -2);
+std::vector<int> g_deferredAt(65536, -2), g_deferStart(65536, -2);
 std::vector<nav::Pt> g_retarget(65536);    // last unreachable goal's replacement, per unit (tests)  // turn a unit's plan last waited for the budget
 
 // 16 directions, cos and sin x 1000.
@@ -570,11 +570,16 @@ bool PlanImproved(char* c) {
         }
         if (!same) {
             if (u.thing == c && u.plannedTurn == g_turn) return true;  // planned this turn already: wait
-            // Over the turn's budget: wait one turn (once), so a crowd's searches spread out.
-            if (g_budget <= 0 && g_deferredAt[id] != g_turn - 1) {
-                g_deferredAt[id] = g_turn;
-                ++g_plansDeferred;
-                return true;
+            // Over the turn's budget: wait, up to 10 turns, so a crowd's searches spread out.
+            // (Waiting one turn only, everyone put off went at once the next: 9 searches and
+            // 81,000 expansions, 61 ms, in one turn of a player's game.)
+            if (g_budget <= 0) {
+                if (g_deferredAt[id] != g_turn - 1) g_deferStart[id] = g_turn;  // a new wait
+                if (g_turn - g_deferStart[id] < 10) {
+                    g_deferredAt[id] = g_turn;
+                    ++g_plansDeferred;
+                    return true;
+                }
             }
             UnitRoute old = u;
             u = UnitRoute();

@@ -202,6 +202,11 @@ Skirmish objectives
     defeated").
 
 Fixes
+  - Short stalls in long games: units waiting for the turn's pathfinding
+    all searched at once a turn later (one turn took 61 ms), and a unit
+    shut in among pods searched most of the map for a way out every few
+    seconds. Searches are now spread over several turns, and a shut-in
+    unit only searches its own pocket.
   - With several builders selected, the build menu could stop working
     after a few group builds: the panel was always the first builder's,
     and while that one worked it showed only Cancel. It is now one that

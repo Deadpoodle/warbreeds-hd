@@ -51,6 +51,72 @@ void Post(UINT msg, WPARAM wp, POINT game) {
     PostMessageA(render::GameWindow(), msg, wp, MAKELPARAM(c.x, c.y));
 }
 
+int g_sweepX;  // where Sweep put the mouse (frame x)
+
+// The cursor swept back and forth across the middle of the frame from `from` to `to`
+// ms: frames counted, the longest gap between them, and how far the game's cursor
+// lagged behind where the mouse was put. True once done.
+bool Sweep(const char* over, DWORD t, DWORD from, DWORD to) {
+    static LARGE_INTEGER last, freq;
+    static int frames;
+    static double maxGap, maxLag;
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    int w = game::at<short>(game::ScreenRight), h = game::at<short>(game::ScreenBottom);
+    if (t < from) return false;
+    if (t >= to) {
+        g_h.log("autopilot: cursor sweep over %s: %d frames in %lu ms, longest gap %.1f ms, the game's cursor up to "
+                "%.0f px from the mouse",
+                over, frames, to - from, maxGap, maxLag);
+        frames = 0, maxGap = maxLag = 0, last.QuadPart = 0;
+        return true;
+    }
+    if (last.QuadPart) {
+        maxGap = std::max(maxGap, (now.QuadPart - last.QuadPart) * 1000.0 / freq.QuadPart);
+        maxLag = std::max(maxLag, (double)abs(game::at<short>(game::CursorX) - g_sweepX));
+    }
+    last = now;
+    ++frames;
+    double phase = (t - from) % 1500 / 1500.0;  // there and back every 1.5 s
+    double f = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+    g_sweepX = (int)(w * (0.3 + 0.4 * f));
+    POINT c = render::GamePointToClient(POINT{g_sweepX, h / 2});
+    render::SetFakeCursorClient(c);
+    PostMessageA(render::GameWindow(), WM_MOUSEMOVE, 0, MAKELPARAM(c.x, c.y));
+    return false;
+}
+
+// The player's Gene Labs, and whatever of another player's targets the player's things
+// (+0x30 / +0xec), with its cloak timer (+0x40).
+void LogThreats() {
+    char* w = *(char**)0x579278;
+    char* me = *(char**)0x579288;
+    char** things = w ? *(char***)(w + 0x10) : nullptr;
+    // Who attacks the player's things (+0x30 / +0xec targets), cloak timer +0x40; its Gene Labs.
+    for (int i = 0; things && i < *(int*)(w + 0x14); ++i) {
+        char* t = things[i];
+        int ty = t ? *(int*)(t + 0x18) : -1;
+        if (!t || ty < 0) continue;
+        if (*(char**)(t + 0x20) == me && (ty == 0x2d || ty == 0x35))
+            g_h.log("autopilot:   Gene Lab %d type %#x at %d,%d hp %d unpowered %d on %d complete %d paused %d",
+                    *(short*)(t + 0x1c), ty, *(short*)(t + 0x14), *(short*)(t + 0x16), *(short*)(t + 0x24),
+                    *(short*)(t + 0x28), *(short*)(t + 0x2a), *(short*)(t + 0x2c), *(short*)(t + 0x2e));
+        if (ty > 0x2b) continue;
+        for (int off : {0x30, 0xec}) {
+            unsigned short v = *(unsigned short*)(t + off);
+            char* vt = v < (unsigned)*(int*)(w + 0x14) ? things[v] : nullptr;
+            if (!vt || *(char**)(vt + 0x20) != me || *(char**)(t + 0x20) == me) continue;
+            g_h.log("autopilot:   %d (type %#x, player %d, at %d,%d, cloak timer %d, activity %#x) targets our %d "
+                    "(type %#x, hp %d) at %d,%d",
+                    *(short*)(t + 0x1c), ty, *(char**)(t + 0x20) ? *(short*)(*(char**)(t + 0x20) + 4) : -1,
+                    *(short*)(t + 0x14), *(short*)(t + 0x16), *(uint8_t*)(t + 0x40), *(int*)(t + 0xc0), v,
+                    *(int*)(vt + 0x18), *(short*)(vt + 0x24), *(short*)(vt + 0x14), *(short*)(vt + 0x16));
+            break;
+        }
+    }
+}
+
 // A Shaman's work: activity, target (+0x18e) and that building's state, where it stands.
 void LogWork(char* t) {
     char* w = *(char**)0x579278;
@@ -2584,7 +2650,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
         // 3: the human is defeated first and watches the ally: the Esc menu's Save
         // Game is refused ("You are no longer in the game.").
         static int st, acted;
-        static DWORD at, lastAct;
+        static DWORD at, lastAct, lastLog = (DWORD)-1;
         static std::string last, before;
         static std::vector<POINT> queue;
         std::string top = g_h.topScene ? g_h.topScene() : "";
@@ -2779,6 +2845,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                             *(int*)(t + 0x1ac), *(short*)(t + 0x08), *(int*)(t + 0xc0), *(short*)(t + 0x06));
                     LogWork(t);
                 }
+                LogThreats();
                 // What the build list allows: APlayer::CanBuild 0x437b50 (tech) and vtable +0x54 CanAfford.
                 char line[400];
                 int n = snprintf(line, sizeof line, "autopilot:   build list (type: can build, can afford):");
@@ -2799,6 +2866,9 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 g_h.log("autopilot: %s: the skirmish flag and the human came back",
                         head(after) == head(before) ? "PASS" : "FAIL");
             st = 9;
+        } else if (st == 9 && game && g_h.target == 4 && in < 64000 && in / 5000 != lastLog) {
+            lastLog = in / 5000;  // every 5 s: threats to the player's things
+            LogThreats();
         } else if (st == 9 && game && in > (DWORD)(g_h.target == 0 || g_h.target == 3 || g_h.target == 4 ? 64000 : 9000)) {
             g_h.log("autopilot: a minute on: %s", state().c_str());
             if (g_h.target == 4) {
@@ -3445,9 +3515,15 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 ++g_step;
             } else if (g_step == 1 && t > 5500) {  // the "... defeated" message on the battlefield
                 Save("defeated");
-                Key(VK_ESCAPE);
                 ++g_step;
-            } else if (g_step == 2 && t > 7500) {
+            } else if (g_step == 2) {  // the cursor swept over the battlefield (to compare with the box)
+                if (Sweep("the battlefield", t, 5600, 8600)) {
+                    Key(VK_ESCAPE);
+                    ++g_step;
+                }
+            } else if (g_step == 3) {  // and over the Esc menu
+                if (Sweep("the Esc menu", t, 9500, 12500)) ++g_step;
+            } else if (g_step == 4 && t > 12600) {
                 short top = game::at<short>(game::SceneTop);
                 char* menu = top >= 0 ? (&game::at<char*>(game::Scenes))[top] : nullptr;
                 char* button = menu ? *(char**)(menu + 0x54) : nullptr;
@@ -3455,10 +3531,12 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 // What its click does (SMenu::OnCommand 0x489830, through its vtable slot).
                 if (button) ((void(__thiscall*)(void*, void*))(*(uintptr_t*)0x5079a0))(menu, button);
                 ++g_step;
-            } else if (g_step == 3 && t > 10000) {
+            } else if (g_step == 5 && t > 14500) {
                 Save("objectives");
                 ++g_step;
-            } else if (g_step == 4 && t > 11000) {
+            } else if (g_step == 6) {  // the cursor swept over the Objectives box
+                if (Sweep("the Objectives box", t, 14600, 17600)) ++g_step;
+            } else if (g_step == 7 && t > 18000) {
                 g_h.log("autopilot: done, quitting");
                 PostQuitMessage(0);
                 ++g_step;
