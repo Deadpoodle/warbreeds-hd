@@ -2654,7 +2654,7 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 DeleteFileA(file.c_str());
                 DeleteFileA((file + ".hd").c_str());
             }
-            if (g_h.target == 1) {
+            if (g_h.target == 1 || g_h.target == 4) {  // 4: a player's save copied in as HDSKIRM.wbs, played a minute
                 if (!exists(file)) return quit("FAIL: no HDSKIRM.wbs (run target 0 first)");
                 clickCmd(0x64);  // Load Game
                 st = 10;
@@ -2763,10 +2763,10 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 g_h.log("autopilot: %s: the skirmish flag and the human came back",
                         head(after) == head(before) ? "PASS" : "FAIL");
             st = 9;
-        } else if (st == 9 && game && in > (DWORD)(g_h.target == 0 || g_h.target == 3 ? 64000 : 9000)) {
+        } else if (st == 9 && game && in > (DWORD)(g_h.target == 0 || g_h.target == 3 || g_h.target == 4 ? 64000 : 9000)) {
             g_h.log("autopilot: a minute on: %s", state().c_str());
             shot("later");
-            if (g_h.target == 1 || g_h.target == 2) return quit("checked");
+            if (g_h.target == 1 || g_h.target == 2 || g_h.target == 4) return quit("checked");
             char* me = *(char**)0x579288;
             if (me) {
                 ((void(__thiscall*)(void*, int))0x43bb20)(reg, *(short*)(me + 4));  // win
@@ -3396,9 +3396,12 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                     ((void(__thiscall*)(void*, int, int, int))0x43abf0)(reg, *(unsigned short*)(p + 4), 1, 1);
                     break;
                 }
+                ++g_step;
+            } else if (g_step == 1 && t > 5500) {  // the "... defeated" message on the battlefield
+                Save("defeated");
                 Key(VK_ESCAPE);
                 ++g_step;
-            } else if (g_step == 1 && t > 6000) {
+            } else if (g_step == 2 && t > 7500) {
                 short top = game::at<short>(game::SceneTop);
                 char* menu = top >= 0 ? (&game::at<char*>(game::Scenes))[top] : nullptr;
                 char* button = menu ? *(char**)(menu + 0x54) : nullptr;
@@ -3406,10 +3409,10 @@ void Tick(const std::string& scene, int frameW, int frameH) {
                 // What its click does (SMenu::OnCommand 0x489830, through its vtable slot).
                 if (button) ((void(__thiscall*)(void*, void*))(*(uintptr_t*)0x5079a0))(menu, button);
                 ++g_step;
-            } else if (g_step == 2 && t > 8500) {
+            } else if (g_step == 3 && t > 10000) {
                 Save("objectives");
                 ++g_step;
-            } else if (g_step == 3 && t > 9500) {
+            } else if (g_step == 4 && t > 11000) {
                 g_h.log("autopilot: done, quitting");
                 PostQuitMessage(0);
                 ++g_step;

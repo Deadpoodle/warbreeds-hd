@@ -23,6 +23,9 @@ void Install(void (*log)(const char*, ...), const Debug& d);
 void SetPreference(bool improved);
 // The mode the current mission runs in.
 bool Improved();
+// Destroy an own building or unit (Delete): at once in single player, as a command in
+// multiplayer; false when a player's copy wouldn't know the command.
+bool DestroyBuilding(int id);
 // Autopilot mode 26: the test scenario has finished (and logged its PASS/FAIL lines).
 bool TestDone();
 

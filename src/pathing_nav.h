@@ -106,6 +106,11 @@ struct Route {
 // (gx, gy). If the goal can't be reached, the route ends at the nearest point the
 // unit can reach (Route::exact false). Returns false when the unit has nowhere to go.
 bool FindRoute(int sx, int sy, int gx, int gy, int r, int hf, int p, int maxExpansions, Route& out);
+// The simulation turn (regions with buildings are refilled at most every 60 turns).
+void SetClock(int turn);
+// How many region fills (with buildings) since the last call.
+int TakeFills();
+double TakeFillMs();  // and their time
 // Bumped whenever player p's building layer changes (things appeared, moved, went
 // or became known), so routes can be re-checked.
 int LayerVersion(int p);

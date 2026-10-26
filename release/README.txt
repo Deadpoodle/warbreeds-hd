@@ -139,10 +139,13 @@ Controls (full list in Controls.html)
     pods.
   - Builders clicked onto your unfinished or damaged building finish or
     repair it.
-  - Group build: with several builders selected, the build, plant and repair
-    buttons and keys still work. They all build it (with Improved
-    pathfinding they start it together; with Original the nearest starts it
-    and the others help once it stands).
+  - Group build: with several builders selected, the build, plant, repair
+    and upgrade buttons and keys still work. They all build it (with
+    Improved pathfinding they start it together; with Original the nearest
+    starts it and the others help once it stands). Repair and Upgrade send
+    them all.
+  - Delete destroys the buildings and units of yours you have selected (in
+    multiplayer, only when every player has this version).
   - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric
     Tower shows its range ring at the cursor, like the rings of the
     Refineries and Relays already built: what a Refinery collects (every
@@ -151,7 +154,8 @@ Controls (full list in Controls.html)
   - Pods can be planted in fog: the Shaman walks there and plants.
   - Optional Modern mouse scheme: left-click selects, right-click gives
     orders. Classic (the original) is the default. With Modern, right-click
-    with a Gene Lab or Gene Lab+ selected sets its rally point.
+    with a Gene Lab or Gene Lab+ selected sets its rally point, and with a
+    Warp selected sets where it sends units.
   - Optional: a working Listener shows cloaked enemy Shadows and Reavers
     near it as blinking dots on the minimap (they stay invisible on the
     battlefield). Settings > Controls > Listener Finds Cloaked, off by
@@ -179,6 +183,11 @@ Original)
     spot round it with the build animation, and they start the building
     together (four start it in about a quarter of the time), then all build
     it on. With Original, the others wait until its first stage is up.
+  - Builders, repairers and upgraders each work from a spot of their own
+    round the building, clear of its whole shape (the Gene Labs, Healer,
+    Warp, Summoner and Collector reach well past their footprint).
+  - Goals walled off by buildings are recognised at once instead of
+    searching the whole map each time, which slowed large battles.
   - Unit speeds are unchanged; flyers fly as before.
   - Also fixes the 1998 bug that misread which tiles are blocked, and the
     one that let units and buildings onto animated water.
@@ -189,8 +198,16 @@ Original)
 Skirmish objectives
   - The Esc menu's Objectives lists every enemy to defeat, with a green
     check beside each one you have beaten.
+  - When a player is defeated, the message line says so ("The Kelika are
+    defeated").
 
 Fixes
+  - Esc sometimes took several presses to open the in-game menu: the game
+    held the menu back until a voice line had finished, and dropped further
+    presses meanwhile. The menu now opens at once and the voice stops.
+  - A selected Gene Lab's rally point and a Warp's or Summoner's target
+    are drawn in the right place at every zoom (they were drawn with the
+    interface, not the battlefield).
   - A 1998 crash in long games: the game's memory of an enemy building seen
     earlier could, once that building was destroyed out of sight and its
     number reused, be read from the wrong thing and crash (divide by zero).

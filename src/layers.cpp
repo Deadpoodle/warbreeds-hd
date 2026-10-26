@@ -491,15 +491,39 @@ void __fastcall RallyPath(void* world, void*, int path, int camX, int camY, int 
     }
 }
 
-bool PatchRallyPath() {
-    uint8_t* p = (uint8_t*)kRallyPathCall;
-    if (p[0] != 0xe8 || kRallyPathCall + 5 + *(int32_t*)(p + 1) != kDrawWaypointPath) return false;
+// The same for the target marker of a selected Warp or Summoner (World 0x448c30 ->
+// AWarp 0x457b40 / AHowitzer 0x4311d0 -> 0x4465c0, the spinning cursor at the target
+// in battlefield pixels), which SGame::DrawInterface draws at 0x47c194, in the
+// interface phase.
+constexpr uintptr_t kTargetMarkerCall = 0x47c194, kDrawTargetMarker = 0x448c30;
+
+void __fastcall TargetMarker(void* world, void*, int camX, int camY, int zoomed) {
+    bool swap = g_active && g_backBuffer;
+    if (swap) {
+        BackBufferHandle() = g_backBuffer;
+        SelectBackBuffer();
+    }
+    ((void(__thiscall*)(void*, int, int, int))kDrawTargetMarker)(world, camX, camY, zoomed);
+    if (swap) {
+        BackBufferHandle() = g_ui.handle;
+        SelectBackBuffer();
+    }
+}
+
+bool PatchCallTo(uintptr_t site, uintptr_t expect, void* hook) {
+    uint8_t* p = (uint8_t*)site;
+    if (p[0] != 0xe8 || site + 5 + *(int32_t*)(p + 1) != expect) return false;
     DWORD old;
     if (!VirtualProtect(p + 1, 4, PAGE_EXECUTE_READWRITE, &old)) return false;
-    *(int32_t*)(p + 1) = (int32_t)((uintptr_t)&RallyPath - (kRallyPathCall + 5));
+    *(int32_t*)(p + 1) = (int32_t)((uintptr_t)hook - (site + 5));
     VirtualProtect(p + 1, 4, old, &old);
     FlushInstructionCache(GetCurrentProcess(), p, 5);
     return true;
+}
+
+bool PatchRallyPath() {
+    return PatchCallTo(kRallyPathCall, kDrawWaypointPath, (void*)&RallyPath) &&
+           PatchCallTo(kTargetMarkerCall, kDrawTargetMarker, (void*)&TargetMarker);
 }
 
 bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bool (*bottomUp)(const void* bits), bool debug) {
@@ -523,7 +547,9 @@ bool Install(void (*log)(const char*, ...), void (*publish)(const Captured&), bo
     ok = ok && PatchMenuCursorCall();
     log("layers: %s", ok ? "installed" : "FAILED (unexpected code; interface stays in the frame)");
     if (ok) log("layers: text page backgrounds %s", PatchTextPages() ? "hooked" : "FAILED (unexpected code)");
-    if (ok) log("layers: Gene Lab rally path %s", PatchRallyPath() ? "drawn with the battlefield" : "FAILED (unexpected code)");
+    if (ok)
+        log("layers: Gene Lab rally path, Warp and Summoner targets %s",
+            PatchRallyPath() ? "drawn with the battlefield" : "FAILED (unexpected code)");
     return ok;
 }
 

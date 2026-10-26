@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <chrono>
 
 namespace nav {
 namespace {
@@ -202,6 +203,90 @@ const std::vector<uint16_t>& Regions(int r) {
 int RegionOfNode(int i, int j, int r) {
     if (i < 0 || j < 0 || i >= g_lw || j >= g_lh) return kNoRegion;
     return Regions(r)[j * g_lw + i];
+}
+
+// Regions with a player's known buildings as well (its layer; not the build sites
+// or temporary circles, which depend on the asking unit): the static regions know
+// only terrain and rocks, so a goal walled off by buildings looked reachable, and
+// the search explored everything the unit could reach (some 100,000 nodes, tens of
+// ms) before settling for the nearest point. Filled on first use for each player,
+// radius and half footprint, and again once the layer has changed, but at most
+// every kDynRefresh turns (1.5 s; a battle changes it all the time): a stale fill only
+// costs a search more expansions.
+constexpr int kDynRefresh = 60;
+int g_clock;
+struct DynRegions {
+    int p, r, hf, version, filledAt;
+    std::vector<uint16_t> reg;
+};
+std::vector<DynRegions> g_dynRegions;
+int g_fills;
+int64_t g_fillUs;
+
+bool NodeFreeLayer(int i, int j, int r, int hf, int p) {
+    int n = j * g_lw + i;
+    if (g_clearS[n] <= r) return false;
+    int tx = std::max(0, FloorDiv(i * kLattice - hf, 32)), ty = std::max(0, FloorDiv(j * kLattice - hf, 32));
+    bool inMap = tx < g_w && ty < g_h;
+    if (inMap && g_staticTile[ty * g_w + tx]) return false;
+    if (g_layer[p].clear[n] <= r) return false;
+    return !(inMap && g_layer[p].occ[ty * g_w + tx]);
+}
+
+DynRegions* FindLayerRegions(int r, int hf, int p) {
+    for (DynRegions& e : g_dynRegions)
+        if (e.p == p && e.r == r && e.hf == hf) return &e;
+    return nullptr;
+}
+
+// fresh: refill a fill the layer has changed since, however recent.
+const std::vector<uint16_t>* LayerRegions(int r, int hf, int p, bool fresh = false) {
+    if (p < 0 || p >= kMaxPlayers || !g_layer[p].active) return nullptr;
+    DynRegions* d = FindLayerRegions(r, hf, p);
+    if (d && (d->version == g_layer[p].version || (!fresh && g_clock - d->filledAt < kDynRefresh))) return &d->reg;
+    if (!d) {
+        if (g_dynRegions.size() >= g_dynRegions.capacity()) return nullptr;  // (never: 64 is plenty)
+        g_dynRegions.push_back({p, r, hf, -1, 0, {}});
+        d = &g_dynRegions.back();
+    }
+    d->version = g_layer[p].version, d->filledAt = g_clock;
+    ++g_fills;
+    auto t0 = std::chrono::steady_clock::now();
+    // Each node's test once (the flood would ask up to 24 times), then the flood over bytes.
+    static std::vector<uint8_t> freeNode;
+    freeNode.resize(g_lw * g_lh);
+    for (int j = 0; j < g_lh; ++j)
+        for (int i = 0; i < g_lw; ++i) freeNode[j * g_lw + i] = NodeFreeLayer(i, j, r, hf, p);
+    std::vector<uint16_t>& reg = d->reg;
+    reg.assign(g_lw * g_lh, kNoRegion);
+    static std::vector<int> queue;
+    uint16_t next = 1;
+    for (int start = 0; start < g_lw * g_lh; ++start) {
+        if (reg[start] != kNoRegion || !freeNode[start]) continue;
+        uint16_t label = next < 0xffff ? next++ : next;
+        reg[start] = label;
+        queue.assign(1, start);
+        for (size_t q = 0; q < queue.size(); ++q) {
+            int n = queue[q], i = n % g_lw, j = n / g_lw;
+            for (int dd = 0; dd < 8; ++dd) {
+                int ni = i + kDx[dd], nj = j + kDy[dd];
+                if (ni < 0 || nj < 0 || ni >= g_lw || nj >= g_lh) continue;
+                int m = nj * g_lw + ni;
+                if (reg[m] != kNoRegion || !freeNode[m]) continue;
+                if (dd >= 4 && (!freeNode[j * g_lw + ni] || !freeNode[nj * g_lw + i])) continue;
+                reg[m] = label;
+                queue.push_back(m);
+            }
+        }
+    }
+    g_fillUs += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+    return &reg;
+}
+
+// The region of node (i, j) for the unit: with its player's buildings where known.
+int UnitRegion(const std::vector<uint16_t>* layer, int i, int j, int r) {
+    if (i < 0 || j < 0 || i >= g_lw || j >= g_lh) return kNoRegion;
+    return layer ? (*layer)[j * g_lw + i] : RegionOfNode(i, j, r);
 }
 
 // Nodes around (x, y) in rings of growing Chebyshev radius, each ring in a fixed
@@ -451,6 +536,8 @@ void FinishStatic() {
         for (int i = 0; i < g_lw; ++i) g_clearS[j * g_lw + i] = (uint8_t)TerrainClear(i * kLattice, j * kLattice);
     for (const Circle& c : g_static) StampCircle(g_clearS, c.x, c.y, c.r, 0, 0, g_lw * kLattice, g_lh * kLattice);
     for (auto& reg : g_region) reg.clear();
+    g_dynRegions.clear();
+    g_dynRegions.reserve(64);  // pointers into it stay valid while it grows (a handful of sizes per player)
     for (int p = 0; p < kMaxPlayers; ++p)
         if (g_layer[p].active) {
             g_layer[p].active = false;
@@ -653,7 +740,10 @@ bool NearestReachable(int sx, int sy, int gx, int gy, int r, int hf, int p, Pt& 
     if (!NearestNode(sx, sy, 3, si, sj, [&](int i, int j) { return NodeFree(i, j, r, hf, p); }) &&
         !NearestNode(sx, sy, MaxRing(), si, sj, [&](int i, int j) { return NodeFree(i, j, r, hf, p); }))
         return false;
+    const std::vector<uint16_t>* layer = LayerRegions(r, hf, p);
+    auto RegionOfNode = [&](int i, int j, int rr) { return UnitRegion(layer, i, j, rr); };
     int region = RegionOfNode(si, sj, r);
+    if (region == kNoRegion) layer = nullptr, region = UnitRegion(nullptr, si, sj, r);  // stale fill: the static one
     // The goal itself: passable and next to a node of the unit's region it can be walked to from.
     if (Passable(gx, gy, r, hf, p)) {
         int gi = gx / kLattice, gj = gy / kLattice;
@@ -675,6 +765,18 @@ bool NearestReachable(int sx, int sy, int gx, int gy, int r, int hf, int p, Pt& 
     return true;
 }
 
+void SetClock(int turn) { g_clock = turn; }
+int TakeFills() {
+    int n = g_fills;
+    g_fills = 0;
+    return n;
+}
+double TakeFillMs() {
+    double ms = g_fillUs / 1000.0;
+    g_fillUs = 0;
+    return ms;
+}
+
 bool FindRoute(int sx, int sy, int gx, int gy, int r, int hf, int p, int maxExpansions, Route& out) {
     out = Route();
     if (!g_ready) return false;
@@ -689,8 +791,18 @@ bool FindRoute(int sx, int sy, int gx, int gy, int r, int hf, int p, int maxExpa
         return false;
     Pt target;
     if (!NearestReachable(sx, sy, gx, gy, r, hf, p, target)) return false;
+    if ((target.x != gx || target.y != gy) && p >= 0 && p < kMaxPlayers) {  // unreachable by a stale fill? refill, look again
+        DynRegions* d = FindLayerRegions(r, hf, p);
+        if (d && d->version != g_layer[p].version) {
+            LayerRegions(r, hf, p, true);
+            if (!NearestReachable(sx, sy, gx, gy, r, hf, p, target)) return false;
+        }
+    }
     out.exact = target.x == gx && target.y == gy;
-    int region = RegionOfNode(si, sj, r);
+    const std::vector<uint16_t>* layer = LayerRegions(r, hf, p);
+    int region = UnitRegion(layer, si, sj, r);
+    if (region == kNoRegion) layer = nullptr, region = RegionOfNode(si, sj, r);
+    auto RegionOfNode = [&](int i, int j, int rr) { return UnitRegion(layer, i, j, rr); };
     int ti, tj;
     if (!NearestNode(target.x, target.y, MaxRing(), ti, tj,
                      [&](int i, int j) { return free(i, j) && RegionOfNode(i, j, r) == region; }))

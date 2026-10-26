@@ -43,6 +43,22 @@ decltype(&CreateFileA) o_CreateFileA;
 constexpr uintptr_t kQueueCount = 0x54c578, kCreateRegistries = 0x471c40;
 const uintptr_t kCreateRegistriesCalls[] = {0x47ac09, 0x480673, 0x487af6, 0x48f072, 0x493694};
 
+// The Esc menu waited for the voice: Scenes_ProcessCommand 0x4717e0 puts every
+// queued scene change off while the sound player plays (FUN_00463fb0, at 0x4717f2;
+// 2 ticks more each time, up to 80 times, then it stops the sound and goes on), and
+// while a change is pending, more Esc presses are dropped (QueueSceneChange, the
+// key-up dispatcher). With announcements playing, Esc took several presses, or
+// seconds. Opening the Esc menu (0x1f, 7) and leaving it (0x20) no longer wait:
+// the voice stops at once, as it would after the wait.
+constexpr uintptr_t kSoundBusyCall = 0x4717f2, kSoundBusy = 0x463fb0;
+constexpr uintptr_t kSceneCmd = 0x5792d0, kSceneCmdId = 0x5792d4;
+
+short __fastcall HookSoundBusy(void* player) {
+    int cmd = *(int*)kSceneCmd, id = *(int*)kSceneCmdId;
+    if ((cmd == 0x1f && id == 7) || cmd == 0x20) return 0;
+    return ((short(__fastcall*)(void*))kSoundBusy)(player);
+}
+
 unsigned __cdecl HookCreateRegistries() {
     if (int& n = *(int*)kQueueCount) {
         g_log("voices: %d queued announcement%s dropped (a new game)", n, n == 1 ? "" : "s");
@@ -146,6 +162,8 @@ void Install(const std::string& dir, void (*log)(const char*, ...)) {
     bool ok = true;
     for (uintptr_t site : kCreateRegistriesCalls) ok &= PatchCall(site, kCreateRegistries, (void*)&HookCreateRegistries);
     log("voices: announcement queue emptied for each new game: %s", ok ? "hooked" : "FAILED (unexpected code)");
+    log("voices: the Esc menu doesn't wait for a voice: %s",
+        PatchCall(kSoundBusyCall, kSoundBusy, (void*)&HookSoundBusy) ? "hooked" : "FAILED (unexpected code)");
 }
 
 const std::vector<std::string>& Available(bool rescan) {

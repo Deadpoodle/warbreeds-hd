@@ -410,7 +410,8 @@ void ScanWorld() {
 // to (up to 16 steps, in the stock geometry: one step size along the major axis).
 
 constexpr uintptr_t kSetPath = 0x404750;  // ACreatureBody (IStack<tPathStep>*), ret 4: copies x, y, dir
-constexpr int kTurnBudget = 40000;        // A* expansions per turn (one search may overrun it)
+constexpr int kTurnBudget = 12000;        // A* expansions per turn (one search may overrun it): about 5 ms
+constexpr int kSearchCap = 40000;         // per search: beyond it, the route leads as near as it got
 constexpr int kLookahead = 24;            // route nodes considered for the next straight leg
 // Steps per leg: 8 (about 100-150 px, inside every unit's sight), so a building
 // coming into view is known before the unit commits to walking into it.
@@ -442,6 +443,27 @@ struct UnitRoute {
 std::vector<UnitRoute> g_routes(65536);
 int g_budget;  // expansions left this turn
 int g_plans, g_plansDeferred;
+
+// Time spent per 400 turns (10 s), logged when it adds up to more than 100 ms:
+// planning, the blocked handler, the world scan and the build sites, and the
+// costliest search with whose it was.
+struct Perf {
+    int64_t plan = 0, blocked = 0, scan = 0, sites = 0, lastTotal = 0, worstTurn = 0;
+    int searches = 0, expansions = 0;
+    // The slowest turn's own work: what it did, against what the clock says (the OS may stop the game).
+    int lastSearches = 0, lastExpansions = 0, lastFills = 0, fills = 0;
+    int64_t lastPlan = 0, lastBlocked = 0, lastScan = 0, lastSites = 0;
+    int64_t wPlan = 0, wBlocked = 0, wScan = 0, wSites = 0;
+    int wSearches = 0, wExpansions = 0, wFills = 0;
+    int worst = 0, worstId = -1, worstPlayer = -1, worstType = -1, worstAct = -1;
+    nav::Pt worstFrom{}, worstTo{};
+    bool worstExact = false;
+} g_perf;
+int64_t PerfNow() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return t.QuadPart;
+}
 
 bool IsFlyer(int type) { return type == 4 || type == 0xd || type == 0x1f; }
 
@@ -569,12 +591,17 @@ bool PlanImproved(char* c) {
             u.retryTurn = sameOrder ? old.retryTurn : 0;
             u.avoidId = sameOrder ? old.avoidId : -1;
             u.avoidUntil = sameOrder ? old.avoidUntil : 0;
-            if (!nav::FindRoute(pos.x, pos.y, goal.x, goal.y, r, hf, p, 1 << 30, u.route)) {
+            if (!nav::FindRoute(pos.x, pos.y, goal.x, goal.y, r, hf, p, kSearchCap, u.route)) {
                 if (g_dbg.test) g_log("pathing: no route id %d from %d,%d to %d,%d", id, pos.x, pos.y, goal.x, goal.y);
                 return false;
             }
             g_budget -= u.route.expansions;
             ++g_plans;
+            ++g_perf.searches, g_perf.expansions += u.route.expansions;
+            if (u.route.expansions > g_perf.worst)
+                g_perf.worst = u.route.expansions, g_perf.worstId = id, g_perf.worstPlayer = p, g_perf.worstType = type,
+                g_perf.worstAct = F<int>(c, kActivity), g_perf.worstFrom = pos, g_perf.worstTo = goal,
+                g_perf.worstExact = u.route.exact;
             u.valid = true;
             u.layerVersion = nav::LayerVersion(p);
             // A move to a point it can't reach goes to the nearest point it can, and
@@ -663,6 +690,9 @@ bool Idle(char* t) {
 // Reroute round the creature in the way: taken if not much longer than the rest of the current route.
 // `any`: take the detour however long (a head-on block, or a long wait: waiting would never end).
 bool Reroute(char* c, UnitRoute& u, char* blocker, bool any) {
+    // A turn far over its searches' budget (long searches of other units can spend it every
+    // turn): it waits, and tries again. Not merely spent: a jam would never clear.
+    if (g_budget < -2 * kTurnBudget) return false;
     int type = F<int>(c, kType), p = PlayerOf(c);
     int r = Radius(type), hf = ((short*)kFootprint)[type] / 2;
     nav::Pt pos{F<short>(c, kX), F<short>(c, kY)};
@@ -670,7 +700,7 @@ bool Reroute(char* c, UnitRoute& u, char* blocker, bool any) {
     nav::SetTemporary(&around, 1);
     nav::SetQueryUnit(F<unsigned short>(c, kId));
     nav::Route alt;
-    bool ok = nav::FindRoute(pos.x, pos.y, u.goal.x, u.goal.y, r, hf, p, 1 << 30, alt);
+    bool ok = nav::FindRoute(pos.x, pos.y, u.goal.x, u.goal.y, r, hf, p, kSearchCap, alt);
     nav::SetTemporary(nullptr, 0);
     if (!ok) return false;
     g_budget -= alt.expansions;
@@ -758,7 +788,14 @@ bool BackOff(char* c, char* other) {
     return true;
 }
 
+void OnBlocked(void* creature);
 void __fastcall HookOnBlocked(void* creature, void*) {
+    int64_t t0 = PerfNow();
+    OnBlocked(creature);
+    g_perf.blocked += PerfNow() - t0;
+}
+
+void OnBlocked(void* creature) {
     char* c = (char*)creature;
     int id = F<unsigned short>(c, kId);
     UnitRoute& u = g_routes[id];
@@ -828,9 +865,10 @@ void __fastcall HookOnBlocked(void* creature, void*) {
         }
     }
     // An idle friend that was asked twice and is still in the way: go round it.
-    if (PlayerOf(b) == p && Idle(b) && F<int>(b, kStance) != 4 && g_asks2[id] >= 2 && g_askedOf[id] == blockerId) {
+    if (PlayerOf(b) == p && Idle(b) && F<int>(b, kStance) != 4 && g_asks2[id] >= 2 && g_askedOf[id] == blockerId &&
+        Reroute(c, u, b, false)) {
         g_asks2[id] = 0;
-        if (Reroute(c, u, b, false)) return;
+        return;
     }
     if (PlayerOf(b) == p && Idle(b) && F<int>(b, kStance) != 4) {
         if (g_askedOf[id] != blockerId) g_askedOf[id] = blockerId, g_asks2[id] = 0;
@@ -1088,16 +1126,19 @@ void AssignWorkSpots(const std::vector<const Builder*>& group, const nav::Site* 
     for (const Builder* b : group) {
         WorkSpot& w = g_workSpot[b->id];
         if (w.siteX == b->x && w.siteY == b->y) continue;
-        int r = Radius(F<int>(b->c, kType)), hf = ((short*)kFootprint)[F<int>(b->c, kType)] / 2, gap = 2 * r + 8;
+        int r = Radius(F<int>(b->c, kType)), hf = ((short*)kFootprint)[F<int>(b->c, kType)] / 2, gap = 2 * r + 4;
         int bx = F<short>(b->c, kX), by = F<short>(b->c, kY), bestD = -1;
         nav::Pt pick{};
         nav::SetQueryUnit(b->id, b->x, b->y);
-        for (int ring = 0; ring < 4; ++ring) {  // r + 60, 50, 40, 30 px out; odd rings half a step round
-            int d = r + 60 - 10 * ring;
-            for (int k = 0; k < 16; ++k) {
-                int cx = ring & 1 ? kCos16[k] + kCos16[(k + 1) % 16] : 2 * kCos16[k];
-                int cy = ring & 1 ? kSin16[k] + kSin16[(k + 1) % 16] : 2 * kSin16[k];
-                int len = ring & 1 ? 1962 : 2000;  // |cos + cos'| = 2 cos(11.25 deg)
+        // Rings r + 60, 54, ... 24 px out, 32 directions each (a base packed round the building
+        // leaves few places: with 16 directions and 4 rings a fourth builder found none, and
+        // queued behind the others out of reach).
+        for (int ring = 0; ring < 7; ++ring) {
+            int d = r + 60 - 6 * ring;
+            for (int k = 0; k < 32; ++k) {
+                int cx = k & 1 ? kCos16[k / 2] + kCos16[(k / 2 + 1) % 16] : 2 * kCos16[k / 2];
+                int cy = k & 1 ? kSin16[k / 2] + kSin16[(k / 2 + 1) % 16] : 2 * kSin16[k / 2];
+                int len = k & 1 ? 1962 : 2000;  // |cos + cos'| = 2 cos(11.25 deg)
                 nav::Pt q{b->x + cx * d / len, b->y + cy * d / len};
                 bool clear = ClearOf(circles, nc, q.x, q.y, r) && nav::Passable(q.x, q.y, r, hf, b->p);
                 for (const nav::Pt& t : taken)
@@ -1108,7 +1149,13 @@ void AssignWorkSpots(const std::vector<const Builder*>& group, const nav::Site* 
             }
         }
         nav::SetQueryUnit(-1);
-        if (bestD < 0) continue;  // no room: it heads for the centre as before
+        if (bestD < 0) {  // no room: it heads for the centre as before
+            static int s_logged;
+            if (s_logged++ < 20)
+                g_log("pathing: builder %d finds no work spot round %d,%d (%d others there)", b->id, b->x, b->y,
+                      (int)taken.size());
+            continue;
+        }
         w.siteX = b->x, w.siteY = b->y, w.at = pick;
         taken.push_back(pick);
         if (g_dbg.test) g_log("pathing: builder %d work spot %d,%d (site %d,%d)", b->id, pick.x, pick.y, b->x, b->y);
@@ -1158,7 +1205,9 @@ short __fastcall HookAtWorkSite(char* c, void*) {
     }
     nav::Site circles[48];
     int n = CreationCircles(F<int>(c, kWorkType), F<short>(c, kSiteX), F<short>(c, kSiteY), 0, -1, circles, 48);
-    return ClearOf(circles, n, x, y, Radius(F<int>(c, kType))) ? 1 : 0;
+    if (!ClearOf(circles, n, x, y, Radius(F<int>(c, kType)))) return 0;
+    g_workBegunAt[F<unsigned short>(c, kId)] = g_turn;
+    return 1;
 }
 
 void BuildTogether(std::vector<Builder>& builds, char** things, int count) {
@@ -2325,8 +2374,147 @@ void FailureLogTest(int t) {
     g_testDone = true;
 }
 
+// Test 22: Delete destroys an own building. A finished Relay is selected (World
+// 0x44b5d0, as a click selects) and a Delete key press posted to the game window,
+// through the game's key dispatcher to SGame::OnKeyDown (controls' hook): the Relay
+// must die (hp under 1, its collapse) and then be removed.
+int g_delRelay = -1, g_delAt = -1, g_delUnit = -1;
+void DeleteTest(int t) {
+    char* me = (char*)FirstCreature();
+    if (t == 5) {
+        if (!me || !FindOpenArea(F<short>(me, kX), F<short>(me, kY), 200, 200, g_area)) {
+            g_log("pathing: test 22 FAIL (no open area)");
+            g_testDone = true;
+            return;
+        }
+        char* relay = MakeFinished(PlayerOf(me), 0x2e, g_area.x, g_area.y);
+        g_delRelay = relay ? F<unsigned short>(relay, kId) : -1;
+        g_delUnit = SpawnUnit(PlayerOf(me), 1, g_area.x + 120, g_area.y);
+        g_log("pathing: test 22 Relay %d at %d,%d, unit %d", g_delRelay, g_area.x, g_area.y, g_delUnit);
+    }
+    if (t == 20) {
+        char* relay = ThingById(g_delRelay);
+        if (!relay) {
+            g_log("pathing: test 22 FAIL (no Relay)");
+            g_testDone = true;
+            return;
+        }
+        void* w = *(void**)kWorld;
+        ((void(__thiscall*)(void*, int))0x44b680)(w, 0);       // clear the selection
+        ((void(__thiscall*)(void*, void*))0x44b5d0)(w, relay);  // select the Relay and the unit
+        if (char* unit = ThingById(g_delUnit)) ((void(__thiscall*)(void*, void*))0x44b5d0)(w, unit);
+        HWND hwnd = *(HWND*)0x579290;
+        PostMessageA(hwnd, WM_KEYDOWN, VK_DELETE, 1 | (MapVirtualKeyA(VK_DELETE, 0) << 16));
+        PostMessageA(hwnd, WM_KEYUP, VK_DELETE, 1 | (MapVirtualKeyA(VK_DELETE, 0) << 16) | 0xc0000000);
+        g_log("pathing: test 22 Relay selected, Delete pressed (hp %d)", F<short>(relay, kHp));
+    }
+    if (t <= 20) return;
+    char* relay = ThingById(g_delRelay);
+    bool alive = relay && F<int>(relay, kType) == 0x2e && F<short>(relay, kHp) >= 1;
+    if (!alive && g_delAt < 0) {
+        g_delAt = t;
+        g_log("pathing: test 22 Relay down after %d turns%s", t - 20, relay ? " (collapsing)" : "");
+    }
+    bool gone = !relay || F<int>(relay, kType) != 0x2e;
+    char* unit = ThingById(g_delUnit);
+    bool unitDead = !unit || F<int>(unit, kType) != 1 || F<short>(unit, kHp) < 1;
+    if ((!gone || !unitDead) && t < 600) return;
+    bool pass = g_delAt >= 0 && g_delAt - 20 <= 10 && gone && unitDead;
+    g_log("pathing: test 22 %s (Delete on an own building and unit: building %s, %s; unit %s)", pass ? "PASS" : "FAIL",
+          g_delAt >= 0 ? "destroyed" : "NOT destroyed", gone ? "removed" : "still standing", unitDead ? "dead" : "ALIVE");
+    g_testDone = true;
+}
+
+// Tests 23-25: four Shamans in a bunch, 220 px west (23), east (24) or south-east
+// (25, the side of the Gene Lab's second shape) of the site, on a Gene Lab: one
+// group builds a new one (a group build: the same Build for each), another repairs
+// a damaged finished one. Every Shaman must start work at its own spot.
+struct FourTest {
+    int newX = 0, newY = 0, lab = -1, labX = 0, labY = 0;
+    int builders[4] = {-1, -1, -1, -1}, repairers[4] = {-1, -1, -1, -1};
+    int ordered = 0;
+} g_ft;
+
+void FourBuildersTest(int test, int t) {
+    char* me = (char*)FirstCreature();
+    static const int kFrom[3][2] = {{-220, 0}, {220, 0}, {160, 160}};
+    const int* from = kFrom[test - 23];
+    if (t == 5) {
+        if (!me || !FindOpenArea(F<short>(me, kX), F<short>(me, kY), 560, 340, g_area)) {
+            g_log("pathing: test %d FAIL (no open area)", test);
+            g_testDone = true;
+            return;
+        }
+        int p = PlayerOf(me);
+        static const uint8_t kAlways[] = {0x66, 0xb8, 0x01, 0x00, 0xc2, 0x10, 0x00};  // HasPower: mov ax, 1; ret 0x10
+        DWORD old;
+        if (VirtualProtect((void*)0x44ed20, sizeof kAlways, PAGE_EXECUTE_READWRITE, &old)) {
+            memcpy((void*)0x44ed20, kAlways, sizeof kAlways);
+            VirtualProtect((void*)0x44ed20, sizeof kAlways, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), (void*)0x44ed20, sizeof kAlways);
+        }
+        g_ft.newX = g_area.x - 250, g_ft.newY = g_area.y;
+        int code = ((int(__thiscall*)(void*, int, int, int, int, int, int, int))kCanPlace)(*(void**)kWorld, p, g_ft.newX,
+                                                                                         g_ft.newY, 0x2d, 1, 0, 0);
+        char* lab = MakeFinished(p, 0x2d, g_area.x + 250 - 16, g_area.y - 16);  // top-left: centre at area + 250
+        g_ft.lab = lab ? F<unsigned short>(lab, kId) : -1;
+        if (lab) g_ft.labX = F<short>(lab, kX), g_ft.labY = F<short>(lab, kY), F<short>(lab, kHp) = F<short>(lab, kHp) / 3;
+        static const int kBunch[4][2] = {{0, -24}, {0, 24}, {-40, -24}, {-40, 24}};
+        for (int k = 0; k < 4; ++k) {
+            g_ft.builders[k] = SpawnUnit(p, 0, g_ft.newX + from[0] + kBunch[k][0], g_ft.newY + from[1] + kBunch[k][1]);
+            g_ft.repairers[k] = SpawnUnit(p, 0, g_ft.labX + from[0] + kBunch[k][0], g_ft.labY + from[1] + kBunch[k][1]);
+        }
+        g_log("pathing: test %d new Gene Lab site %d,%d (CanPlace %d), damaged Gene Lab %d at %d,%d", test, g_ft.newX, g_ft.newY,
+              code, g_ft.lab, g_ft.labX, g_ft.labY);
+    }
+    if (char* lab = ThingById(g_ft.lab)) F<short>(lab, 0x28) = 0, F<uint8_t>(lab, 0x3d) = 100;  // powered (no source here)
+    if (t == 20) {
+        void* cmd = Cmd();
+        for (int b : g_ft.builders)
+            ((void(__thiscall*)(void*, int, int, int, int))(*(void***)cmd)[0x5c / 4])(cmd, b, 0x2d, g_ft.newX, g_ft.newY);
+        for (int b : g_ft.repairers) ((void(__stdcall*)(int, int))kRepairExec)(b, g_ft.lab);
+        g_ft.ordered = t;
+    }
+    if (t <= 20) return;
+    int started = 0;
+    for (int group = 0; group < 2; ++group)
+        for (int k = 0; k < 4; ++k) {
+            int id = group ? g_ft.repairers[k] : g_ft.builders[k];
+            if (g_oddStarted[id]) {
+                ++started;
+                continue;
+            }
+            if (g_workBegunAt[id] < 0) continue;
+            g_oddStarted[id] = 1;
+            ++started;
+            char* c = ThingById(id);
+            g_log("pathing: test %d %s %d starts work at %d,%d, turn %d", test, group ? "repairer" : "builder", id,
+                  c ? F<short>(c, kX) : -1, c ? F<short>(c, kY) : -1, t - g_ft.ordered);
+        }
+    if (started < 8 && t < g_ft.ordered + 900) return;
+    for (int group = 0; group < 2; ++group)
+        for (int k = 0; k < 4; ++k) {
+            int id = group ? g_ft.repairers[k] : g_ft.builders[k];
+            if (g_oddStarted[id]) continue;
+            DumpUnit(test, id);
+            const WorkSpot& w = g_workSpot[id];
+            g_log("pathing: test %d   its spot %d,%d (site %d,%d)", test, w.at.x, w.at.y, w.siteX, w.siteY);
+        }
+    g_log("pathing: test %d %s (four builders on a Gene Lab: %d of 8 started work at their own spots)", test,
+          started == 8 ? "PASS" : "FAIL", started);
+    g_testDone = true;
+}
+
 void TestTurn(int t) {
     switch (g_dbg.test) {
+    case 23:
+    case 24:
+    case 25:
+        FourBuildersTest(g_dbg.test, t);
+        break;
+    case 22:
+        DeleteTest(t);
+        break;
     case 21:
         FailureLogTest(t);
         break;
@@ -2462,14 +2650,37 @@ void TestTurn(int t) {
 constexpr uintptr_t kVSetStance = 0xa0, kVLocalSlot = 0xd0;  // Cmd virtuals
 constexpr uintptr_t kStanceExecCall = 0x45bcb7, kStanceExec = 0x462e20;  // in CommandList::Execute (MP)
 constexpr uintptr_t kSlots = 4, kSlotSize = 0x28, kSlotUsed = 0, kSlotHuman = 0x24;  // cmd+4: tPlayerSlot[8]
-constexpr int kHelloVersion = 1, kHelloTimeout = 250, kHelloId = 0xffff;
+// Version 2 (0.21.0): Delete destroys an own building, a command older copies don't know.
+constexpr int kHelloVersion = 2, kHelloTimeout = 250, kHelloId = 0xffff;
 
 struct MpState {
     bool active = false;    // a multiplayer mission waiting for hellos
     int hello[8];           // per slot: -1 none, else the hello word
     int switchTurn = -1;    // the turn the agreed mode takes effect
     bool agreed = false;
+    bool allHd = false;     // every human player has this WarBreeds HD (the hellos agreed)
 } g_mp;
+
+// --- destroying an own building or unit (Delete, controls.cpp) --------------------
+// It takes damage of its hit points + 1 from no one (vtable +0x44: ADevice::
+// TakeDamage 0x40e360, no random part; a creature's 0x445ba0 adds rand & 1, the
+// synced generator, on every machine alike): it dies the stock way (Die, a
+// building's collapse, the owner told, power off; a creature's corpse). In
+// multiplayer it goes as a command, SetStance with stance 0x5e00 on the thing, run
+// by every machine at the same turn, and only once every player has said hello
+// with this version (a stock or older copy would apply the stance instead).
+constexpr int kDestroyStance = 0x5e00;
+constexpr uintptr_t kVTakeDamage = 0x44;
+
+void DestroyNow(int id) {
+    char* t = ThingById(id);
+    int type = t ? F<int>(t, kType) : -1;
+    if (type < 0 || type > 0x3e || F<short>(t, kHp) < 1) return;  // a creature or a building
+    short hp = F<short>(t, kHp);
+    ((void(__thiscall*)(void*, int, int, int, int))(*(void***)t)[kVTakeDamage / 4])(t, 0, 0, hp + 1, 0xc01);
+    g_log("pathing: %s %d (type %#x, player %d) destroyed by its owner", type < 0x2c ? "unit" : "building", id, type,
+          PlayerOf(t));
+}
 
 bool SlotHuman(int i) {
     char* slot = (char*)Cmd() + kSlots + i * kSlotSize;
@@ -2485,6 +2696,10 @@ void SendHello() {
 }
 
 void __stdcall HookStanceExec(int id, int stance) {
+    if ((stance & 0xff00) == kDestroyStance && g_mp.allHd) {
+        DestroyNow(id & 0xffff);
+        return;
+    }
     if ((id & 0xffff) == kHelloId && (stance & 0xff00) == 0x5700) {
         int slot = stance >> 1 & 7;
         if (g_mp.active && !g_mp.agreed) {
@@ -2519,6 +2734,7 @@ void MultiplayerTurn() {
     }
     if (all && same && host >= 0) {
         g_mp.agreed = true;
+        g_mp.allHd = true;
         bool improved = g_mp.hello[host] & 1;
         g_log("pathing: every player has WarBreeds HD; mode %s (host slot %d) from turn %d", improved ? "improved" : "original",
               host, g_turn + 1);
@@ -2581,6 +2797,8 @@ void OnMissionStart(int turn) {
 // --- hooks ------------------------------------------------------------------
 
 // Start of every simulation turn (inside GameTurn, after the turn counter moved).
+void LogAlliedAttacks();
+
 void __fastcall HookDeferred(void* cmd, void*) {
     int turn = F<int>(cmd, kTurn);
     if (g_missionStart || turn != g_lastTurn + 1) {
@@ -2591,12 +2809,87 @@ void __fastcall HookDeferred(void* cmd, void*) {
     if (g_dbg.hash && (turn - g_missionTurn0) % 50 == 0)
         g_log("pathing: hash t=%d %08x", turn - g_missionTurn0, StateHash(turn - g_missionTurn0));
     g_turn = turn - g_missionTurn0;
+    nav::SetClock(g_turn);
     g_budget = kTurnBudget;
     MultiplayerTurn();
+    {  // the turn just past: its pathing time, and its work if it is the slowest so far
+        Perf& q = g_perf;
+        q.fills += nav::TakeFills();
+        int64_t total = q.plan + q.blocked + q.scan + q.sites;
+        if (total - q.lastTotal > q.worstTurn) {
+            q.worstTurn = total - q.lastTotal;
+            q.wPlan = q.plan - q.lastPlan, q.wBlocked = q.blocked - q.lastBlocked, q.wScan = q.scan - q.lastScan;
+            q.wSites = q.sites - q.lastSites, q.wSearches = q.searches - q.lastSearches;
+            q.wExpansions = q.expansions - q.lastExpansions, q.wFills = q.fills - q.lastFills;
+        }
+        q.lastTotal = total, q.lastPlan = q.plan, q.lastBlocked = q.blocked, q.lastScan = q.scan, q.lastSites = q.sites;
+        q.lastSearches = q.searches, q.lastExpansions = q.expansions, q.lastFills = q.fills;
+    }
+    int64_t t0 = PerfNow();
     if (g_improved || g_dbg.test) ScanWorld();
+    int64_t t1 = PerfNow();
     if (g_improved) UpdateSites();
+    g_perf.scan += t1 - t0, g_perf.sites += PerfNow() - t1;
+    LogAlliedAttacks();
+    if (g_turn % 400 == 0 && g_turn > 0) {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        auto ms = [&](int64_t v) { return v * 1000.0 / f.QuadPart; };
+        double total = ms(g_perf.plan + g_perf.blocked + g_perf.scan + g_perf.sites);
+        if (total > 100 || g_dbg.test)
+            g_log("pathing: perf, turns %d-%d: %.0f ms (planning %.0f, blocked %.0f, scan %.0f, sites %.0f; the slowest turn "
+                  "%.1f: planning %.1f, blocked %.1f, scan %.1f, sites %.1f, %d searches, %d expansions, %d fills); %d searches, "
+                  "%d expansions; the costliest %d expansions, id %d (player %d, type %#x, activity %#x) %d,%d to %d,%d%s; "
+                  "%d region fills, %.0f ms",
+                  g_turn - 400, g_turn, total, ms(g_perf.plan), ms(g_perf.blocked), ms(g_perf.scan), ms(g_perf.sites),
+                  ms(g_perf.worstTurn), ms(g_perf.wPlan), ms(g_perf.wBlocked), ms(g_perf.wScan), ms(g_perf.wSites),
+                  g_perf.wSearches, g_perf.wExpansions, g_perf.wFills,
+                  g_perf.searches, g_perf.expansions, g_perf.worst, g_perf.worstId, g_perf.worstPlayer, g_perf.worstType,
+                  g_perf.worstAct, g_perf.worstFrom.x, g_perf.worstFrom.y, g_perf.worstTo.x, g_perf.worstTo.y,
+                  g_perf.worstExact ? "" : " (not reachable: nearest)", g_perf.fills, nav::TakeFillMs());
+        g_perf = Perf();
+    }
     if (g_dbg.test && !g_testDone) TestTurn(turn - g_missionTurn0);
     ((void(__thiscall*)(void*))kProcessDeferred)(cmd);
+}
+
+// Diagnosis (a player saw an ally's unit attack his turret in a 2v2 skirmish):
+// each turn, a creature whose attack target (+0x30, +0xec) or a turret whose
+// target (+0x42) belongs to a player its owner counts as an ally (APlayer +0x18,
+// bit per player) is logged, once per pair (at most 40).
+void LogAlliedAttacks() {
+    static std::vector<uint32_t> s_seen;
+    if (s_seen.size() >= 40) return;
+    int count;
+    char** things = Things(count);
+    for (int i = 0; i < count; ++i) {
+        char* t = things[i];
+        if (!t) continue;
+        int type = F<int>(t, kType);
+        short targets[2] = {(short)0xc01, (short)0xc01};
+        if (IsCreature(type)) targets[0] = F<short>(t, 0x30), targets[1] = F<short>(t, 0xec);
+        else if (type == 0x31 || type == 0x37) targets[0] = F<short>(t, 0x42);
+        else continue;
+        char* owner = F<char*>(t, kOwner);
+        for (short tid : targets) {
+            char* v = tid != (short)0xc01 ? ThingById((unsigned short)tid) : nullptr;
+            char* vo = v ? F<char*>(v, kOwner) : nullptr;
+            if (!owner || !vo || vo == owner) continue;
+            int pa = PlayerOf(t), pv = PlayerOf(v);
+            bool aSeesAlly = pv >= 0 && pv < 8 && (F<uint8_t>(owner, 0x18) >> pv & 1);
+            bool vSeesAlly = pa >= 0 && pa < 8 && (F<uint8_t>(vo, 0x18) >> pa & 1);
+            if (!aSeesAlly && !vSeesAlly) continue;
+            uint32_t key = (uint32_t)F<unsigned short>(t, kId) << 16 | (unsigned short)tid;
+            if (std::find(s_seen.begin(), s_seen.end(), key) != s_seen.end()) continue;
+            s_seen.push_back(key);
+            g_log("teams: %d (type %#x, player %d, activity %#x, stance %d) targets %d (type %#x, player %d) though "
+                  "%s; masks %#x / %#x",
+                  F<unsigned short>(t, kId), type, pa, IsCreature(type) ? F<int>(t, kActivity) : -1,
+                  IsCreature(type) ? F<int>(t, kStance) : -1, tid, F<int>(v, kType), pv,
+                  aSeesAlly && vSeesAlly ? "they are allies" : aSeesAlly ? "its owner counts them allies" : "they count its owner an ally",
+                  F<uint8_t>(owner, 0x18), F<uint8_t>(vo, 0x18));
+        }
+    }
 }
 
 void __fastcall HookClockReset(void* cmd, void*) {
@@ -2612,7 +2905,9 @@ void __fastcall HookClockSet(void* cmd, void*, int turn) {
 void __fastcall HookPlan(void* creature, void*) {
     if (g_improved && nav::Ready() && !IsFlyer(F<int>(creature, kType))) {
         UnitRoute& u = g_routes[F<unsigned short>(creature, kId)];
+        int64_t t0 = PerfNow();
         bool mine = PlanImproved((char*)creature);
+        g_perf.plan += PerfNow() - t0;
         if (u.thing == creature) u.stock = !mine;
         if (mine) return;
     }
@@ -2663,6 +2958,17 @@ void SetPreference(bool improved) {
 }
 
 bool Improved() { return g_improved; }
+
+bool DestroyBuilding(int id) {
+    if (!Multiplayer()) {
+        DestroyNow(id);
+        return true;
+    }
+    if (!g_mp.allHd) return false;
+    void* cmd = Cmd();
+    ((void(__thiscall*)(void*, int, int))(*(void***)cmd)[kVSetStance / 4])(cmd, id, kDestroyStance);
+    return true;
+}
 bool TestDone() { return g_testDone; }
 
 }  // namespace pathing

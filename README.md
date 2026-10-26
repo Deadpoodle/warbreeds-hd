@@ -103,7 +103,7 @@ Taking it apart showed that the editor is mostly the game itself. About 85% of i
 
 **Saving a skirmish.** The Esc menu in a skirmish now has Load Game and Save Game, as in a campaign. The original game could save a skirmish all along but left the two buttons out, and a saved skirmish would have come back under campaign rules: the first player as you, clan colours instead of the ones you chose, and the result screen leading to the main menu. WarBreeds HD writes a small `<name>.wbs.hd` beside each skirmish save (who you were, the skirmish setup and where you were looking), and a skirmish save loads as a skirmish, teams and all, from the Esc menu or the main menu. The `.wbs` itself is the game's own format. Keep the two files together (copying a save to another PC, for instance): without its `.hd`, a skirmish save loads as the original game would load it. While you watch an ally after your own defeat, Save Game isn't available.
 
-**Skirmish objectives.** The Esc menu's Objectives lists every enemy to defeat ("Defeat the Kelika"), with a green check beside each one you have beaten. The original showed "no explicit objectives".
+**Skirmish objectives.** The Esc menu's Objectives lists every enemy to defeat ("Defeat the Kelika"), with a green check beside each one you have beaten. The original showed "no explicit objectives". When a player is defeated, the message line says so ("The Kelika are defeated").
 
 **Campaign progress.** The original kept campaign progress only while the game was running; quitting meant starting the campaign again. WarBreeds HD remembers where each campaign (Tanu Ascendancy, Magha Uprising) is every time a mission briefing opens, in `WarBreedsHD-progress.ini` next to the game. Click that campaign again and choose **Continue** to go straight to that mission's briefing, or **Start Over**. Nothing carries over between WarBreeds missions anyway, so continuing loses nothing. Finishing a campaign clears its record. Saved games work as before.
 
@@ -197,10 +197,11 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Double-click one of your units to select every unit of yours of that type on screen.
 - Quick-build: B, then a letter (R Refinery, T Turret, …); P, then 1–3 for pods.
 - Builders clicked onto your own unfinished or damaged building go and finish or repair it.
-- Group build: with several builders selected, the build, plant and repair buttons and keys still work. They all build it: with Improved pathfinding they start it together; with Original the nearest starts it and the others help once it stands.
+- Group build: with several builders selected, the build, plant, repair and upgrade buttons and keys still work. They all build it: with Improved pathfinding they start it together; with Original the nearest starts it and the others help once it stands. Repair and Upgrade send them all.
+- Delete destroys the buildings and units of yours you have selected (in multiplayer, when every player has this version).
 - Placing a Refinery, Relay, Relay+, Turret, Plasma Cannon or Electric Tower shows its range ring at the cursor, in the game's own style: what a Refinery collects, what a Relay powers, how far a turret picks targets by itself. Settings > Controls > Placement Range.
 - Pods can be planted in fog: the Shaman walks there and plants.
-- An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default. With Modern, right-click with a Gene Lab or Gene Lab+ selected sets its rally point (with Classic, left-click does, as it always has).
+- An optional **Modern mouse scheme**: left-click selects, right-click gives orders. Classic is the default. With Modern, right-click with a Gene Lab or Gene Lab+ selected sets its rally point (with Classic, left-click does, as it always has), and with a Warp selected sets where it sends units.
 - Optional: a working Listener shows cloaked enemy Shadows and Reavers within about 480 px of it as blinking dots on the minimap. They stay invisible on the battlefield. Settings > Controls > Listener Finds Cloaked, off by default.
 - Alt+F4 quits.
 
@@ -212,8 +213,10 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - Traffic: an idle friend in the way walks off the path (out of a corridor, if it has to). A unit following a friend going the same way waits behind it. In a jam it waits about a second, then goes another way if that isn't much longer. Two units meeting head-on in a narrow pass don't deadlock: one goes round, or backs out of the way and then carries on. A unit that gets no closer to where it's going for 15 seconds stops.
 - Building sites: once a builder is on its way to build, the player's other units keep off the site, so a unit standing in the way can't make the building fail. An idle unit already on it steps off.
 - Group build together: with several builders selected, every one of them walks to the site, takes its own spot round it with the build animation, and they start the building together (four builders start it in about a quarter of the time). When it stands they all build it on. With Original, the others wait beside the site until the first stage is up, as before.
+- Builders, repairers and upgraders each work from a spot of their own round the building, clear of its full shape: the Gene Labs, Healer, Warp, Summoner and Collector reach well past their footprint, and a builder that stood inside that reach could never put the building up.
 - Units walk at their original speeds; only the routes change. Flyers fly as before.
 - Also fixes the 1998 collision bug that misread which tiles are blocked (a stale value on every other row of tiles), and the one that let units and buildings onto animated water.
+- Goals walled off by buildings (common when the computer players attack) are recognised at once, instead of searching the whole map each time; that cost a large battle its frame rate.
 - Applies to every unit, the computer players' too. Takes effect from the next mission. In multiplayer everyone uses the host's choice; if any player has an older WarBreeds HD, the game uses Original.
 
 **Fixes**
@@ -223,6 +226,8 @@ All the announcements are in one file, `GLOBSFX.MHK`. The sound effects file, `S
 - A mission, and a loaded game, starts centred on your base (it used to sit up and to the left at HD sizes).
 - Loading a campaign save from inside a skirmish no longer sets the loaded game up as a skirmish.
 - Redraws the whole battlefield every frame. The original only redrew what it had marked as changed, and fast flying units left trails of old copies behind them.
+- A selected Gene Lab's rally point, and a Warp's or Summoner's target, are drawn in the right place at every zoom. The game drew them with the interface, which isn't scaled like the battlefield.
+- The Esc menu opens at the first press. The game held every screen change back while a voice line played, and dropped further presses meanwhile.
 - The Viper (the Magha flyer) no longer loses its body at some zoom levels, leaving only its head gizmo. The game's routine for drawing unit bodies draws nothing on a frame whose width isn't a multiple of 4, so every frame width is now one.
 - In Settings, "More above" and "More below" light up at their own size when you point at them; they used to switch to the large font and be cut off.
 

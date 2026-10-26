@@ -70,7 +70,7 @@ The original scheme uses the left button for everything: it selects, and with yo
 | <kbd>X</kbd> | Scatter: stop, then spread out a little. |
 | <kbd>Ctrl</kbd>+<kbd>X</kbd> | Hold position: guard the current spot. |
 | <kbd>J</kbd> | Special ability of the K5 Leviathan only *(likely)* |
-| <kbd>Delete</kbd> | Delete the saved patrol route under the cursor. |
+| <kbd>Delete</kbd> | Delete the saved patrol route under the cursor. With only your own buildings and units selected (and Tab not held), WarBreeds HD destroys them instead; in multiplayer only when every player has the same version. |
 
 > **<p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd> destroys everything you have selected. It is easy to hit by accident.</p>**
 
@@ -228,6 +228,8 @@ Everything above still works the same unless noted. Most additions can be switch
 |---|---|
 | A working Listener | With Settings → Controls → Listener Finds Cloaked on (off by default), cloaked enemy Shadows and Reavers within about 480 px of it blink on the minimap. They stay invisible on the battlefield. |
 | A Gene Lab or Gene Lab+ selected | Its rally point: left-click the ground (Classic), right-click (Modern), or Tab and clicks for a route. |
+| Your own buildings or units selected, <kbd>Delete</kbd> | Destroy them: buildings collapse and units die as if killed in battle. In multiplayer only when every player has the same WarBreeds HD version. |
+| A Warp selected | Its target: its panel's button, then a click (both schemes), or right-click (Modern). |
 
 ### Pathfinding
 
@@ -239,6 +241,7 @@ Everything above still works the same unless noted. Most additions can be switch
 | Move to a spot it can't reach | It goes to the nearest spot it can reach and stops there. |
 | Move a group | Each unit gets its own spot in a loose cluster around the click. Formation moves (<kbd>Space</kbd>) are unchanged. |
 | Group build (several builders) | Every builder walks to the site and works at its own spot round it; they start the building together, then all build it on. |
+| Repair or upgrade (one or several builders) | Each walks to its own spot round the building, clear of its whole shape (the Gene Labs, Healer, Warp and Summoner reach well past their footprint), and works from there. |
 | A building site | Once a builder is on its way, your other units keep off the site; an idle one standing on it steps off. |
 | A unit in the way | An idle friend walks off the path (out of a corridor, if it has to). Following a friend going the same way: wait behind it. A jam: wait about a second, then go another way if it isn't much longer. Two units meeting head-on in a narrow pass: one goes round, or backs out and then carries on. No closer to the goal for 15 seconds: the unit stops. |
 

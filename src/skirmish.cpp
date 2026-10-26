@@ -193,6 +193,43 @@ void __cdecl HookObjectives(int title, int text, int text2, int a4, int a5) {
     g_log("skirmish: objectives: %d enemies, %d defeated", (int)lines.size(), (int)std::count(done.begin(), done.end(), true));
 }
 
+// --- "The X are defeated" --------------------------------------------------
+// The game says nothing when a player is defeated (APlayerRegistry::PlayerDefeated
+// 0x43b780: an active player, +0x48f6 == 1, is deactivated). Each of its five
+// callers (a player's tick, a thing removed, DeletePlayer, the recheck, a removed
+// machine) is hooked: once a player goes from active to defeated, the local player
+// gets a message in the game's message line (APlayer::PostMessage 0x439600, shown
+// for 300 turns; sent as from the local player, as a defeated player may be
+// deleted at once and a message from no one isn't drawn), and the log says so.
+// Not while a game is set up (empty slots are removed), in its first 20 turns (an
+// empty slot's player is defeated at its first tick) or shut down (every player).
+constexpr uintptr_t kPlayerDefeated = 0x43b780, kPostMessage = 0x439600;
+constexpr uintptr_t kGameTurn = 0x4708b0, kAppRunning = 0x5792c8;
+constexpr uintptr_t kDefeatedCalls[] = {0x435fe9, 0x43774c, 0x43abfe, 0x43bb87, 0x463047};
+
+void __fastcall HookPlayerDefeated(char* registry, void*, int id, int recheck) {
+    char* p = *(char**)(registry + 4 + 4 * (id & 7));
+    bool wasActive = p && *(uint16_t*)(p + kAlive) == 1;
+    int clan = p ? *(int*)(p + kClan) : -1;
+    ((void(__thiscall*)(void*, int, int))kPlayerDefeated)(registry, id, recheck);
+    if (!wasActive || g_registry || ((int (*)())kGameTurn)() < 20 || !*(int*)kAppRunning) return;
+    char* me = ((char* (*)())kLocalPlayer)();
+    // The clan's name, numbered if another player shares the clan.
+    std::string name = ClanName(clan);
+    for (int i = 0; i < 8; ++i) {
+        char* o = RegistryPlayer(i);
+        if (o && o != p && *(int*)(o + kClan) == clan) {
+            name += " " + std::to_string((id & 7) + 1);
+            break;
+        }
+    }
+    g_log("skirmish: player %d (%s) defeated", id & 7, name.c_str());
+    if (!me) return;  // watching or gone: no message line
+    std::string text = lang::trf("The {1} are defeated", {name});
+    if (text.size() > 80) text.resize(80);  // the message holds 82 bytes
+    ((void(__thiscall*)(void*, short, int, const char*))kPostMessage)(me, *(short*)(me + kPlayerId), 0xff, text.c_str());
+}
+
 // ConfigureAI is a thiscall on the registry with the player on the stack (it
 // pops it): taken as fastcall, the second register argument unused.
 void __fastcall HookConfigureAI(void* registry, void*, char* ai) {
@@ -216,6 +253,9 @@ void Install(void (*log)(const char*, ...)) {
     log("skirmish: map AI settings hooks %s", ok ? "installed" : "FAILED (unexpected code)");
     bool objectives = PatchCall(kObjectivesCall, kShowDialog, (void*)&HookObjectives);
     log("skirmish: objectives %s", objectives ? "installed" : "FAILED (unexpected code)");
+    bool defeated = true;
+    for (uintptr_t site : kDefeatedCalls) defeated &= PatchCall(site, kPlayerDefeated, (void*)&HookPlayerDefeated);
+    log("skirmish: defeat messages %s", defeated ? "installed" : "FAILED (unexpected code)");
 }
 
 }  // namespace skirmish

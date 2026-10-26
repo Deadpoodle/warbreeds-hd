@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <vector>
 
 #include "game.h"
 #include "pathing.h"
@@ -90,6 +91,7 @@ constexpr uintptr_t kRadar = 0x5517b0, kRadarShown = 0x433e10, kRadarHit = 0x433
 constexpr uintptr_t kToWorldX = 0x47ec60, kToWorldY = 0x47ec80;  // SGame int(screen coord)
 constexpr uintptr_t kCmdRepair = 0x88;  // Commands vtable: (short builderId, short targetId)
 constexpr uintptr_t kCmdUpgrade = 0x84;   // Commands vtable: (short builderId, short deviceId)
+constexpr uintptr_t kCmdWarpTo = 0x54;    // Commands vtable: (short warpId, int x, int y)
 constexpr uintptr_t kCmdSetRally = 0x4c;  // Commands vtable: (short labId, PtList* path, IPixelC* loopPt)
 constexpr uintptr_t kComplete = 0x2c;     // ADevice short: 1 = construction finished
 
@@ -262,8 +264,31 @@ bool QuickPlant(int digit) {
     return true;
 }
 
+// Delete with only own buildings and units selected destroys them (pathing::
+// DestroyBuilding: at once, or as a command in multiplayer). Otherwise, and in
+// waypoint mode (Tab), the stock Delete: the route under the cursor.
+bool DeleteSelected(void* sg) {
+    int n;
+    void** sel = Selection(n);
+    if (!sel || n < 1 || F<short>(sg, kTabHeld) == 1 || F<short>(sg, kInputOff) == 1) return false;
+    for (int i = 0; i < n; ++i)
+        if (!sel[i] || !(IsDevice(sel[i]) || IsCreature(sel[i])) || !Mine(sel[i])) return false;
+    std::vector<short> ids;
+    for (int i = 0; i < n; ++i) ids.push_back(F<short>(sel[i], kId));
+    int done = 0;
+    for (short id : ids) done += pathing::DestroyBuilding(id);
+    if (!done) {
+        g_log("controls: Delete: not every player has this WarBreeds HD; nothing destroyed");
+        return false;
+    }
+    ((void(__cdecl*)())kClickSound)();
+    g_log("controls: Delete: %d of your own building(s) and unit(s) destroyed", done);
+    return true;
+}
+
 short __thiscall HookKeyDown(void* sg, int vk, int mods, int ascii) {
     int k = vk & 0xff, m = mods & 0xff;
+    if (k == VK_DELETE && m == 0 && DeleteSelected(sg)) return 1;
     if (g_opt.quickBuild && k >= 'A' && k <= 'Z' && (m == 0 || m == 4) && QuickBuild(k, m == 4)) return 1;
     if (g_opt.quickBuild && k >= '1' && k <= '3' && m == 0 && QuickPlant(k - '0')) return 1;
     // B/P/R/U for a group of builders: the stock keys need exactly one Shaman
@@ -440,6 +465,18 @@ short __thiscall HookRButtonUp(void* sg, int x, int y) {
         ((void(__thiscall*)(void*, int, PtList*, Pt*))Slot(kCmdSetRally))(Cmd(), F<short>(sel[0], kId), &path, &loop);
         ((void(__cdecl*)())kClickSound)();
         g_log("controls: rally point of Gene Lab %d set to %d,%d (right-click)", F<short>(sel[0], kId), pt.x, pt.y);
+        return 1;
+    }
+    // One own working Warp selected: the right-click sets its target (as its panel's
+    // button and a click do: Cmd+0x54 WarpTo(warpId, x, y); the Warp keeps its own
+    // position for a target too near, AWarp::SetTarget 0x457ce0).
+    if (n == 1 && sel[0] && Mine(sel[0]) && Type(sel[0]) == 0x39 && F<short>(sel[0], kComplete) == 1 &&
+        F<short>(sel[0], kSwitchedOn) == 1 && F<short>(sel[0], kUnpowered) == 0) {
+        int wx = ((int(__thiscall*)(void*, int))kToWorldX)(sg, (short)x);
+        int wy = ((int(__thiscall*)(void*, int))kToWorldY)(sg, (short)y);
+        ((void(__thiscall*)(void*, int, int, int))Slot(kCmdWarpTo))(Cmd(), F<short>(sel[0], kId), wx, wy);
+        ((void(__cdecl*)())kClickSound)();
+        g_log("controls: Warp %d target set to %d,%d (right-click)", F<short>(sel[0], kId), wx, wy);
         return 1;
     }
     int kind = ((int(__thiscall*)(void*))kWorldSelKind)(w);

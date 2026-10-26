@@ -5,6 +5,7 @@
 #   target 1: that save loaded from the main menu's Load Game;
 #   target 2: that save without its .hd (as a stock save) loaded inside a skirmish;
 #   target 3: watching an ally after defeat, Save Game is refused.
+#   target 4: a player's save copied in as DATA/Saves/HDSKIRM.wbs (and .hd), loaded and played a minute;
 # Each run's screenshots go to build/skirmsave/; the PASS/FAIL lines are printed.
 # Usage: skirmsave.sh [targets]   e.g. skirmsave.sh "0 1 2"
 set -e

@@ -336,6 +336,30 @@ void WriteDefaultIni() {
 bool InMission();  // defined below
 const char* SceneName(void* scene);
 
+// Escape sometimes takes several presses to open the in-game menu. The game opens
+// it on Esc key-up (SGame::OnKeyUp 0x47fd90 -> QueueSceneChange 0x4709a0), and
+// drops the key first when: a modifier is down in the thread's keyboard state
+// (the key-up dispatcher 0x473d20, through GetKeyboardState), no scene is up, or a
+// scene change is already pending (0x5792dc, which also makes QueueSceneChange
+// ignore the menu's); and SGame drops it while its input is off (+0x5c: paused,
+// a multiplayer wait). Each Esc press logs all of these, before and after the
+// game handled it, so the next miss says which one it was. (The journal mode,
+// 0x51bea4, only decides whether the key is recorded: logged for completeness.)
+constexpr uintptr_t kSceneCmd = 0x5792d0, kSceneCmdId = 0x5792d4, kSceneCmdDelay = 0x5792d8, kSceneCmdPending = 0x5792dc;
+constexpr uintptr_t kGameObject = 0x567ef8, kGameInputOff = 0x5c, kJournalPlayback = 0x51bea4;
+std::vector<std::string> SceneStack();
+void LogEscape(bool up, const char* when) {
+    BYTE ks[256] = {};
+    GetKeyboardState(ks);
+    std::string scenes;
+    for (const std::string& s : SceneStack()) scenes += (scenes.empty() ? "" : " ") + s;
+    Log("keys: Esc %s %s: ctrl %d alt %d shift %d, scenes [%s], scene change pending %d (%d, %d, delay %d), mission "
+        "input off %d, journal %d",
+        up ? "up" : "down", when, ks[VK_CONTROL] >> 7, ks[VK_MENU] >> 7, ks[VK_SHIFT] >> 7, scenes.c_str(),
+        game::at<short>(kSceneCmdPending), game::at<int>(kSceneCmd), game::at<int>(kSceneCmdId),
+        (int)game::at<char>(kSceneCmdDelay), game::at<short>(kGameObject + kGameInputOff), game::at<int>(kJournalPlayback));
+}
+
 // RTTI names of the scene stack, top first.
 std::vector<std::string> SceneStack() {
     std::vector<std::string> stack;
@@ -930,6 +954,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     }
     render::FilterMessage(msg, wp, lp);
+    if ((msg == WM_KEYDOWN || msg == WM_KEYUP) && wp == VK_ESCAPE && !(lp & 0x40000000 && msg == WM_KEYDOWN)) {
+        LogEscape(msg == WM_KEYUP, "before");
+        LRESULT r = CallWindowProcA(g_origWndProc, hwnd, msg, wp, lp);
+        if (msg == WM_KEYUP) LogEscape(true, "after");
+        return r;
+    }
     return CallWindowProcA(g_origWndProc, hwnd, msg, wp, lp);
 }
 
