@@ -202,6 +202,11 @@ Skirmish objectives
     defeated").
 
 Fixes
+  - French and German voices: the Plasma Cannon said "Turret complete",
+    and the Collector and Healer named other buildings (the original
+    localized voice files have no lines for those two). The Plasma Cannon
+    now says its own line; the Collector and Healer stay silent.
+  - The map editor's status line named the selected item in English.
   - Short stalls in long games: units waiting for the turn's pathfinding
     all searched at once a turn later (one turn took 61 ms), and a unit
     shut in among pods searched most of the map for a way out every few

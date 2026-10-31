@@ -887,10 +887,10 @@ std::string ToolText() {
     switch (g.tab) {
     case kTabTerrain: return lang::trf("{1} {2}", {TypeShown(g.type), Num(g.brush)});
     case kTabThings:
-        return g_thingList.empty() ? "" : g_thingList[std::clamp(g.thingItem, 0, (int)g_thingList.size() - 1)].name;
+        return g_thingList.empty() ? "" : Tr(g_thingList[std::clamp(g.thingItem, 0, (int)g_thingList.size() - 1)].name);
     case kTabUnits:
         if (g.unitMode == kModeSelect || UnitList().empty()) return lang::tr("Select");
-        return UnitList()[std::clamp(g.unitItem, 0, (int)UnitList().size() - 1)].name;
+        return Tr(UnitList()[std::clamp(g.unitItem, 0, (int)UnitList().size() - 1)].name);
     case kTabPlayers: return lang::trf("P{1} start", {Num(g.player + 1)});
     default: return lang::tr(g_pages[g.tab] ? g_pages[g.tab]->Label() : kTabLabels[g.tab]);
     }
@@ -1057,7 +1057,7 @@ void PlaceThingAt(int wx, int wy) {
 
 void EndThingsDrag() {
     g.drag = kNoDrag;
-    std::string name = g_thingList.empty() ? std::string() : g_thingList[g.thingItem].name;
+    std::string name = g_thingList.empty() ? std::string() : Tr(g_thingList[g.thingItem].name);
     if (g.dragCount) {
         g.building.what = lang::trf("Placed {1} {2}", {Num(g.dragCount), name});
         SetStatus(g.dragNote.empty() ? g.building.what : lang::trf("{1}; {2}", {g.building.what, g.dragNote}));
@@ -1122,7 +1122,7 @@ void PlaceUnitAt(int wx, int wy) {
         SetStatus(why);
         return;
     }
-    e.what = lang::trf("Placed a {1} for player {2}", {en.name, Num(g.player + 1)});
+    e.what = lang::trf("Placed a {1} for player {2}", {Tr(en.name), Num(g.player + 1)});
     SetStatus(why.empty() ? e.what : lang::trf("{1} ({2})", {e.what, why}));
     Push(std::move(e));
 }
@@ -1726,7 +1726,7 @@ void DoAction(int id, bool right) {
     case kActCollapse: ToggleCollapsed(); break;
     case kActThing:
         g.thingItem = arg;
-        SetStatus(lang::trf("{1}: click the map to place", {g_thingList[arg].name}));
+        SetStatus(lang::trf("{1}: click the map to place", {Tr(g_thingList[arg].name)}));
         break;
     case kActFill: FillCrops(arg); break;
     case kActClearCrops: ClearCrops(); break;
@@ -1741,7 +1741,7 @@ void DoAction(int id, bool right) {
         break;
     case kActUnit:
         g.unitItem = g.unitPage * kUnitRows + arg;
-        SetStatus(lang::trf("{1} for player {2}: click the map", {UnitList()[g.unitItem].name, Num(g.player + 1)}));
+        SetStatus(lang::trf("{1} for player {2}: click the map", {Tr(UnitList()[g.unitItem].name), Num(g.player + 1)}));
         break;
     case kActUnitPrev: --g.unitPage; break;
     case kActUnitNext: ++g.unitPage; break;

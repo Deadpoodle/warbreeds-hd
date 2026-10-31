@@ -23,6 +23,7 @@ namespace {
 void (*g_log)(const char*, ...);
 std::string g_dir;
 std::string g_current = "en";
+std::string g_open = "en";  // the voices the open GLOBSFX.MHK holds
 std::vector<std::string> g_available;
 std::map<std::string, bool> g_valid;  // code|size:date -> its file checked and good
 
@@ -52,6 +53,24 @@ const uintptr_t kCreateRegistriesCalls[] = {0x47ac09, 0x480673, 0x487af6, 0x48f0
 // the voice stops at once, as it would after the wait.
 constexpr uintptr_t kSoundBusyCall = 0x4717f2, kSoundBusy = 0x463fb0;
 constexpr uintptr_t kSceneCmd = 0x5792d0, kSceneCmdId = 0x5792d4;
+
+// "Construction complete": ADevice::OnComplete 0x40de70 plays a sound id per
+// building through 0x464070 (cdecl, at 0x40df51). The French and German
+// GLOBSFX.MHK hold the wrong lines under three of those ids (heard by a player):
+// 0x106 (Collector) says "Cannon complete", which no building is called; 0x10c
+// (Healer) says "Plasma Cannon complete"; 0x110 (Plasma Cannon) is a copy of
+// 0x107's "Turret complete". They have no Collector or Healer line. With those
+// voices the Plasma Cannon plays 0x10c, and the Collector and the Healer nothing.
+constexpr uintptr_t kCompleteSoundCall = 0x40df51, kPlaySound = 0x464070;
+
+void __cdecl HookCompleteSound(int id, int volume, int rate, int a, int b) {
+    if (g_open == "fr" || g_open == "de") {
+        int sound = id & 0xffff;
+        if (sound == 0x106 || sound == 0x10c) return;
+        if (sound == 0x110) id = (id & ~0xffff) | 0x10c;
+    }
+    ((void(__cdecl*)(int, int, int, int, int))kPlaySound)(id, volume, rate, a, b);
+}
 
 short __fastcall HookSoundBusy(void* player) {
     int cmd = *(int*)kSceneCmd, id = *(int*)kSceneCmdId;
@@ -137,14 +156,16 @@ bool Good(const std::string& code) {
 
 HANDLE WINAPI h_CreateFileA(LPCSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD disposition,
                             DWORD flags, HANDLE templ) {
+    const char* base = name ? strrchr(name, '\\') : nullptr;
+    base = base ? base + 1 : name;
+    if (base && _stricmp(base, "GLOBSFX.MHK") == 0) g_open = "en";
     if (name && g_current != "en") {
-        const char* base = strrchr(name, '\\');
-        base = base ? base + 1 : name;
         if (_stricmp(base, "GLOBSFX.MHK") == 0) {
             std::string own = FileOf(g_current);
             HANDLE h = o_CreateFileA(own.c_str(), access, share, sa, disposition, flags, templ);
             if (h != INVALID_HANDLE_VALUE) {
                 g_log("voices: %s -> %s", name, own.c_str());
+                g_open = g_current;
                 return h;
             }
             g_log("voices: %s could not be opened (%lu); English voices", own.c_str(), GetLastError());
@@ -162,6 +183,8 @@ void Install(const std::string& dir, void (*log)(const char*, ...)) {
     bool ok = true;
     for (uintptr_t site : kCreateRegistriesCalls) ok &= PatchCall(site, kCreateRegistries, (void*)&HookCreateRegistries);
     log("voices: announcement queue emptied for each new game: %s", ok ? "hooked" : "FAILED (unexpected code)");
+    log("voices: construction-complete lines remapped for the French and German voices: %s",
+        PatchCall(kCompleteSoundCall, kPlaySound, (void*)&HookCompleteSound) ? "hooked" : "FAILED (unexpected code)");
     log("voices: the Esc menu doesn't wait for a voice: %s",
         PatchCall(kSoundBusyCall, kSoundBusy, (void*)&HookSoundBusy) ? "hooked" : "FAILED (unexpected code)");
 }

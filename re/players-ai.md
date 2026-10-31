@@ -199,6 +199,7 @@ Found by xref on 0x53e0e8 (complete list of its readers, H for the list).
 | `0x4adaac` in `APlayer::IsAlly 0x4adaa0` (called by `AIRetina 0x4aa500`) | AI threat map ALLY/ENEMY profiles | H |
 
 Not alliance-aware (plain owner comparisons or none):
+- **Shots hit allies.** A shot's impact damages whatever is there with no alliance test: World `0x44f930` (x, y, attacker, layer, class, amount, extra) the thing at the point (`0x44b9b0`), `0x44f970` (x, y, radius, attacker, amount, layer) everything within the radius (`AMovingEffect`, `ANuclearEffect` and others; 11 call sites). A turret's shot at an enemy that has moved, or a blast beside an ally, hurts the ally. The victim doesn't hit back: `OnAttackedBy 0x4a0520` returns 0 at 0x4a0575 for an allied attacker, and a turret retaliates through `SetTarget`, which refuses allies. WarBreeds HD logs each allied hit (`teams: friendly fire`). **H**
 - **Vision is never shared.** `World 0x448730` adds sight only to the thing's owner (`0x436280`/`0x4363a0`). **H**
 - Minimap and unit colours come from the owner's colour `+0x484e`; no ally test was found in drawing. **M**
 - The "under attack" alert in `0x40e360` tests `owner == local && attacker owner != local`. **H**

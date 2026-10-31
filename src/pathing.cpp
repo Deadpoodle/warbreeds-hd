@@ -2909,6 +2909,55 @@ void LogAlliedAttacks() {
     }
 }
 
+// Friendly fire (diagnosis, as the above): a shot's impact damages whatever is
+// there, with no alliance test. World 0x44f930(x, y, attacker, layer, class,
+// amount, extra): the thing at the point (0x44b9b0); 0x44f970(x, y, radius,
+// attacker, amount, layer): everything within the radius. Units ignore an allied
+// attacker (ACreature::OnAttackedBy 0x4a0520 returns at 0x4a0575), and turrets
+// refuse allied targets (ATurret::SetTarget), so a stray hit shouldn't start a
+// fight; each allied hit is logged (once per pair, at most 40) to see.
+constexpr uintptr_t kHitAt = 0x44f930, kHitArea = 0x44f970, kThingAtPoint = 0x44b9b0;
+constexpr uintptr_t kHitAtCalls[] = {0x405058, 0x406be0, 0x40a1b4, 0x41f0e0, 0x420c88, 0x434de2};
+constexpr uintptr_t kHitAreaCalls[] = {0x41f06b, 0x420c51, 0x421571, 0x4215a8, 0x432c58};
+
+void LogFriendlyFire(int attackerId, char* victim, const char* how, int x, int y, int amount) {
+    static std::vector<uint32_t> s_seen;
+    char* a = ThingById(attackerId & 0xffff);
+    if (!a || !victim || s_seen.size() >= 40) return;
+    char* ao = F<char*>(a, kOwner);
+    char* vo = F<char*>(victim, kOwner);
+    if (!ao || !vo || ao == vo) return;
+    int pa = PlayerOf(a), pv = PlayerOf(victim);
+    bool allied = (pv >= 0 && pv < 8 && (F<uint8_t>(ao, 0x18) >> pv & 1)) || (pa >= 0 && pa < 8 && (F<uint8_t>(vo, 0x18) >> pa & 1));
+    if (!allied) return;
+    uint32_t key = (uint32_t)(attackerId & 0xffff) << 16 | F<unsigned short>(victim, kId);
+    if (std::find(s_seen.begin(), s_seen.end(), key) != s_seen.end()) return;
+    s_seen.push_back(key);
+    g_log("teams: friendly fire: %d (type %#x, player %d) hit %d (type %#x, player %d) by %s at %d,%d, amount %d; masks "
+          "%#x / %#x",
+          attackerId & 0xffff, F<int>(a, kType), pa, F<unsigned short>(victim, kId), F<int>(victim, kType), pv, how, x, y,
+          amount, F<uint8_t>(ao, 0x18), F<uint8_t>(vo, 0x18));
+}
+
+void __fastcall HookHitAt(void* world, void*, int x, int y, int attacker, int layer, int cls, int amount, int extra) {
+    char* v = ((char*(__thiscall*)(void*, int, int, int))kThingAtPoint)(world, (short)x, (short)y, layer);
+    LogFriendlyFire(attacker, v, "a direct hit", (short)x, (short)y, (short)amount + (short)extra);
+    ((void(__thiscall*)(void*, int, int, int, int, int, int, int))kHitAt)(world, x, y, attacker, layer, cls, amount, extra);
+}
+
+void __fastcall HookHitArea(void* world, void*, int x, int y, int radius, int attacker, int amount, int layer) {
+    int count;
+    char** things = Things(count);
+    int cx = (short)x, cy = (short)y, rr = (short)radius;
+    for (int i = 0; i < count; ++i) {
+        char* t = things[i];
+        if (!t || F<int>(t, kType) > 0x41) continue;
+        int dx = F<short>(t, kX) - cx, dy = F<short>(t, kY) - cy, reach = rr + Radius(F<int>(t, kType));
+        if (dx * dx + dy * dy < reach * reach) LogFriendlyFire(attacker, t, "a blast", cx, cy, amount);
+    }
+    ((void(__thiscall*)(void*, int, int, int, int, int, int))kHitArea)(world, x, y, radius, attacker, amount, layer);
+}
+
 void __fastcall HookClockReset(void* cmd, void*) {
     g_missionStart = true;
     ((void(__thiscall*)(void*))kClockReset)(cmd);
@@ -2964,6 +3013,10 @@ void Install(void (*log)(const char*, ...), const Debug& d) {
     for (uintptr_t site : kClockResetCalls) ok = ok && PatchCall(site, kClockReset, (void*)&HookClockReset);
     for (uintptr_t slot : kSlotOnBlocked) ok = ok && PatchSlot(slot, kOnBlocked, (void*)&HookOnBlocked);
     ok = ok && PatchSlot(kSlotAtWorkSite, kAtWorkSite, (void*)&HookAtWorkSite);
+    bool ff = true;
+    for (uintptr_t site : kHitAtCalls) ff &= PatchCall(site, kHitAt, (void*)&HookHitAt);
+    for (uintptr_t site : kHitAreaCalls) ff &= PatchCall(site, kHitArea, (void*)&HookHitArea);
+    log("pathing: friendly-fire log %s", ff ? "installed" : "FAILED (unexpected code)");
     for (uintptr_t site : kExecuteMoveCalls) ok = ok && PatchCall(site, kExecuteMove, (void*)&HookExecuteMove);
     ok = ok && PatchCall(kStanceExecCall, kStanceExec, (void*)&HookStanceExec);
     log("pathing: %s", ok ? "installed" : "FAILED (unexpected code)");
